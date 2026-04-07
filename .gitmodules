@@ -1,0 +1,7 @@
+[submodule "Moni-UI-Prototype"]
+	path = Moni-UI-Prototype
+	url = git@github.com:EdgarZhong/Moni-UI-Prototype.git
+[submodule "pixel_bill_backend"]
+	path = pixel_bill_backend
+	url = git@github.com:EdgarZhong/PixelBill.git
+	branch = feat/frontend-separation
