@@ -237,7 +237,7 @@ export class LedgerService {
    * 获取当前账本名称
    * 从 memoryFileHandle 的文件名中提取
    */
-  private getCurrentLedgerName(): string | null {
+  public getCurrentLedgerName(): string | null {
     if (!this.memoryFileHandle) return null;
 
     // 文件名格式: {ledgerName}.moni.json
@@ -492,6 +492,156 @@ export class LedgerService {
     const direction = delta > 0 ? 1 : -1;
 
     this.setState({ filter, direction });
+  }
+
+  /**
+   * 向当前账本直接写入单条记录（手记专用入口）
+   */
+  public async ingestSingleRecord(record: FullTransactionRecord): Promise<void> {
+    if (!this.memoryFileHandle || !this.state.ledgerMemory) {
+      throw new Error('Cannot ingest manual entry: no ledger loaded');
+    }
+
+    if (this.state.ledgerMemory.records[record.id]) {
+      throw new Error(`Record already exists: ${record.id}`);
+    }
+
+    const nextMemory: LedgerMemory = {
+      ...this.state.ledgerMemory,
+      records: {
+        ...this.state.ledgerMemory.records,
+        [record.id]: record
+      },
+      last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+    };
+
+    await writeMemoryFile(this.memoryFileHandle, nextMemory);
+
+    const nextRawTransactions = [
+      {
+        ...record,
+        originalDate: parse(record.time, 'yyyy-MM-dd HH:mm:ss', new Date())
+      },
+      ...this.state.rawTransactions
+    ].sort((a, b) => b.originalDate.getTime() - a.originalDate.getTime());
+
+    this.transactionCache.clear();
+    this.hydrateArbiter(nextMemory);
+
+    const computed = this.recomputeTransactions(nextRawTransactions, nextMemory);
+    const tabs = this.computeTabs(nextMemory);
+    const range = this.computeDateRange(computed);
+
+    this.setState({
+      ledgerMemory: nextMemory,
+      rawTransactions: nextRawTransactions,
+      computedTransactions: computed,
+      TABS: tabs,
+      dateRange: range
+    });
+  }
+
+  /**
+   * 从当前账本移除单条记录（手记删除专用入口）
+   */
+  public async deleteSingleRecord(id: string): Promise<FullTransactionRecord | null> {
+    if (!this.memoryFileHandle || !this.state.ledgerMemory) {
+      throw new Error('Cannot delete manual entry: no ledger loaded');
+    }
+
+    const existingRecord = this.state.ledgerMemory.records[id];
+    if (!existingRecord) {
+      return null;
+    }
+
+    const updatedRecords = { ...this.state.ledgerMemory.records };
+    delete updatedRecords[id];
+
+    const nextMemory: LedgerMemory = {
+      ...this.state.ledgerMemory,
+      records: updatedRecords,
+      last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+    };
+
+    await writeMemoryFile(this.memoryFileHandle, nextMemory);
+
+    const nextRawTransactions = this.state.rawTransactions.filter((tx) => tx.id !== id);
+
+    this.transactionCache.clear();
+    globalArbiter.clearProposals([id]);
+    this.hydrateArbiter(nextMemory);
+
+    const computed = this.recomputeTransactions(nextRawTransactions, nextMemory);
+    const tabs = this.computeTabs(nextMemory);
+    const range = this.computeDateRange(computed);
+
+    this.setState({
+      ledgerMemory: nextMemory,
+      rawTransactions: nextRawTransactions,
+      computedTransactions: computed,
+      TABS: tabs,
+      dateRange: range
+    });
+
+    return existingRecord;
+  }
+
+  public async patchRecord(
+    id: string,
+    updates: Partial<FullTransactionRecord>
+  ): Promise<FullTransactionRecord | null> {
+    if (!this.memoryFileHandle || !this.state.ledgerMemory) {
+      throw new Error('Cannot patch record: no ledger loaded');
+    }
+
+    const existingRecord = this.state.ledgerMemory.records[id];
+    if (!existingRecord) {
+      return null;
+    }
+
+    const nextRecord: FullTransactionRecord = {
+      ...existingRecord,
+      ...updates
+    };
+
+    const nextMemory: LedgerMemory = {
+      ...this.state.ledgerMemory,
+      records: {
+        ...this.state.ledgerMemory.records,
+        [id]: nextRecord
+      },
+      last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+    };
+
+    await writeMemoryFile(this.memoryFileHandle, nextMemory);
+
+    const nextRawTransactions = this.state.rawTransactions.map((tx) =>
+      tx.id === id
+        ? {
+            ...tx,
+            ...nextRecord,
+            originalDate: parse(nextRecord.time, 'yyyy-MM-dd HH:mm:ss', new Date())
+          }
+        : tx
+    );
+
+    this.transactionCache.clear();
+    globalArbiter.clearProposals([id]);
+    this.hydrateArbiter(nextMemory);
+
+    const computed = this.recomputeTransactions(nextRawTransactions, nextMemory);
+    const tabs = this.computeTabs(nextMemory);
+    const range = this.computeDateRange(computed);
+
+    this.setState({
+      ledgerMemory: nextMemory,
+      rawTransactions: nextRawTransactions,
+      computedTransactions: computed,
+      TABS: tabs,
+      dateRange: range
+    });
+
+    return nextRecord;
   }
 
   // Public method for ingestion (used by import or test script)

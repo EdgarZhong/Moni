@@ -46,6 +46,10 @@ export interface TransactionMeta {
   // --- 系统层 (System Layer) ---
   is_verified: boolean;       // 是否已确认 (确认后 AI 不再覆盖)
   updated_at: string;         // 最后更新时间 (YYYY-MM-DD HH:mm:ss)
+
+  // --- Manual Entry Dedup Layer (optional) ---
+  dedup_status?: 'merged' | 'superseded' | 'confirmed_unique';
+  linked_tx_id?: string;
 }
 
 // 完整的记录结构 = 基础数据 + 元数据
