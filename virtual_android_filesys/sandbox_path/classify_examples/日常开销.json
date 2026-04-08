@@ -1,0 +1,24 @@
+{
+  "revision": 1,
+  "entries": [
+    {
+      "id": "c971f228f8207480",
+      "created_at": "2026-04-08T15:54:51.085Z",
+      "time": "2026-01-04 19:28:23",
+      "sourceType": "wechat",
+      "rawClass": "商户消费",
+      "counterparty": "美团",
+      "product": "益禾堂-美团App-26010411100400001306048035259624",
+      "amount": 4.99,
+      "direction": "out",
+      "paymentMethod": "零钱",
+      "transactionStatus": "SUCCESS",
+      "remark": "/",
+      "category": "零食",
+      "ai_category": "其他",
+      "ai_reasoning": "益禾堂属于奶茶饮品，非正餐",
+      "user_note": "",
+      "is_verified": true
+    }
+  ]
+}

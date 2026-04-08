@@ -61,7 +61,7 @@
       "id": "c971f228f8207480",
       "time": "2026-01-04 19:28:23",
       "sourceType": "wechat",
-      "category": "旅行",
+      "category": "零食",
       "rawClass": "商户消费",
       "counterparty": "美团",
       "product": "益禾堂-美团App-26010411100400001306048035259624",
@@ -72,10 +72,10 @@
       "remark": "/",
       "ai_category": "其他",
       "ai_reasoning": "益禾堂属于奶茶饮品，非正餐",
-      "user_category": "旅行",
+      "user_category": "零食",
       "user_note": "",
       "is_verified": true,
-      "updated_at": "2026-02-16 23:55:18",
+      "updated_at": "2026-04-08T15:54:51.059Z",
       "originalId": "4200002922202601047668766214"
     },
     "56424a1161b0e4d3": {
