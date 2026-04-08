@@ -1,7 +1,8 @@
 // Mock Capacitor Core
 export const Capacitor = {
-  isNativePlatform: () => true, // Force TRUE to trick app into "Android Mode"
-  getPlatform: () => 'android',
+  isNativePlatform: () => false,
+  getPlatform: () => 'web',
+  isPluginAvailable: (name: string) => ['Filesystem', 'Haptics'].includes(name),
   pluginMethodNoop: () => {}
 };
 // Mock WebPlugin (空实现)

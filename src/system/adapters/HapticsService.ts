@@ -3,13 +3,15 @@
  *
  * 单例模式，自动检测运行环境并选择合适的适配器
  * - Capacitor Native: CapacitorHapticsAdapter
- * - Pure Web: WebVibrationAdapter (待实现)
- * - Desktop/不支持: NoopHapticsAdapter (待实现)
+ * - Pure Web: WebHapticsAdapter
+ * - Desktop/不支持: NoopHapticsAdapter
  */
 
-import { Capacitor } from '@capacitor/core';
 import type { IHapticsAdapter } from './IHapticsAdapter';
 import { CapacitorHapticsAdapter } from './CapacitorHapticsAdapter';
+import { NoopHapticsAdapter } from './NoopHapticsAdapter';
+import { WebHapticsAdapter } from './WebHapticsAdapter';
+import { getRuntimeInfo } from '@system/runtime/RuntimeInfo';
 
 export class HapticsService {
   private static instance: IHapticsAdapter | null = null;
@@ -38,18 +40,13 @@ export class HapticsService {
         return new CapacitorHapticsAdapter();
 
       case 'web':
-        // TODO: 实现 WebVibrationAdapter
-        console.warn('[HapticsService] Web vibration adapter not implemented, falling back to Capacitor');
-        return new CapacitorHapticsAdapter();
+        return new WebHapticsAdapter();
 
       case 'desktop':
-        // TODO: 实现 NoopHapticsAdapter
-        console.warn('[HapticsService] Desktop haptics not supported, falling back to Capacitor');
-        return new CapacitorHapticsAdapter();
+        return new NoopHapticsAdapter();
 
       default:
-        console.warn('[HapticsService] Unknown platform, falling back to Capacitor');
-        return new CapacitorHapticsAdapter();
+        return new NoopHapticsAdapter();
     }
   }
 
@@ -57,22 +54,20 @@ export class HapticsService {
    * 检测运行平台
    */
   private static detectPlatform(): 'capacitor' | 'web' | 'desktop' {
-    // 检测 Capacitor Native
-    if (Capacitor.isNativePlatform()) {
+    const runtime = getRuntimeInfo();
+
+    if (runtime.kind === 'capacitor-native') {
       return 'capacitor';
     }
 
-    // 检测 Electron（桌面端）
-    if (typeof window !== 'undefined' && (window as any).electron) {
+    if (runtime.kind === 'electron') {
       return 'desktop';
     }
 
-    // 检测 Web Vibration API
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    if (runtime.supportsVibration) {
       return 'web';
     }
 
-    // 默认为桌面端（不支持触觉反馈）
     return 'desktop';
   }
 

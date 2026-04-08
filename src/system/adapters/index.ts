@@ -36,6 +36,8 @@ export {
 // ==================== Capacitor 适配器 ====================
 export { CapacitorFilesystemAdapter } from './CapacitorFilesystemAdapter';
 export { CapacitorHapticsAdapter } from './CapacitorHapticsAdapter';
+export { WebHapticsAdapter } from './WebHapticsAdapter';
+export { NoopHapticsAdapter } from './NoopHapticsAdapter';
 
 // ==================== 服务工厂 ====================
 export { FilesystemService } from './FilesystemService';
