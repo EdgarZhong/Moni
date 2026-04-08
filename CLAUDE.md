@@ -94,12 +94,12 @@
 | Agent | 任务 | 状态 | 说明 |
 |------|------|------|------|
 | Agent 0 | 编排、规则固化、脚手架、看板维护 | In Progress | 当前正在执行 |
-| Agent 1 | 应用层门面与边界收口 | Ready | 可优先启动 |
-| Agent 2 | 首页主舞台集成 | Blocked | 等 Agent 1 facade 初版 |
-| Agent 3 | 预算系统 | Ready | 可并行启动 |
-| Agent 4 | 随手记系统 | Ready | 可并行启动 |
-| Agent 5 | v7 记忆系统核心升级 | Ready | 高优先级，可立即启动 |
-| Agent 6 | Capacitor / System 层适配核验 | Ready | 可全程并行 |
+| Agent 1 | 应用层门面与边界收口 | Done | 已合并到主线 |
+| Agent 2 | 首页主舞台集成 | Done | 已合并到主线 |
+| Agent 3 | 预算系统 | Done | 已合并到主线 |
+| Agent 4 | 随手记系统 | Done | 已合并到主线 |
+| Agent 5 | v7 记忆系统核心升级 | Done | 已合并到主线 |
+| Agent 6 | Capacitor / System 层适配核验 | Done | 已合并到主线 |
 
 ## 并行依赖关系
 
@@ -108,6 +108,7 @@
 - Agent 5 <-> Agent 4：在 `ExampleStore` 接口上需要协同，但不互相吞并职责
 - Agent 3 -> Agent 1：预算读模型应通过 Agent 1 facade 对外暴露
 - Agent 6 -> 全体：输出环境约束，不直接替代业务实现
+- Agent 2 必须消费 `AppFacade`，不得再扩出第二套首页聚合逻辑
 
 ## 合并顺序建议
 
@@ -124,9 +125,13 @@
 - `ExampleStore.ts` 同时被 Agent 4 与 Agent 5 关注，存在冲突风险
 - Agent 2 容易因联调便利直接下潜到底层 service，必须受 Agent 1 facade 约束
 - 预算系统与 Ledger 生命周期连锁处理可能影响现有 service 边界
+- 预算侧的 `categoryBudgetSchemaVersion` 目前仍缺少统一的账本标签 schema version 来源
 - Capacitor 真实环境与浏览器模拟环境的文件系统、设备能力存在差异
+- 浏览器开发态必须保持真实 web 语义，禁止继续伪装成 native Android
 - 当前仓库使用 `npm` 与 `package-lock.json`，并行期不适合同时切换到 `pnpm`
-- 沙箱环境中的 `build` 可能触发 `esbuild spawn EPERM`
+- 纯浏览器 runtime 还没有独立的 browser filesystem adapter
+- 最终集成前仍需 Android 真机或模拟器专项验证，覆盖存储权限、重启持久化和 haptics
+- 手记侧已接入 v7 主文件结构，但 `classify_example_changes/{ledger}.json` 变更日志仍以 Agent 5 版本为准
 
 ## 启动条件
 
