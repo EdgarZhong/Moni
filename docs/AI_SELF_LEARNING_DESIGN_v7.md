@@ -24,6 +24,49 @@
 
 ### 2.1 结构化存储
 
+#### 2.1.0 账本行为配置（`ledger_prefs/{ledger}.json`）
+
+为避免学习阈值、收编阈值、压缩比例等账本级行为参数继续散落在 `LedgerMemory`、预算配置或各服务本地常量中，v7 追加一层**账本行为配置文件**。
+
+该文件只承载“账本行为设置”，不承载交易数据、实例库数据或预算数据。
+
+**存储位置**：`Directory.Data / ledger_prefs/{ledger}.json`
+
+**目标格式**：
+
+```json
+{
+  "learning": {
+    "threshold": 5,
+    "autoLearn": true
+  },
+  "compression": {
+    "threshold": 30,
+    "ratio": 0.7
+  }
+}
+```
+
+**字段语义**：
+
+- `learning.threshold`：触发学习所需的累计修正阈值
+- `learning.autoLearn`：是否允许自动学习
+- `compression.threshold`：当前记忆条目数超过该值时，允许触发收编
+- `compression.ratio`：收编的目标压缩比例。用于计算 `targetCount = floor(currentCount * ratio)`；它是 Prompt 与结果校验使用的**上限**，不要求 AI 精确压到该条数
+
+**默认值（当前冻结口径）**：
+
+- `learning.threshold = 5`
+- `learning.autoLearn = true`
+- `compression.threshold = 30`
+- `compression.ratio = 0.7`
+
+**账本生命周期联动**：
+
+- 账本创建时可不主动落空文件，读取时按默认值兜底
+- 账本重命名时同步迁移 `ledger_prefs/{old}.json -> ledger_prefs/{new}.json`
+- 账本删除时同步清理 `ledger_prefs/{ledger}.json`
+
 #### 2.1.1 标签定义（`defined_categories`）
 
 升级原有的数组为映射，每个标签强制附带一句自然语言描述：
@@ -457,7 +500,15 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 ### 3.3 收编（上下文压缩，低频操作）
 
-当列表长度超过阈值（建议 30 条），触发收编。
+当列表长度超过阈值时，触发收编。
+
+**当前冻结口径**：
+
+- 默认收编阈值：`30`
+- 默认压缩比例：`0.7`
+- 目标上限计算：`targetCount = floor(currentCount * 0.7)`
+- `targetCount` 是 Prompt 与结果校验使用的**不超过上限**，不要求 AI 精确输出到该条数
+- 这些参数属于账本级行为配置，统一从 `ledger_prefs/{ledger}.json` 读取；无配置文件时按默认值兜底
 
 **收编 Prompt**：
 
@@ -475,6 +526,12 @@ Documents/PixelBill/classify_memory/{ledger}/
 2. 读取当前实例库**全量**内容（rich schema）
 3. 将完整列表 + 当前标签体系 + 全量实例库一并交给 AI 压缩
 4. AI 输出新列表，创建一个 `ai_compress` 快照并更新 `current_snapshot_id`
+
+**失败策略**：
+
+- LLM 调用失败：不改当前快照
+- 输出为空、格式非法或超出 `targetCount` 上限：不改当前快照
+- 只有压缩结果通过基础校验后，才创建 `ai_compress` 快照
 
 这是**唯一做全量重写的时机**。如收编后分类效果变差，可通过快照回退。
 

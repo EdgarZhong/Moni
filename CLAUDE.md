@@ -52,7 +52,9 @@
 - 首页聚合读模型已补齐 `homeDateRange / trendCard / 手记展示字段 / AI backlog`，但 Android 真环境专项验收仍未完成
 - 测试数据迁移策略、调试时钟策略、全链路验收清单仍未补齐
 - Capacitor / Android 真环境约束仍需持续核验
-- 浏览器 MCP 已可驱动首页 E2E，开发态浏览器调试入口 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 已接入，后续仍需扩大覆盖面
+- 浏览器 MCP 已可驱动首页 E2E，开发态浏览器调试入口 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 已接入；实例库 v7 运行时注入、手记 D 类映射、学习 payload rich schema 测试也已纳入测试入口，后续仍需扩大覆盖面
+- 账本重命名 / 删除现在开始联动迁移与清理 `classify_example_changes/{ledger}.json`，避免实例库增量日志因临时账本残留而持续堆积
+- 收编实现口径已收敛：账本级行为配置统一落到 `ledger_prefs/{ledger}.json`；默认收编阈值 `30`，压缩比例固定 `0.7`
 
 ## 仓库与环境基线
 
@@ -151,7 +153,7 @@
 | 首页读模型收口 | Done | `homeDateRange`、`trendCard`、手记首页字段、AI backlog、无预算退化态已接入 |
 | 账本加载链路排查 | Done | Date Range Picker 边界改为直接由账本全量记录推导 |
 | 首页真实测试数据显示 | In Progress | 读模型已切真实数据，仍需在浏览器与 Android 目标环境做人工验收 |
-| 浏览器调试入口与逻辑链路测试 | In Progress | 已接入 `window.__MONI_DEBUG__ / window.__MONI_E2E__`，账本 CRUD / 随手记 / 预算 / 首页读模型测试入口已落地并在浏览器跑通，后续仍需扩展更多场景 |
+| 浏览器调试入口与逻辑链路测试 | In Progress | 已接入 `window.__MONI_DEBUG__ / window.__MONI_E2E__`，账本 CRUD / 随手记 / 预算 / 实例库 v7 规格 / 学习 payload v7 规格 / 收编配置与上下文规格 / 首页读模型测试入口已落地并在浏览器跑通，后续仍需扩展更多场景 |
 | 测试数据迁移方案 | Ready | 明确是迁移现有测试数据到当前月，还是引入 debug clock |
 | 原型对齐缺陷修复 | Ready | 基于截图差异修首页 UI bug，而不是在空态上修视觉 |
 | 全链路验收与 Android 专项验证 | Ready | 覆盖存储权限、重启持久化、haptics、首页真实数据显示 |

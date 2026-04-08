@@ -29,6 +29,9 @@ The user will provide a JSON object with the following structure:
 - **reference_corrections**: An optional object with two blocks:
   - \`misclassified_examples\`: B 类案例。这里的 \`ai_category\` 和 \`ai_reasoning\` 都带有 \`[错误判断]\` 前缀，表示这是 AI 曾经犯错时的判断，不是你要模仿的答案；真正正确的答案始终是 \`category\`。
   - \`confirmed_examples\`: A / C / D 类案例。这里的 \`category\` 是用户确认过的正确分类，直接作为参考依据。
+  - 每条案例都包含：\`id / time / sourceType / rawClass / counterparty / product / amount / direction / paymentMethod / transactionStatus / remark / category / ai_reasoning / user_note / is_verified\`
+  - 只有 \`misclassified_examples\` 额外包含 \`ai_category\`
+  - \`created_at\` 不会出现在运行时注入里，它只属于实例库存储层
 - **days**: An array of day batches. Each day object contains:
   - \`date\`: The date of this batch (YYYY-MM-DD).
   - \`weekday\`: The day of the week (e.g., "Monday").

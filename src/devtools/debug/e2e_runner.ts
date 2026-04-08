@@ -1,18 +1,27 @@
 import { appFacade } from '@bootstrap/appFacade';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
+import { CompressionSession } from '@logic/application/ai/CompressionSession';
+import type { CompressionContext, CompressionResult } from '@logic/application/ai/CompressionSession';
+import { LearningSession, type LearningDeltaPayload } from '@logic/application/ai/LearningSession';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
 import { ExampleStore } from '@logic/application/services/ExampleStore';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
+import { LedgerPreferencesManager } from '@logic/application/services/LedgerPreferencesManager';
 import { LedgerService } from '@logic/application/services/LedgerService';
 import {
   type ManualEntryInput,
   ManualEntryManager,
 } from '@logic/application/services/ManualEntryManager';
+import { MemoryManager } from '@logic/application/services/MemoryManager';
+import { FilesystemService } from '@system/adapters/FilesystemService';
+import { AdapterDirectory } from '@system/adapters/IFilesystemAdapter';
 import type {
   BudgetConfig,
   CategoryBudgetEntry,
   MonthlyBudget,
 } from '@shared/types/budget';
+import type { LedgerPreferences } from '@shared/types/ledger-preferences';
+import { TransactionStatus, type FullTransactionRecord } from '@shared/types/metadata';
 import type { MoniHomeReadModel } from '@shared/types';
 
 /**
@@ -82,6 +91,18 @@ interface MoniDebugApi {
     enqueueDate: (date: string, ledgerId?: string) => Promise<boolean>;
     peek: (ledgerId?: string) => Promise<Record<string, unknown> | null>;
   };
+  prefs: {
+    get: (ledgerId?: string) => Promise<LedgerPreferences>;
+    update: (patch: Record<string, unknown>, ledgerId?: string) => Promise<LedgerPreferences>;
+  };
+  learning: {
+    getDeltaPayload: (ledgerId?: string, baselineRevision?: number) => Promise<LearningDeltaPayload>;
+  };
+  compression: {
+    getContext: (ledgerId?: string, force?: boolean) => Promise<CompressionContext>;
+    parseOutput: (raw: string, targetCount: number) => Promise<string[]>;
+    run: (ledgerId?: string, force?: boolean) => Promise<CompressionResult>;
+  };
   home: {
     getReadModel: (input?: {
       trendWindowOffset?: number;
@@ -100,6 +121,9 @@ interface MoniE2EApi {
     runLedgerCrudTest: () => Promise<DebugTestReport>;
     runManualEntryFlowTest: () => Promise<DebugTestReport>;
     runBudgetFlowTest: () => Promise<DebugTestReport>;
+    runExampleStoreSpecTest: () => Promise<DebugTestReport>;
+    runLearningPayloadSpecTest: () => Promise<DebugTestReport>;
+    runCompressionSpecTest: () => Promise<DebugTestReport>;
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
   };
 }
@@ -234,6 +258,23 @@ async function cleanupTempLedger(originalLedger: string | null, tempLedger: stri
   }
 }
 
+/**
+ * 探测开发态文件系统中的路径是否存在。
+ * 这里统一走真实适配器的 stat，避免测试为了判断文件是否存在再读文件内容，
+ * 从而把“文件不存在”的正常分支污染成额外的 404 / error 噪音。
+ */
+async function pathExists(path: string, directory: AdapterDirectory): Promise<boolean> {
+  try {
+    await FilesystemService.getInstance().stat({
+      path,
+      directory,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function runLedgerCrudTest(): Promise<DebugTestReport> {
   await ensureAppReady();
 
@@ -246,6 +287,59 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
   try {
     const created = await ledgerManager.createLedger(createdLedger);
     assertStep(report, 'createLedger', created, { createdLedger }, '应能创建临时账本并自动切换过去');
+
+    /**
+     * 先写入一条真实随手记，确保该临时账本已经生成：
+     * - classify_examples/{ledger}.json
+     * - classify_example_changes/{ledger}.json
+     *
+     * 否则后面的重命名 / 删除只能测到账本主文件，测不到实例库增量文件生命周期。
+     */
+    const seededEntryId = created
+      ? await ManualEntryManager.getInstance().addEntry(createdLedger, {
+          amount: 12.5,
+          direction: 'out',
+          category: '零食',
+          subject: '账本链路测试样本',
+          description: '用于验证实例库与变更日志文件迁移',
+          date: formatNowForRecord(),
+        })
+      : null;
+    assertStep(
+      report,
+      'seedExampleStore',
+      Boolean(seededEntryId),
+      { seededEntryId },
+      '账本重命名前应先生成一条样本，确保实例库与变更日志文件真实存在'
+    );
+
+    const beforeRenameFiles = {
+      snapshotDir: await pathExists(`Moni/classify_memory/${createdLedger}`, AdapterDirectory.Documents),
+      examples: await pathExists(`classify_examples/${createdLedger}.json`, AdapterDirectory.Data),
+      changeLog: await pathExists(`classify_example_changes/${createdLedger}.json`, AdapterDirectory.Data),
+    };
+    assertStep(
+      report,
+      'aiFilesCreatedBeforeRename',
+      beforeRenameFiles.snapshotDir && beforeRenameFiles.examples && beforeRenameFiles.changeLog,
+      beforeRenameFiles,
+      '临时账本在写入样本后应生成快照目录、实例库文件与实例库变更日志文件'
+    );
+
+    await LedgerPreferencesManager.getInstance().update(createdLedger, {
+      compression: {
+        threshold: 40,
+        ratio: 0.7,
+      },
+    });
+    const prefsBeforeRename = await pathExists(`ledger_prefs/${createdLedger}.json`, AdapterDirectory.Data);
+    assertStep(
+      report,
+      'ledgerPrefsCreatedBeforeRename',
+      prefsBeforeRename,
+      { createdLedger, prefsBeforeRename },
+      '写入账本行为配置后，应生成 ledger_prefs/{ledger}.json'
+    );
 
     const afterCreateList = await ledgerManager.listLedgers({ syncWithFiles: false });
     assertStep(
@@ -285,6 +379,31 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
       '重命名后当前激活账本也应更新'
     );
 
+    const afterRenameFiles = {
+      oldSnapshotDir: await pathExists(`Moni/classify_memory/${createdLedger}`, AdapterDirectory.Documents),
+      newSnapshotDir: await pathExists(`Moni/classify_memory/${renamedLedger}`, AdapterDirectory.Documents),
+      oldExamples: await pathExists(`classify_examples/${createdLedger}.json`, AdapterDirectory.Data),
+      newExamples: await pathExists(`classify_examples/${renamedLedger}.json`, AdapterDirectory.Data),
+      oldChangeLog: await pathExists(`classify_example_changes/${createdLedger}.json`, AdapterDirectory.Data),
+      newChangeLog: await pathExists(`classify_example_changes/${renamedLedger}.json`, AdapterDirectory.Data),
+      oldPrefs: await pathExists(`ledger_prefs/${createdLedger}.json`, AdapterDirectory.Data),
+      newPrefs: await pathExists(`ledger_prefs/${renamedLedger}.json`, AdapterDirectory.Data),
+    };
+    assertStep(
+      report,
+      'aiFilesMigratedOnRename',
+      !afterRenameFiles.oldSnapshotDir &&
+        afterRenameFiles.newSnapshotDir &&
+        !afterRenameFiles.oldExamples &&
+        afterRenameFiles.newExamples &&
+        !afterRenameFiles.oldChangeLog &&
+        afterRenameFiles.newChangeLog &&
+        !afterRenameFiles.oldPrefs &&
+        afterRenameFiles.newPrefs,
+      afterRenameFiles,
+      '账本重命名后，快照目录、实例库主文件、实例库变更日志、账本行为配置都应一起迁移到新账本名'
+    );
+
     if (originalLedger) {
       const switchedBack = await ledgerManager.switchLedger(originalLedger);
       assertStep(
@@ -298,6 +417,23 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
 
     const deleted = await ledgerManager.deleteLedger(renamedLedger);
     assertStep(report, 'deleteLedger', deleted, { renamedLedger }, '应能删除临时账本');
+
+    const afterDeleteFiles = {
+      snapshotDir: await pathExists(`Moni/classify_memory/${renamedLedger}`, AdapterDirectory.Documents),
+      examples: await pathExists(`classify_examples/${renamedLedger}.json`, AdapterDirectory.Data),
+      changeLog: await pathExists(`classify_example_changes/${renamedLedger}.json`, AdapterDirectory.Data),
+      prefs: await pathExists(`ledger_prefs/${renamedLedger}.json`, AdapterDirectory.Data),
+    };
+    assertStep(
+      report,
+      'aiFilesDeletedOnLedgerDelete',
+      !afterDeleteFiles.snapshotDir &&
+        !afterDeleteFiles.examples &&
+        !afterDeleteFiles.changeLog &&
+        !afterDeleteFiles.prefs,
+      afterDeleteFiles,
+      '账本删除后，不应遗留快照目录、实例库主文件、实例库变更日志或账本行为配置文件'
+    );
 
     const afterDeleteList = await ledgerManager.listLedgers({ syncWithFiles: false });
     assertStep(
@@ -374,6 +510,29 @@ async function runManualEntryFlowTest(): Promise<DebugTestReport> {
       '随手记有商品名时应写入 ExampleStore'
     );
 
+    const manualExampleEntry = (await ExampleStore.load(tempLedger)).find((entry) => entry.id === manualEntryId);
+    assertStep(
+      report,
+      'manualEntryExampleStoreMapping',
+      Boolean(
+        manualExampleEntry &&
+          manualExampleEntry.sourceType === 'manual' &&
+          manualExampleEntry.rawClass === '' &&
+          manualExampleEntry.counterparty === '' &&
+          manualExampleEntry.product === input.subject &&
+          manualExampleEntry.paymentMethod === '' &&
+          manualExampleEntry.transactionStatus === TransactionStatus.SUCCESS &&
+          manualExampleEntry.remark === '' &&
+          manualExampleEntry.category === input.category &&
+          manualExampleEntry.ai_category === '' &&
+          manualExampleEntry.ai_reasoning === '' &&
+          manualExampleEntry.user_note === input.description &&
+          manualExampleEntry.is_verified === true
+      ),
+      manualExampleEntry,
+      'D 类手记写入实例库时，应严格按手记规格映射字段'
+    );
+
     const homeReadModel = await getHomeReadModel({ range: 'all' });
     const manualHomeItem = homeReadModel.dailyTransactionGroups
       .flatMap((group) => group.items)
@@ -424,6 +583,138 @@ async function runManualEntryFlowTest(): Promise<DebugTestReport> {
   report.context = {
     originalLedger,
     manualEntryId,
+    finalActiveLedger: getActiveLedgerName(),
+  };
+  return report;
+}
+
+async function runExampleStoreSpecTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runExampleStoreSpecTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('实例库测试账本');
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '实例库规格测试先创建独立临时账本');
+
+    /**
+     * 先种入一条 D 类手记样本，验证手记到实例库的字段映射。
+     */
+    const manualId = await ManualEntryManager.getInstance().addEntry(tempLedger, {
+      amount: 23.6,
+      direction: 'out',
+      category: '零食',
+      subject: '实例库测试面包',
+      description: '手记写入实例库字段映射验证',
+      date: formatNowForRecord(),
+    });
+
+    const manualEntry = (await ExampleStore.load(tempLedger)).find((entry) => entry.id === manualId);
+    assertStep(
+      report,
+      'manualExampleEntryMatchesSpec',
+      Boolean(
+        manualEntry &&
+          manualEntry.sourceType === 'manual' &&
+          manualEntry.rawClass === '' &&
+          manualEntry.counterparty === '' &&
+          manualEntry.product === '实例库测试面包' &&
+          manualEntry.paymentMethod === '' &&
+          manualEntry.transactionStatus === TransactionStatus.SUCCESS &&
+          manualEntry.remark === '' &&
+          manualEntry.category === '零食' &&
+          manualEntry.ai_category === '' &&
+          manualEntry.ai_reasoning === '' &&
+          manualEntry.user_note === '手记写入实例库字段映射验证' &&
+          manualEntry.is_verified === true
+      ),
+      manualEntry,
+      'D 类手记样本应与手记规格和 v7 实例库字段表一致'
+    );
+
+    /**
+     * 再种入一条 B 类错误纠正样本，验证分类阶段运行时注入 schema：
+     * - 不带 created_at
+     * - B 区块保留并前缀化 ai_category / ai_reasoning
+     * - A+C+D 区块去掉 ai_category，但保留 ai_reasoning
+     */
+    const correctedRecord: FullTransactionRecord = {
+      id: `spec_csv_${Date.now().toString(36)}`,
+      time: formatNowForRecord(),
+      sourceType: 'wechat',
+      category: '零食',
+      rawClass: '商户消费',
+      counterparty: '实例库测试商户',
+      product: '实例库测试奶茶',
+      amount: 19.9,
+      direction: 'out',
+      paymentMethod: '零钱',
+      transactionStatus: TransactionStatus.SUCCESS,
+      remark: '实例库规格测试',
+      ai_category: '正餐',
+      ai_reasoning: '错误示例：餐饮商户默认归正餐',
+      user_category: '零食',
+      user_note: '用户明确修正为零食',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    };
+    await ExampleStore.addOrUpdate(tempLedger, correctedRecord, true);
+
+    const references = await ExampleStore.retrieveRelevant(tempLedger, [
+      {
+        id: 'probe_manual',
+        counterparty: '',
+        description: '实例库测试面包',
+        amount: 23.6,
+        time: '12:00:00',
+      },
+      {
+        id: 'probe_csv',
+        counterparty: '实例库测试商户',
+        description: '实例库测试奶茶',
+        amount: 19.9,
+        time: '12:30:00',
+      },
+    ]);
+
+    const misclassified = references?.misclassified_examples[0];
+    const confirmedManual = references?.confirmed_examples.find((entry) => entry.id === manualId);
+    assertStep(
+      report,
+      'runtimeInjectionMatchesV7Shape',
+      Boolean(
+        references &&
+          misclassified &&
+          confirmedManual &&
+          !Object.prototype.hasOwnProperty.call(misclassified, 'created_at') &&
+          !Object.prototype.hasOwnProperty.call(confirmedManual, 'created_at') &&
+          misclassified.ai_category.startsWith('[错误判断] ') &&
+          misclassified.ai_reasoning.startsWith('[错误判断] ') &&
+          !Object.prototype.hasOwnProperty.call(confirmedManual, 'ai_category') &&
+          Object.prototype.hasOwnProperty.call(confirmedManual, 'ai_reasoning') &&
+          Object.prototype.hasOwnProperty.call(confirmedManual, 'rawClass') &&
+          Object.prototype.hasOwnProperty.call(confirmedManual, 'paymentMethod') &&
+          Object.prototype.hasOwnProperty.call(confirmedManual, 'transactionStatus') &&
+          Object.prototype.hasOwnProperty.call(confirmedManual, 'remark')
+      ),
+      references,
+      '分类阶段运行时注入应符合 v7 rich schema：去掉 created_at，B 区块前缀化错误字段，A+C+D 区块保留 ai_reasoning 但去掉 ai_category'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
     finalActiveLedger: getActiveLedgerName(),
   };
   return report;
@@ -532,6 +823,247 @@ async function runBudgetFlowTest(): Promise<DebugTestReport> {
       configAfterClear?.monthly === null && configAfterClear?.categoryBudgets === null,
       configAfterClear,
       '预算清空后配置文件应回到空预算态'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+  };
+  return report;
+}
+
+async function runLearningPayloadSpecTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runLearningPayloadSpecTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('学习载荷测试账本');
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '学习 payload 规格测试先创建独立临时账本');
+
+    /**
+     * 先造一条 D 类手记样本，再删除它，确保 delta 中同时出现 upserts 与 deletions。
+     */
+    const manualEntryId = await ManualEntryManager.getInstance().addEntry(tempLedger, {
+      amount: 18.2,
+      direction: 'out',
+      category: '零食',
+      subject: '学习载荷测试面包',
+      description: '用于验证 deletions 与 rich schema',
+      date: formatNowForRecord(),
+    });
+    /**
+     * 基线必须推进到“手记样本仍然存在”的时刻。
+     * 这样后续删除它时，delta 中才会出现真正的 deletions。
+     */
+    const baselineRevision = (await ExampleStore.getStats(tempLedger)).revision;
+    await ManualEntryManager.getInstance().deleteEntry(tempLedger, manualEntryId);
+
+    /**
+     * 再造一条仍然存在的 B 类纠正样本，确保 upserts 中能看到完整 rich schema。
+     */
+    const correctedRecord: FullTransactionRecord = {
+      id: `learning_csv_${Date.now().toString(36)}`,
+      time: formatNowForRecord(),
+      sourceType: 'wechat',
+      category: '零食',
+      rawClass: '商户消费',
+      counterparty: '学习载荷测试商户',
+      product: '学习载荷测试奶茶',
+      amount: 16.8,
+      direction: 'out',
+      paymentMethod: '零钱',
+      transactionStatus: TransactionStatus.SUCCESS,
+      remark: '学习载荷规格测试',
+      ai_category: '正餐',
+      ai_reasoning: '错误示例：餐饮商户默认归正餐',
+      user_category: '零食',
+      user_note: '用户明确修正为零食',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    };
+    await ExampleStore.addOrUpdate(tempLedger, correctedRecord, true);
+
+    const delta = await ExampleStore.getLearningDelta(tempLedger, baselineRevision);
+    const payload = LearningSession.buildLearningPayload(delta);
+    const firstUpsert = payload.upserts[0];
+    const firstDeletion = payload.deletions[0];
+    assertStep(
+      report,
+      'learningDeltaPayloadMatchesV7Shape',
+      payload.mode === 'delta' &&
+        payload.from_revision === baselineRevision &&
+        payload.to_revision > baselineRevision &&
+        Array.isArray(payload.upserts) &&
+        Array.isArray(payload.deletions) &&
+        payload.current_examples === undefined &&
+        Boolean(
+          firstUpsert &&
+            !Object.prototype.hasOwnProperty.call(firstUpsert, 'created_at') &&
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'paymentMethod') &&
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'transactionStatus') &&
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'remark') &&
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'ai_category') &&
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'is_verified')
+        ) &&
+        Boolean(
+          firstDeletion &&
+            !Object.prototype.hasOwnProperty.call(firstDeletion, 'created_at') &&
+            Object.prototype.hasOwnProperty.call(firstDeletion, 'paymentMethod') &&
+            Object.prototype.hasOwnProperty.call(firstDeletion, 'transactionStatus') &&
+            Object.prototype.hasOwnProperty.call(firstDeletion, 'remark') &&
+            Object.prototype.hasOwnProperty.call(firstDeletion, 'ai_category') &&
+            Object.prototype.hasOwnProperty.call(firstDeletion, 'is_verified')
+        ),
+      payload,
+      '学习阶段 payload 应符合 v7 rich schema：mode=delta、from/to_revision、upserts+deletions 同时存在、字段完整且不带 created_at'
+    );
+
+    const fullReconcilePayload = LearningSession.buildLearningPayload({
+      mode: 'full_reconcile',
+      lastLearnedRevision: 99,
+      currentRevision: 1,
+      upserts: [],
+      deletions: [],
+      allEntries: await ExampleStore.load(tempLedger),
+      reason: 'debug_full_reconcile',
+    });
+    assertStep(
+      report,
+      'fullReconcileUsesCurrentExamples',
+      fullReconcilePayload.mode === 'full_reconcile' &&
+        Array.isArray(fullReconcilePayload.current_examples) &&
+        !Object.prototype.hasOwnProperty.call(fullReconcilePayload, 'all_examples'),
+      fullReconcilePayload,
+      'full_reconcile 模式应使用 current_examples，而不是旧的 all_examples'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+  };
+  return report;
+}
+
+async function runCompressionSpecTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runCompressionSpecTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('收编测试账本');
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '收编规格测试先创建独立临时账本');
+
+    const prefs = await LedgerPreferencesManager.getInstance().update(tempLedger, {
+      compression: {
+        threshold: 30,
+        ratio: 0.7,
+      },
+    });
+    assertStep(
+      report,
+      'compressionPrefsStored',
+      prefs.compression.threshold === 30 && prefs.compression.ratio === 0.7,
+      prefs,
+      '账本行为配置应能稳定保存收编阈值与压缩比例'
+    );
+
+    /**
+     * 人工构造 31 条记忆，使其超过默认阈值 30。
+     * 这样可以验证 targetCount = floor(31 * 0.7) = 21。
+     */
+    const memoryEntries = Array.from({ length: 31 }, (_, index) => `收编测试记忆 ${index + 1}`);
+    await MemoryManager.save(tempLedger, memoryEntries, 'manual', '收编规格测试：注入 31 条记忆');
+    await ExampleStore.addOrUpdate(
+      tempLedger,
+      {
+        id: `compress_csv_${Date.now().toString(36)}`,
+        time: formatNowForRecord(),
+        sourceType: 'wechat',
+        category: '零食',
+        rawClass: '商户消费',
+        counterparty: '收编测试商户',
+        product: '收编测试奶茶',
+        amount: 12.8,
+        direction: 'out',
+        paymentMethod: '零钱',
+        transactionStatus: TransactionStatus.SUCCESS,
+        remark: '用于验证 currentExamples 全量注入',
+        ai_category: '零食',
+        ai_reasoning: '正向参考',
+        user_category: '零食',
+        user_note: '',
+        is_verified: true,
+        updated_at: formatNowForRecord(),
+      },
+      false
+    );
+
+    const categories = LedgerService.getInstance().getCategories();
+    const context = await CompressionSession.buildContext(tempLedger, categories);
+    assertStep(
+      report,
+      'compressionContextMatchesPrefs',
+      context.currentCount === 31 &&
+        context.threshold === 30 &&
+        context.ratio === 0.7 &&
+        context.targetCount === 21 &&
+        context.currentExamples.length >= 1,
+      context,
+      '收编上下文应读取 ledger_prefs，并按 floor(currentCount * 0.7) 计算 targetCount'
+    );
+
+    const parsed = CompressionSession.parseOutput(
+      Array.from({ length: 21 }, (_, index) => `${index + 1}. 压缩结果 ${index + 1}`).join('\n'),
+      context.targetCount
+    );
+    assertStep(
+      report,
+      'compressionOutputAcceptedWithinLimit',
+      parsed.length === 21,
+      parsed,
+      '不超过 targetCount 的编号列表应通过基础校验'
+    );
+
+    let overflowError = '';
+    try {
+      CompressionSession.parseOutput(
+        Array.from({ length: 22 }, (_, index) => `${index + 1}. 超限结果 ${index + 1}`).join('\n'),
+        context.targetCount
+      );
+    } catch (error) {
+      overflowError = error instanceof Error ? error.message : String(error);
+    }
+    assertStep(
+      report,
+      'compressionOutputRejectsOverflow',
+      overflowError.includes('exceeds target count'),
+      { overflowError, targetCount: context.targetCount },
+      '超过 targetCount 的结果必须被拒绝，避免脏写 ai_compress 快照'
     );
   } catch (error) {
     pushStep(report, {
@@ -784,6 +1316,68 @@ function createDebugApi(): MoniDebugApi {
         };
       },
     },
+    prefs: {
+      get: async (ledgerId?: string) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await LedgerPreferencesManager.getInstance().load(targetLedger);
+      },
+      update: async (patch: Record<string, unknown>, ledgerId?: string) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await LedgerPreferencesManager.getInstance().update(
+          targetLedger,
+          patch as Partial<LedgerPreferences>
+        );
+      },
+    },
+    learning: {
+      getDeltaPayload: async (ledgerId?: string, baselineRevision: number = 0) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        const delta = await ExampleStore.getLearningDelta(targetLedger, baselineRevision);
+        return LearningSession.buildLearningPayload(delta);
+      },
+    },
+    compression: {
+      getContext: async (ledgerId?: string, force: boolean = false) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await CompressionSession.buildContext(
+          targetLedger,
+          LedgerService.getInstance().getCategories(),
+          { force }
+        );
+      },
+      parseOutput: async (raw: string, targetCount: number) => {
+        await ensureAppReady();
+        return CompressionSession.parseOutput(raw, targetCount);
+      },
+      run: async (ledgerId?: string, force: boolean = false) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await CompressionSession.run(
+          targetLedger,
+          LedgerService.getInstance().getCategories(),
+          { force }
+        );
+      },
+    },
     home: {
       getReadModel: getHomeReadModel,
     },
@@ -796,6 +1390,9 @@ function createE2EApi(): MoniE2EApi {
       runLedgerCrudTest,
       runManualEntryFlowTest,
       runBudgetFlowTest,
+      runExampleStoreSpecTest,
+      runLearningPayloadSpecTest,
+      runCompressionSpecTest,
       runHomeReadModelSmokeTest,
     },
   };

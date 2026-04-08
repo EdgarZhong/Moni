@@ -25,6 +25,7 @@ import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import { MemoryManager } from './MemoryManager';
 import { BudgetManager } from './BudgetManager';
+import { LedgerPreferencesManager } from './LedgerPreferencesManager';
 
 /**
  * LedgerManager - 账本管理器（决策层）
@@ -706,6 +707,7 @@ export class LedgerManager {
    * - Documents/Moni/classify_memory/{ledger}/ 整个目录（含 index.json 和所有快照文件）
    * - Documents/Moni/self_description/user_profile.md（如果存在）
    * - 沙箱 classify_examples/{ledger}.json
+   * - 沙箱 classify_example_changes/{ledger}.json
    *
    * 任一文件不存在时静默忽略，不影响整体删除流程。
    */
@@ -735,10 +737,26 @@ export class LedgerManager {
       // 文件不存在时静默忽略
     }
 
-    // 4. 删除预算配置文件（沙箱）
+    // 4. 删除实例库变更日志文件（沙箱）
+    try {
+      await this.safeDeleteFile(`classify_example_changes/${ledgerName}.json`, AdapterDirectory.Data);
+      console.log(`[LedgerManager] Deleted example change log for: ${ledgerName}`);
+    } catch {
+      // 文件不存在时静默忽略
+    }
+
+    // 5. 删除预算配置文件（沙箱）
     try {
       await BudgetManager.getInstance().deleteBudgetConfig(ledgerName);
       console.log(`[LedgerManager] Deleted budget config for: ${ledgerName}`);
+    } catch {
+      // 文件不存在时静默忽略
+    }
+
+    // 6. 删除账本行为配置文件（沙箱）
+    try {
+      await LedgerPreferencesManager.getInstance().deleteLedgerPreferences(ledgerName);
+      console.log(`[LedgerManager] Deleted ledger preferences for: ${ledgerName}`);
     } catch {
       // 文件不存在时静默忽略
     }
@@ -748,6 +766,7 @@ export class LedgerManager {
    * 重命名账本时迁移所有关联的 AI 数据文件（v6 语义）
    * - classify_memory/{old}/ → classify_memory/{new}/（Documents，整个快照目录）
    * - classify_examples/{old}.json → classify_examples/{new}.json（沙箱）
+   * - classify_example_changes/{old}.json → classify_example_changes/{new}.json（沙箱）
    * - self_description/user_profile.md 保持不变（全局共享）
    *
    * 任一源文件不存在时静默跳过，不影响整体重命名流程。
@@ -824,10 +843,43 @@ export class LedgerManager {
       // 源文件不存在时静默忽略
     }
 
-    // 3. 迁移预算配置文件（沙箱）
+    // 3. 迁移实例库变更日志文件（沙箱）
+    try {
+      const fs = FilesystemService.getInstance();
+      const changeLogPath = `classify_example_changes/${oldName}.json`;
+      const exists = await this.pathExists(changeLogPath, AdapterDirectory.Data);
+      if (exists) {
+        const changeLogContent = await fs.readFile({
+          path: changeLogPath,
+          directory: AdapterDirectory.Data,
+          encoding: AdapterEncoding.UTF8
+        });
+        await fs.writeFile({
+          path: `classify_example_changes/${newName}.json`,
+          data: changeLogContent,
+          directory: AdapterDirectory.Data,
+          encoding: AdapterEncoding.UTF8,
+          recursive: true
+        });
+        await this.safeDeleteFile(changeLogPath, AdapterDirectory.Data);
+        console.log(`[LedgerManager] Migrated example change log: ${oldName} -> ${newName}`);
+      }
+    } catch {
+      // 源文件不存在时静默忽略
+    }
+
+    // 4. 迁移预算配置文件（沙箱）
     try {
       await BudgetManager.getInstance().renameBudgetConfig(oldName, newName);
       console.log(`[LedgerManager] Migrated budget config: ${oldName} -> ${newName}`);
+    } catch {
+      // 文件不存在时静默忽略
+    }
+
+    // 5. 迁移账本行为配置文件（沙箱）
+    try {
+      await LedgerPreferencesManager.getInstance().renameLedgerPreferences(oldName, newName);
+      console.log(`[LedgerManager] Migrated ledger preferences: ${oldName} -> ${newName}`);
     } catch {
       // 文件不存在时静默忽略
     }

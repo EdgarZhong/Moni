@@ -37,12 +37,41 @@ export interface ExampleChangeLogEntry {
   after: ExampleEntry | null;
 }
 
-export interface MisclassifiedReferenceCorrection extends ExampleEntry {
-  ai_category: string;
+/**
+ * 分类阶段注入给 Prompt 的基础案例字段。
+ * 按 v7 文档要求，运行时注入不带 created_at，只保留分类真正需要理解的交易语义字段。
+ */
+interface InjectedReferenceBase {
+  id: string;
+  time: string;
+  sourceType: SourceType;
+  rawClass: string;
+  counterparty: string;
+  product: string;
+  amount: number;
+  direction: 'in' | 'out';
+  paymentMethod: string;
+  transactionStatus: TransactionStatus;
+  remark: string;
+  category: string;
   ai_reasoning: string;
+  user_note: string;
+  is_verified: boolean;
 }
 
-export type ConfirmedReferenceCorrection = Omit<ExampleEntry, 'ai_category' | 'ai_reasoning'>;
+/**
+ * B 类错误案例注入字段。
+ * 运行时保留 ai_category，并给 ai_category / ai_reasoning 加错误前缀。
+ */
+export interface MisclassifiedReferenceCorrection extends InjectedReferenceBase {
+  ai_category: string;
+}
+
+/**
+ * A + C + D 类确认案例注入字段。
+ * 运行时去掉 ai_category，但保留 ai_reasoning 字段，以与 v7 注入 schema 保持一致。
+ */
+export type ConfirmedReferenceCorrection = InjectedReferenceBase;
 
 export interface ReferenceCorrectionBundle {
   misclassified_examples: MisclassifiedReferenceCorrection[];
@@ -382,23 +411,49 @@ export class ExampleStore {
       return null;
     }
 
+    /**
+     * D 类手记样本单独走显式映射，避免“恰好与通用分支结果相同”的隐式实现继续漂移。
+     * 这样更容易和随手记规格表逐项对照。
+     */
+    if (kind === 'D') {
+      return {
+        id: record.id,
+        created_at: new Date().toISOString(),
+        time: record.time,
+        sourceType: 'manual',
+        rawClass: '',
+        counterparty: '',
+        product: record.product.trim(),
+        amount: record.amount,
+        direction: record.direction,
+        paymentMethod: '',
+        transactionStatus: 'SUCCESS',
+        remark: '',
+        category: finalCategory,
+        ai_category: '',
+        ai_reasoning: '',
+        user_note: record.user_note.trim(),
+        is_verified: true
+      };
+    }
+
     return {
       id: record.id,
       created_at: new Date().toISOString(),
       time: record.time,
-      sourceType: kind === 'D' ? 'manual' : record.sourceType,
-      rawClass: kind === 'D' ? '' : record.rawClass,
-      counterparty: kind === 'D' ? '' : record.counterparty,
-      product: kind === 'D' ? record.product : record.product,
+      sourceType: record.sourceType,
+      rawClass: record.rawClass,
+      counterparty: record.counterparty,
+      product: record.product,
       amount: record.amount,
       direction: record.direction,
-      paymentMethod: kind === 'D' ? '' : record.paymentMethod,
-      transactionStatus: kind === 'D' ? 'SUCCESS' : record.transactionStatus,
-      remark: kind === 'D' ? '' : record.remark,
+      paymentMethod: record.paymentMethod,
+      transactionStatus: record.transactionStatus,
+      remark: record.remark,
       category: finalCategory,
       ai_category: kind === 'B' || kind === 'A' ? record.ai_category.trim() : '',
       ai_reasoning: kind === 'B' || kind === 'A' ? record.ai_reasoning.trim() : '',
-      user_note: kind === 'D' ? record.user_note.trim() : record.user_note.trim(),
+      user_note: record.user_note.trim(),
       is_verified: kind === 'B' ? record.is_verified : true
     };
   }
@@ -529,15 +584,43 @@ export class ExampleStore {
 
   private static toMisclassifiedReference(entry: ExampleEntry): MisclassifiedReferenceCorrection {
     return {
-      ...entry,
+      id: entry.id,
+      time: entry.time,
+      sourceType: entry.sourceType,
+      rawClass: entry.rawClass,
+      counterparty: entry.counterparty,
+      product: entry.product,
+      amount: entry.amount,
+      direction: entry.direction,
+      paymentMethod: entry.paymentMethod,
+      transactionStatus: entry.transactionStatus,
+      remark: entry.remark,
+      category: entry.category,
       ai_category: `${this.ERROR_PREFIX}${entry.ai_category}`,
-      ai_reasoning: `${this.ERROR_PREFIX}${entry.ai_reasoning}`
+      ai_reasoning: `${this.ERROR_PREFIX}${entry.ai_reasoning}`,
+      user_note: entry.user_note,
+      is_verified: entry.is_verified
     };
   }
 
   private static toConfirmedReference(entry: ExampleEntry): ConfirmedReferenceCorrection {
-    const { ai_category: _aiCategory, ai_reasoning: _aiReasoning, ...rest } = entry;
-    return rest;
+    return {
+      id: entry.id,
+      time: entry.time,
+      sourceType: entry.sourceType,
+      rawClass: entry.rawClass,
+      counterparty: entry.counterparty,
+      product: entry.product,
+      amount: entry.amount,
+      direction: entry.direction,
+      paymentMethod: entry.paymentMethod,
+      transactionStatus: entry.transactionStatus,
+      remark: entry.remark,
+      category: entry.category,
+      ai_reasoning: entry.ai_reasoning,
+      user_note: entry.user_note,
+      is_verified: entry.is_verified
+    };
   }
 
   private static sortEntries(entries: ExampleEntry[]): ExampleEntry[] {

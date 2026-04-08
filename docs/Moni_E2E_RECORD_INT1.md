@@ -35,6 +35,9 @@
 - `tests.runLedgerCrudTest()`
 - `tests.runManualEntryFlowTest()`
 - `tests.runBudgetFlowTest()`
+- `tests.runExampleStoreSpecTest()`
+- `tests.runLearningPayloadSpecTest()`
+- `tests.runCompressionSpecTest()`
 - `tests.runHomeReadModelSmokeTest()`
 
 ### 1.3 当前已完成的首批逻辑链路验收
@@ -44,6 +47,9 @@
 - 账本 CRUD 逻辑链路
 - 随手记增删 + ExampleStore 联动 + 首页读模型映射
 - 预算配置读写 + 预算统计 + 首页预算卡读模型
+- 实例库 v7 运行时注入字段 + 手记 D 类映射规格
+- 学习阶段 delta / full_reconcile payload v7 rich schema
+- 收编配置、上下文构造与结果上限校验
 
 当前状态：
 
@@ -91,9 +97,12 @@ await window.__MONI_E2E__.tests.runLedgerCrudTest()
 - 创建账本
 - 创建后列表联动
 - 创建后当前激活账本切换
+- 生成一条真实样本，确保实例库主文件与变更日志文件落盘
 - 账本重命名
+- 重命名后快照目录、`classify_examples/{ledger}.json`、`classify_example_changes/{ledger}.json` 一起迁移
 - 重命名后列表联动
 - 删除账本
+- 删除后快照目录、实例库主文件、实例库变更日志一起清理
 - 删除后列表清理
 
 ### 2.2 随手记系统
@@ -134,7 +143,56 @@ await window.__MONI_E2E__.tests.runBudgetFlowTest()
 - 校验首页 budget facade 读模型
 - 清空预算配置
 
-### 2.4 首页读模型
+### 2.4 实例库 v7 / 手记映射规格
+
+使用：
+
+```js
+await window.__MONI_E2E__.tests.runExampleStoreSpecTest()
+```
+
+当前覆盖：
+
+- D 类手记样本写入实例库字段映射
+- B 类错误案例写入实例库并参与运行时检索
+- 运行时 `reference_corrections` 不再带 `created_at`
+- B 区块保留并前缀化 `ai_category / ai_reasoning`
+- A+C+D 区块去掉 `ai_category`
+- A+C+D 区块保留 `ai_reasoning / rawClass / paymentMethod / transactionStatus / remark`
+
+### 2.5 学习 payload v7 rich schema
+
+使用：
+
+```js
+await window.__MONI_E2E__.tests.runLearningPayloadSpecTest()
+```
+
+当前覆盖：
+
+- 学习阶段 payload 使用 `mode: "delta"` 与 `from_revision / to_revision`
+- `upserts` 与 `deletions` 同时输出
+- rich schema 包含 `rawClass / paymentMethod / transactionStatus / remark / ai_category / is_verified`
+- 学习 payload 不带 `created_at`
+- `full_reconcile` 使用 `current_examples`，不再使用旧的 `all_examples`
+
+### 2.6 收编配置与上下文规格
+
+使用：
+
+```js
+await window.__MONI_E2E__.tests.runCompressionSpecTest()
+```
+
+当前覆盖：
+
+- `ledger_prefs/{ledger}.json` 可保存 `compression.threshold / compression.ratio`
+- 收编上下文从统一账本行为配置读取阈值与比例
+- `targetCount = floor(currentCount * 0.7)`
+- 收编上下文必须注入当前实例库全量
+- 结果校验会拒绝超过 `targetCount` 的输出，避免脏写 `ai_compress` 快照
+
+### 2.7 首页读模型
 
 使用：
 
@@ -181,8 +239,8 @@ await window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()
 
 ### 1.3 当前已知限制
 
-- 当前仓库尚未暴露 `window.__MONI_E2E__` 之类的浏览器调试入口
-- 因此当前 SOP 以“页面操作 + console 检查 + 截图取证”为主
+- 当前仓库已经暴露 `window.__MONI_DEBUG__ / window.__MONI_E2E__`
+- 因此推荐先跑 console 侧结构化逻辑测试，再做页面操作、截图和交互验证
 - Android Capacitor 的文件权限、重启持久化、设备能力仍需单独验收
 
 ## 4.2 页面验证目标
