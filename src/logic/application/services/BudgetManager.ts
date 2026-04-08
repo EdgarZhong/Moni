@@ -124,6 +124,14 @@ export class BudgetManager implements BudgetStore, BudgetService {
   public async loadBudgetConfig(ledgerId: string): Promise<BudgetConfig | null> {
     const fs = FilesystemService.getInstance();
     try {
+      /**
+       * 预算配置文件属于可选文件。
+       * 浏览器开发态若直接 readFile，会在 mock fs 里打出 404 噪音，因此先做一次 stat 探测。
+       */
+      await fs.stat({
+        path: this.filePath(ledgerId),
+        directory: AdapterDirectory.Data,
+      });
       const raw = await fs.readFile({
         path: this.filePath(ledgerId),
         directory: AdapterDirectory.Data,
@@ -186,6 +194,14 @@ export class BudgetManager implements BudgetStore, BudgetService {
   public async deleteBudgetConfig(ledgerId: string): Promise<void> {
     const fs = FilesystemService.getInstance();
     try {
+      /**
+       * 预算配置是可选文件。
+       * 删除前先 stat，可避免浏览器开发态在 mock fs 中打印 404 噪音。
+       */
+      await fs.stat({
+        path: this.filePath(ledgerId),
+        directory: AdapterDirectory.Data,
+      });
       await fs.deleteFile({
         path: this.filePath(ledgerId),
         directory: AdapterDirectory.Data,

@@ -38,6 +38,14 @@ export class ClassifyTrigger {
   private async readRecovery(ledger: string): Promise<QueueRecoveryData | null> {
     try {
       const fs = FilesystemService.getInstance();
+      /**
+       * 恢复文件也是可选文件。
+       * 先 stat 再读，减少 mock fs 的 404 控制台噪音。
+       */
+      await fs.stat({
+        path: this.getRecoveryPath(ledger),
+        directory: AdapterDirectory.Data
+      });
       const parsed = JSON.parse(await fs.readFile({
         path: this.getRecoveryPath(ledger),
         directory: AdapterDirectory.Data,
@@ -72,6 +80,14 @@ export class ClassifyTrigger {
   private async clearRecovery(ledger: string): Promise<void> {
     try {
       const fs = FilesystemService.getInstance();
+      /**
+       * recovery 文件并非每个账本都会生成。
+       * 先 stat 再删除，避免 mock fs 在删除不存在文件时输出 404 噪音。
+       */
+      await fs.stat({
+        path: this.getRecoveryPath(ledger),
+        directory: AdapterDirectory.Data
+      });
       await fs.deleteFile({
         path: this.getRecoveryPath(ledger),
         directory: AdapterDirectory.Data
