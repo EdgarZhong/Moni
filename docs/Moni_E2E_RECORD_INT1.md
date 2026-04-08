@@ -24,6 +24,8 @@
 - `manualEntry.add() / delete() / listRecent()`
 - `budget.getConfig() / setMonthly() / clearMonthly() / setCategoryBudgets() / clearCategoryBudgets() / getSummary()`
 - `classify.getQueue() / enqueueDate() / peek()`
+- `prefs.get() / update()`
+- `learning.getDeltaPayload() / getAutoTriggerState()`
 - `home.getReadModel()`
 
 ### 1.2 `window.__MONI_E2E__`
@@ -37,6 +39,7 @@
 - `tests.runBudgetFlowTest()`
 - `tests.runExampleStoreSpecTest()`
 - `tests.runLearningPayloadSpecTest()`
+- `tests.runLearningAutomationSpecTest()`
 - `tests.runCompressionSpecTest()`
 - `tests.runHomeReadModelSmokeTest()`
 
@@ -49,6 +52,7 @@
 - 预算配置读写 + 预算统计 + 首页预算卡读模型
 - 实例库 v7 运行时注入字段 + 手记 D 类映射规格
 - 学习阶段 delta / full_reconcile payload v7 rich schema
+- 自动学习偏好配置与真实触发判定
 - 收编配置、上下文构造与结果上限校验
 
 当前状态：

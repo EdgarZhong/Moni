@@ -35,3 +35,13 @@ export interface LedgerPreferences {
   learning: LedgerLearningPreferences;
   compression: LedgerCompressionPreferences;
 }
+
+/**
+ * 账本行为配置补丁类型。
+ * 允许设置页、调试入口和服务层按字段局部更新，
+ * 避免每次只改一个阈值时还必须传完整配置对象。
+ */
+export interface LedgerPreferencesPatch {
+  learning?: Partial<LedgerLearningPreferences>;
+  compression?: Partial<LedgerCompressionPreferences>;
+}

@@ -20,6 +20,7 @@ import { format, parse, startOfDay, endOfDay } from 'date-fns';
 import { classifyTrigger } from '../ai/ClassifyTrigger';
 import { normalizeToDateKey } from '../ai/DateNormalizer';
 import { BudgetManager } from './BudgetManager';
+import { LearningAutomationService } from '../ai/LearningAutomationService';
 
 export interface LedgerState {
   rawTransactions: Transaction[];
@@ -200,6 +201,11 @@ export class LedgerService {
             ExampleStore.addOrUpdate(ledgerName, updatedRecord, isCorrection)
               .then(() => {
                 console.log(`[LedgerService] Example store updated for ${patch.id}, isCorrection=${isCorrection}`);
+                /**
+                 * 分类修正属于最主要的学习信号来源。
+                 * 因此实例库更新完成后，异步检查是否达到自动学习阈值。
+                 */
+                this.scheduleAutoLearningEvaluation(ledgerName);
               })
               .catch(e => {
                 console.error('[LedgerService] Failed to write to example store:', e);
@@ -223,6 +229,11 @@ export class LedgerService {
             ExampleStore.addOrUpdate(ledgerName, updatedRecord, false)
               .then(() => {
                 console.log(`[LedgerService] Example store updated for lock confirmation ${patch.id}`);
+                /**
+                 * AI 分对后被用户锁定，同样会生成 A/C 类有效样本，
+                 * 因此也要参与自动学习阈值检查。
+                 */
+                this.scheduleAutoLearningEvaluation(ledgerName);
               })
               .catch(e => {
                 console.error('[LedgerService] Failed to write to example store:', e);
@@ -714,6 +725,18 @@ export class LedgerService {
   }
 
   public setDateRange(range: { start: Date | null; end: Date | null }) {
+    const current = this.state.dateRange;
+    const currentStart = current.start?.getTime() ?? null;
+    const currentEnd = current.end?.getTime() ?? null;
+    const nextStart = range.start?.getTime() ?? null;
+    const nextEnd = range.end?.getTime() ?? null;
+    /**
+     * 首页范围同步会频繁经过 facade 回写到 service。
+     * 若起止值未变化，直接短路，避免无意义 notify 触发读模型重刷。
+     */
+    if (currentStart === nextStart && currentEnd === nextEnd) {
+      return;
+    }
     this.setState({ dateRange: range });
   }
 
@@ -1271,7 +1294,6 @@ export class LedgerService {
      */
     const ledgerName = this.getCurrentLedgerName();
     if (ledgerName) {
-      const { ExampleStore } = await import('./ExampleStore');
       const examples = await ExampleStore.load(ledgerName);
       const renamedExamples = examples.map(ex =>
         ex.category === oldName ? { ...ex, category: sanitizedNewName } : ex
@@ -1696,6 +1718,28 @@ export class LedgerService {
       return;
     }
     await ExampleStore.deleteByTxIds(ledgerName, new Set(txIds));
+    /**
+     * 删除实例同样会改变学习窗口的净变更结果。
+     * 这里保持与新增/修改样本一致，做一次后台自动学习评估。
+     */
+    this.scheduleAutoLearningEvaluation(ledgerName);
+  }
+
+  /**
+   * 后台评估是否需要自动学习。
+   * 这一层专门做 fire-and-forget 调度，避免把分类修正主流程阻塞在 LLM 调用上。
+   */
+  private scheduleAutoLearningEvaluation(ledgerName: string): void {
+    const categories = this.getCategories();
+    void LearningAutomationService.evaluateAndRun(ledgerName, categories)
+      .then((result) => {
+        if (result.attempted) {
+          console.log('[LedgerService] Auto learning evaluated:', result);
+        }
+      })
+      .catch((error) => {
+        console.warn('[LedgerService] Auto learning evaluation failed:', error);
+      });
   }
 
   private async executeAtomicReclassify(params: {
@@ -1846,6 +1890,14 @@ export class LedgerService {
   private async readPendingReclassifyRecovery(ledger: string): Promise<PendingReclassifyRecovery | null> {
     try {
       const fs = FilesystemService.getInstance();
+      /**
+       * 待重分类恢复文件按需生成，缺失是正常状态。
+       * 这里先探测存在性，避免浏览器开发态误报 404。
+       */
+      await fs.stat({
+        path: this.getPendingReclassifyPath(ledger),
+        directory: AdapterDirectory.Data
+      });
       const data = await fs.readFile({
         path: this.getPendingReclassifyPath(ledger),
         directory: AdapterDirectory.Data,

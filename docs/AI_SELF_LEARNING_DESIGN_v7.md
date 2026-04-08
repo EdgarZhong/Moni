@@ -30,6 +30,14 @@
 
 该文件只承载“账本行为设置”，不承载交易数据、实例库数据或预算数据。
 
+**边界冻结**：
+
+- `ledger_prefs/{ledger}.json` **只承接账本级 AI 行为配置**
+- 预算配置继续独立存放于 `budget_config/{ledger}.json`
+- 标签定义继续以账本主数据 `defined_categories` 为单一信源
+- API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ledger_prefs`
+- 尚未形成明确规格的内部实现常量（如快照 GC 上限）暂不提前塞入 `ledger_prefs`
+
 **存储位置**：`Directory.Data / ledger_prefs/{ledger}.json`
 
 **目标格式**：
@@ -553,6 +561,14 @@ Documents/PixelBill/classify_memory/{ledger}/
 ```
 
 **不弹窗、不打断用户**。用户修正分类时，系统只在后台默默积累。学习触发阈值 N（默认 5）的配置和"立即学习"按钮都收在设置页的账本设置区中。
+
+**实现补充约束**：
+
+- `learning.threshold` 不是仅供 UI 展示的占位值，必须作为自动学习判定的真实输入
+- `learning.autoLearn = false` 时，即便待学习量达到阈值，也只能停留在“可学习但不自动触发”的状态
+- 自动学习待处理量统一按“相对 `last_learned_example_revision` 的当前学习窗口”计算：
+  - `delta` 模式：`upserts + deletions`
+  - `full_reconcile` 模式：`current_examples.length`
 
 ### 4.2 学习会话（异步后台）
 

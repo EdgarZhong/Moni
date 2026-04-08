@@ -378,6 +378,9 @@ ${JSON.stringify(payload, null, 2)}
    * @param config 学习配置
    */
   public static shouldTrigger(pendingCount: number, config?: Partial<LearningConfig>): boolean {
+    if (config?.autoLearn === false) {
+      return false;
+    }
     const threshold = config?.threshold ?? LedgerPreferencesManager.getInstance().getDefaults().learning.threshold;
     return pendingCount >= threshold;
   }

@@ -97,6 +97,7 @@ npm run lint
 - 预算逻辑链路测试：`window.__MONI_E2E__.tests.runBudgetFlowTest()`
 - 实例库 v7 / 手记映射规格测试：`window.__MONI_E2E__.tests.runExampleStoreSpecTest()`
 - 学习 payload v7 规格测试：`window.__MONI_E2E__.tests.runLearningPayloadSpecTest()`
+- 自动学习偏好与触发判定测试：`window.__MONI_E2E__.tests.runLearningAutomationSpecTest()`
 - 收编配置与上下文规格测试：`window.__MONI_E2E__.tests.runCompressionSpecTest()`
 - 首页读模型 smoke test：`window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()`
 
