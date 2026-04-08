@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { appFacade } from '@bootstrap/appFacade';
 import type {
   HomeAiEngineUiState,
@@ -8,7 +8,7 @@ import type {
   LedgerOption,
   MoniHomeReadModel,
 } from '@shared/types';
-import type { HomeDayGroup, HomeTransaction, TrendPoint } from '@ui/features/moni-home/components';
+import type { HomeDayGroup, HomeTransaction } from '@ui/features/moni-home/components';
 
 const FALLBACK_LEDGER: LedgerOption = {
   id: '日常开销',
@@ -21,7 +21,15 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
   categoryDefinitions: [],
   dailyTransactionGroups: [],
   income: [],
-  trend: [],
+  trendCard: {
+    windowSize: 7,
+    points: [],
+    windowStart: null,
+    windowEnd: null,
+    hasEarlierWindow: false,
+    hasLaterWindow: false,
+    windowOffset: 0,
+  },
   hintCards: [],
   budget: {
     enabled: false,
@@ -61,6 +69,10 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
     min: null,
     max: null,
   },
+  homeDateRange: {
+    start: null,
+    end: null,
+  },
   isLoading: true,
 };
 
@@ -71,9 +83,12 @@ function toHomeTransaction(item: MoniHomeReadModel['dailyTransactionGroups'][num
     a: item.amount,
     t: item.time,
     pay: item.paymentMethod,
+    sourceType: item.sourceType,
+    sourceLabel: item.sourceLabel,
     userCat: item.userCategory,
     aiCat: item.aiCategory,
     reason: item.reasoning,
+    userNote: item.userNote,
     ih: item.sequence,
   };
 }
@@ -81,7 +96,7 @@ function toHomeTransaction(item: MoniHomeReadModel['dailyTransactionGroups'][num
 export interface MoniHomeData {
   days: Omit<HomeDayGroup, 'visibleItems'>[];
   income: MoniHomeReadModel['income'];
-  trend: TrendPoint[];
+  trendCard: MoniHomeReadModel['trendCard'];
   currentLedger: LedgerOption;
   availableLedgers: LedgerOption[];
   categoryDefinitions: LedgerCategoryDefinition[];
@@ -95,25 +110,36 @@ export interface MoniHomeData {
   aiEngineUiState: HomeAiEngineUiState;
   extensions: MoniHomeReadModel['extensions'];
   dataRange: MoniHomeReadModel['dataRange'];
+  homeDateRange: MoniHomeReadModel['homeDateRange'];
   actions: {
     switchLedger: (ledgerId: string) => Promise<boolean>;
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
+    setHomeDateRange: (range: { start: Date | null; end: Date | null }) => void;
+    setTrendWindowOffset: (offset: number) => void;
     refresh: () => Promise<void>;
   };
 }
 
 export function useMoniHomeData(): MoniHomeData {
   const [readModel, setReadModel] = useState<MoniHomeReadModel>(EMPTY_READ_MODEL);
+  const [trendWindowOffset, setTrendWindowOffset] = useState(0);
+  const [homeDateRange, setHomeDateRange] = useState<{ start: Date | null; end: Date | null }>({
+    start: null,
+    end: null,
+  });
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
 
-  const loadReadModel = async () => {
+  const loadReadModel = useCallback(async () => {
     const requestId = ++requestIdRef.current;
 
     try {
-      const nextReadModel = await appFacade.getMoniHomeReadModel();
+      const nextReadModel = await appFacade.getMoniHomeReadModel({
+        trendWindowOffset,
+        homeDateRange,
+      });
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         return;
       }
@@ -134,7 +160,7 @@ export function useMoniHomeData(): MoniHomeData {
         }));
       });
     }
-  };
+  }, [homeDateRange, trendWindowOffset]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -155,7 +181,13 @@ export function useMoniHomeData(): MoniHomeData {
       mountedRef.current = false;
       unsubscribe();
     };
+    // 初始化流程只应在挂载时跑一次；
+    // 若依赖 loadReadModel，会因为 homeDateRange / trendWindowOffset 变化而反复重跑 init，触发更新环。
   }, []);
+
+  useEffect(() => {
+    void loadReadModel();
+  }, [loadReadModel]);
 
   const days = useMemo(
     () =>
@@ -167,10 +199,46 @@ export function useMoniHomeData(): MoniHomeData {
     [readModel.dailyTransactionGroups]
   );
 
+  const switchLedger = useCallback((ledgerId: string) => appFacade.switchLedger(ledgerId), []);
+  const updateCategory = useCallback((transactionId: string, category: string, reasoning?: string) => {
+    appFacade.updateTransactionCategory(transactionId, category, reasoning);
+  }, []);
+  const startAiProcessing = useCallback(() => appFacade.startAiProcessing(), []);
+  const stopAiProcessing = useCallback(() => {
+    appFacade.stopAiProcessing();
+  }, []);
+  const updateHomeDateRange = useCallback((range: { start: Date | null; end: Date | null }) => {
+    const currentStart = homeDateRange.start?.getTime() ?? null;
+    const currentEnd = homeDateRange.end?.getTime() ?? null;
+    const nextStart = range.start?.getTime() ?? null;
+    const nextEnd = range.end?.getTime() ?? null;
+    if (currentStart === nextStart && currentEnd === nextEnd) {
+      return;
+    }
+    appFacade.setDateRange(range);
+    setHomeDateRange(range);
+  }, [homeDateRange.end, homeDateRange.start]);
+  const updateTrendWindowOffset = useCallback((offset: number) => {
+    setTrendWindowOffset((previous) => (previous === offset ? previous : offset));
+  }, []);
+
+  const actions = useMemo(
+    () => ({
+      switchLedger,
+      updateCategory,
+      startAiProcessing,
+      stopAiProcessing,
+      setHomeDateRange: updateHomeDateRange,
+      setTrendWindowOffset: updateTrendWindowOffset,
+      refresh: loadReadModel,
+    }),
+    [loadReadModel, startAiProcessing, stopAiProcessing, switchLedger, updateCategory, updateHomeDateRange, updateTrendWindowOffset]
+  );
+
   return {
     days,
     income: readModel.income,
-    trend: readModel.trend,
+    trendCard: readModel.trendCard,
     currentLedger: readModel.currentLedger,
     availableLedgers: readModel.availableLedgers,
     categoryDefinitions: readModel.categoryDefinitions,
@@ -184,16 +252,7 @@ export function useMoniHomeData(): MoniHomeData {
     aiEngineUiState: readModel.aiEngineUiState,
     extensions: readModel.extensions,
     dataRange: readModel.dataRange,
-    actions: {
-      switchLedger: (ledgerId: string) => appFacade.switchLedger(ledgerId),
-      updateCategory: (transactionId: string, category: string, reasoning?: string) => {
-        appFacade.updateTransactionCategory(transactionId, category, reasoning);
-      },
-      startAiProcessing: () => appFacade.startAiProcessing(),
-      stopAiProcessing: () => {
-        appFacade.stopAiProcessing();
-      },
-      refresh: loadReadModel,
-    },
+    homeDateRange: readModel.homeDateRange,
+    actions,
   };
 }

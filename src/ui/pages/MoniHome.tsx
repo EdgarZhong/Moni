@@ -31,7 +31,6 @@ import {
 } from "@ui/features/moni-home/components";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
-import { OnboardingBanner } from "@ui/components/moni/OnboardingBanner";
 
 interface DragLock {
   bodyOverflow: string;
@@ -62,29 +61,25 @@ interface ReasonItem {
 }
 
 export default function MoniHome() {
-  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
   const {
     days: realDays,
     income: realIncome,
-    trend: realTrend,
+    trendCard,
     currentLedger,
     availableLedgers,
     hintCards,
     hasBudget,
     budgetCard,
     availableCategories,
-    ledgerId,
     isLoading,
     unclassifiedCount,
     aiEngineUiState,
     dataRange,
+    homeDateRange,
     actions,
   } = useMoniHomeData();
 
   const [carouselIndex, setCarouselIndex] = useState(0);
-  const [trendOffset, setTrendOffset] = useState(0);
-  const [trendDragShift, setTrendDragShift] = useState(0);
 
   const [selectedFilter, setSelectedFilter] = useState("全部");
   const [rangeMode, setRangeMode] = useState("本月");
@@ -155,6 +150,10 @@ export default function MoniHome() {
   );
 
   useEffect(() => {
+    actions.setHomeDateRange({ start: range.start, end: range.end });
+  }, [actions.setHomeDateRange, range.end, range.start]);
+
+  useEffect(() => {
     if (!rangeBounds.min || !rangeBounds.max) {
       return;
     }
@@ -176,16 +175,15 @@ export default function MoniHome() {
     }
     setCustomStart(rangeBounds.min);
     setCustomEnd(rangeBounds.max);
+    if (homeDateRange.start && homeDateRange.end) {
+      setCustomStart(homeDateRange.start);
+      setCustomEnd(homeDateRange.end);
+    }
     setRangeMode("本月");
+    actions.setTrendWindowOffset(0);
   }, [currentLedger.id, rangeBounds.max, rangeBounds.min]);
 
-  const maxTrendOffset = Math.max(0, realTrend.length - 7);
-  const trendStepPx = 260 / 6;
-  const trendStartIndex = Math.max(0, realTrend.length - 7 - trendOffset);
-  const trendMinTranslate = -(maxTrendOffset * trendStepPx);
-  const trendBaseTranslate = -(trendStartIndex * trendStepPx);
-  const trendTrackTranslate = clamp(trendBaseTranslate + trendDragShift, trendMinTranslate, 0);
-  const trendTrackMax = Math.max(...realTrend.map((item) => item.amount), 1);
+  const trendTrackMax = Math.max(...trendCard.points.map((item) => item.amount), 1);
 
   const rangeDays = useMemo(() => realDays.filter((day) => isInRange(day.id, range)), [realDays, range]);
 
@@ -336,16 +334,17 @@ export default function MoniHome() {
     const deltaX = ex - sx;
     const deltaY = ey - sy;
     if (axis === "horizontal") {
-      const nextStartIndex = clamp(Math.round(-trendTrackTranslate / trendStepPx), 0, maxTrendOffset);
-      setTrendOffset(maxTrendOffset - nextStartIndex);
-      setTrendDragShift(0);
+      if (deltaX < -28 && trendCard.hasEarlierWindow) {
+        actions.setTrendWindowOffset(trendCard.windowOffset + 1);
+      } else if (deltaX > 28 && trendCard.hasLaterWindow) {
+        actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset - 1));
+      }
     } else if (Math.abs(deltaY) > 28 && Math.abs(deltaY) > Math.abs(deltaX)) {
       if (deltaY > 0) manualSwitch(Math.max(0, carouselIndex - 1));
       else manualSwitch(Math.min(1, carouselIndex + 1));
     }
-    setTrendDragShift(0);
     trendSwipeRef.current = null;
-  }, [carouselIndex, manualSwitch, maxTrendOffset, trendStepPx, trendTrackTranslate]);
+  }, [actions, carouselIndex, manualSwitch, trendCard.hasEarlierWindow, trendCard.hasLaterWindow, trendCard.windowOffset]);
 
   const handleTrendPointerDown = useCallback((event: React.PointerEvent) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -364,7 +363,6 @@ export default function MoniHome() {
     }
     if (next.axis === "horizontal") {
       event.preventDefault();
-      setTrendDragShift(event.clientX - next.sx);
     }
     trendSwipeRef.current = next;
   }, []);
@@ -578,7 +576,7 @@ export default function MoniHome() {
     onPointerDown: handleTrendPointerDown,
     onPointerMove: handleTrendPointerMove,
     onPointerUp: handleTrendSwipeEnd,
-    onPointerCancel: () => { setTrendDragShift(0); trendSwipeRef.current = null; },
+    onPointerCancel: () => { trendSwipeRef.current = null; },
   };
 
   return (
@@ -656,14 +654,24 @@ export default function MoniHome() {
           budgetPct={budgetPct}
           budgetColor={budgetColor}
           hasBudget={hasBudget}
-          trendData={realTrend}
+          trendData={trendCard.points}
           trendTrackMax={trendTrackMax}
-          trendTrackTranslate={trendTrackTranslate}
-          trendIsDragging={trendDragShift !== 0}
-          maxTrendOffset={maxTrendOffset}
+          trendWindowLabel={trendCard.windowStart && trendCard.windowEnd
+            ? `${trendCard.windowStart.slice(5)} ~ ${trendCard.windowEnd.slice(5)}`
+            : "近 7 天支出"}
+          hasEarlierTrendWindow={trendCard.hasEarlierWindow}
+          hasLaterTrendWindow={trendCard.hasLaterWindow}
           onManualSwitch={manualSwitch}
-          onTrendForward={() => { setTrendDragShift(0); setTrendOffset((prev) => Math.min(maxTrendOffset, prev + 1)); }}
-          onTrendBackward={() => { setTrendDragShift(0); setTrendOffset((prev) => Math.max(0, prev - 1)); }}
+          onTrendForward={() => {
+            if (trendCard.hasEarlierWindow) {
+              actions.setTrendWindowOffset(trendCard.windowOffset + 1);
+            }
+          }}
+          onTrendBackward={() => {
+            if (trendCard.hasLaterWindow) {
+              actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset - 1));
+            }
+          }}
           boardHandlers={boardHandlers}
           trendHandlers={trendHandlers}
         />
@@ -675,14 +683,6 @@ export default function MoniHome() {
           description={primaryHint?.description}
           onClose={() => setHintVisible(false)}
         />
-
-        {!primaryHint && (
-          <OnboardingBanner
-            ledgerId={ledgerId}
-            hasTransactions={realDays.length > 0}
-            onDismiss={() => {}}
-          />
-        )}
 
         <StatsBar
           rangeLabel={range.label}
@@ -707,6 +707,7 @@ export default function MoniHome() {
               key={day.id}
               day={day}
               isExpanded={expandedDays.includes(day.id)}
+              hideCategoryTag={selectedFilter !== "全部"}
               isAi={aiOn && day.id === aiCurrentDate}
               aiStop={aiStop}
               onToggle={() => toggleDay(day.id)}

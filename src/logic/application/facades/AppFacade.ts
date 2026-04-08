@@ -1,6 +1,7 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
 import type { AIProgress, AIStatus } from '@logic/application/ai/types';
+import { SnapshotManager } from '@logic/application/services/SnapshotManager';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
 import { LedgerService } from '@logic/application/services/LedgerService';
@@ -10,6 +11,7 @@ import type {
   HomeDayGroupReadModel,
   HomeHintCardReadModel,
   HomeTransactionReadModel,
+  HomeTrendCardReadModel,
   HomeTrendPoint,
   LedgerCategoryDefinition,
   LedgerFacadeState,
@@ -19,6 +21,7 @@ import type {
 import type { FullTransactionRecord } from '@shared/types/metadata';
 
 const HOME_TREND_DAYS = 30;
+const HOME_TREND_WINDOW_SIZE = 7;
 
 function toDateKey(time: string): string {
   return time.slice(0, 10);
@@ -48,17 +51,88 @@ function toLocalDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * 规范化首页日期范围。
+ * - 未传入时退回到账本全范围
+ * - 兜底保证 start <= end
+ */
+function normalizeHomeDateRange(
+  range: { start: Date | null; end: Date | null },
+  bounds: { min: Date | null; max: Date | null }
+): { start: Date | null; end: Date | null } {
+  const fallbackStart = bounds.min;
+  const fallbackEnd = bounds.max;
+  const start = range.start ?? fallbackStart;
+  const end = range.end ?? fallbackEnd;
+  if (!start || !end) {
+    return { start: fallbackStart, end: fallbackEnd };
+  }
+  if (start.getTime() <= end.getTime()) {
+    return { start, end };
+  }
+  return { start: end, end: start };
+}
+
+/**
+ * 判断某个日期键是否落在首页当前范围内。
+ */
+function isDateKeyInRange(dateKey: string, range: { start: Date | null; end: Date | null }): boolean {
+  if (!range.start || !range.end) {
+    return true;
+  }
+  const date = new Date(`${dateKey}T00:00:00`);
+  return date.getTime() >= range.start.getTime() && date.getTime() <= range.end.getTime();
+}
+
+/**
+ * 基于完整趋势历史和窗口偏移量构建首页 trendCard。
+ */
+function buildTrendCard(
+  points: HomeTrendPoint[],
+  requestedOffset: number
+): HomeTrendCardReadModel {
+  const maxOffset = Math.max(0, points.length - HOME_TREND_WINDOW_SIZE);
+  const windowOffset = Math.max(0, Math.min(requestedOffset, maxOffset));
+  const startIndex = Math.max(0, points.length - HOME_TREND_WINDOW_SIZE - windowOffset);
+  const sliced = points.slice(startIndex, startIndex + HOME_TREND_WINDOW_SIZE);
+  return {
+    windowSize: HOME_TREND_WINDOW_SIZE,
+    points: sliced,
+    windowStart: sliced[0]?.key ?? null,
+    windowEnd: sliced[sliced.length - 1]?.key ?? null,
+    hasEarlierWindow: startIndex > 0,
+    hasLaterWindow: startIndex + sliced.length < points.length,
+    windowOffset,
+  };
+}
+
 function toHomeTransaction(txId: string, record: FullTransactionRecord, index: number): HomeTransactionReadModel {
+  const normalizedProduct = record.product.trim();
+  const normalizedCounterparty = record.counterparty.trim();
+  const title = record.sourceType === 'manual'
+    ? (normalizedProduct || '来自随手记')
+    : (normalizedProduct && normalizedProduct !== '/' && normalizedProduct !== 'Unknown'
+      ? normalizedProduct
+      : (normalizedCounterparty || '未知'));
+  const sourceLabel = record.sourceType === 'manual'
+    ? '随手记'
+    : record.sourceType === 'wechat'
+      ? '微信'
+      : '支付宝';
+
   return {
     id: txId,
-    title: record.counterparty || record.product || '未知',
+    title,
     amount: record.amount,
     time: record.time.slice(11, 16),
+    sourceType: record.sourceType,
+    sourceLabel,
     paymentMethod: record.paymentMethod || '',
     category: record.user_category || record.ai_category || record.category || null,
     userCategory: record.user_category || null,
     aiCategory: record.ai_category || null,
     reasoning: record.ai_reasoning || null,
+    userNote: record.user_note || null,
     direction: record.direction,
     isVerified: record.is_verified,
     sequence: index,
@@ -127,7 +201,12 @@ export class AppFacade {
     }));
   }
 
-  public async getMoniHomeReadModel(now: Date = new Date()): Promise<MoniHomeReadModel> {
+  public async getMoniHomeReadModel(input?: {
+    now?: Date;
+    trendWindowOffset?: number;
+    homeDateRange?: { start: Date | null; end: Date | null };
+  }): Promise<MoniHomeReadModel> {
+    const now = input?.now ?? new Date();
     const ledgerState = this.getLedgerState();
     const currentLedgerId = ledgerState.currentLedgerId;
     const currentLedger: LedgerOption = {
@@ -146,10 +225,17 @@ export class AppFacade {
     );
 
     const sortedEntries = Object.entries(records).sort(([, a], [, b]) => b.time.localeCompare(a.time));
-    const [availableLedgers, homeBudget, pendingCount] = await Promise.all([
+    const fullDataRange = this.computeLedgerBounds(records);
+    const selectedHomeDateRange = normalizeHomeDateRange(
+      input?.homeDateRange ?? ledgerState.dateRange,
+      fullDataRange
+    );
+
+    const [availableLedgers, homeBudget, pendingTasks, lastLearningMeta] = await Promise.all([
       this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
       this.budgetManager.getHomeBudgetReadModel(currentLedgerId, ledgerState.ledgerMemory, { now }),
-      classifyQueue.size(currentLedgerId).catch(() => 0),
+      classifyQueue.getPending(currentLedgerId).catch(() => []),
+      this.loadLastLearningMeta(currentLedgerId),
     ]);
 
     const todayKey = toLocalDateKey(now);
@@ -184,17 +270,21 @@ export class AppFacade {
       }
     }
 
-    const dailyTransactionGroups: HomeDayGroupReadModel[] = Array.from(dayMap.entries())
+    const allDailyTransactionGroups: HomeDayGroupReadModel[] = Array.from(dayMap.entries())
       .sort(([left], [right]) => right.localeCompare(left))
       .map(([dateKey, items]) => ({
         id: dateKey,
         label: toDateLabel(dateKey, todayKey, yesterdayKey),
         items,
       }));
+    const dailyTransactionGroups = allDailyTransactionGroups.filter((group) =>
+      isDateKeyInRange(group.id, selectedHomeDateRange)
+    );
 
-    const recentDayKeys = buildRecentDays(now, HOME_TREND_DAYS);
-    const trend: HomeTrendPoint[] = recentDayKeys.map((key) => {
-      const dayItems = dayMap.get(key) ?? [];
+    const trendRangeEnd = selectedHomeDateRange.end ?? now;
+    const recentDayKeys = buildRecentDays(trendRangeEnd, HOME_TREND_DAYS);
+    const trendHistory: HomeTrendPoint[] = recentDayKeys.map((key) => {
+      const dayItems = isDateKeyInRange(key, selectedHomeDateRange) ? (dayMap.get(key) ?? []) : [];
       const amount = dayItems.reduce((sum, item) => sum + item.amount, 0);
       const [, month, day] = key.split('-');
       return {
@@ -203,20 +293,20 @@ export class AppFacade {
         amount,
       };
     });
+    const trendCard = buildTrendCard(trendHistory, input?.trendWindowOffset ?? 0);
 
     const budgetStatus = homeBudget.monthlyBudget.enabled ? homeBudget.monthlyBudget.status : 'none';
     const budgetCard: HomeBudgetCardReadModel | null = homeBudget.monthlyBudget.enabled
       ? this.budgetManager.toBudgetCard(homeBudget.monthlyBudget)
       : null;
     const hintCards: HomeHintCardReadModel[] = homeBudget.budgetHints;
-
     return {
       currentLedger,
       availableLedgers,
       categoryDefinitions,
       dailyTransactionGroups,
       income,
-      trend,
+      trendCard,
       hintCards,
       budget: {
         enabled: homeBudget.monthlyBudget.enabled,
@@ -228,7 +318,7 @@ export class AppFacade {
         .filter((item) => !item.category || item.category === 'uncategorized')
         .length,
       availableCategories: Object.keys(categoryMap),
-      aiEngineUiState: this.toHomeAiState(currentLedgerId, pendingCount),
+      aiEngineUiState: this.toHomeAiState(currentLedgerId, pendingTasks, selectedHomeDateRange, lastLearningMeta),
       extensions: {
         budget: {
           status: 'available',
@@ -236,19 +326,25 @@ export class AppFacade {
           notes: '预算读模型已接入 facade，预算写入与规则演进仍由 Agent 3 负责。',
         },
         manualEntry: {
-          status: 'placeholder',
+          status: 'available',
           owner: 'agent4',
-          notes: '已预留手记入口位，等待 Agent 4 提供正式录入/删除接口。',
+          notes: '手记记录已进入首页读模型，录入/删除入口仍由记账页承接。',
         },
         memory: {
-          status: 'placeholder',
+          status: lastLearningMeta ? 'available' : 'placeholder',
           owner: 'agent5',
-          notes: '已预留 AI 记忆/学习状态位，等待 Agent 5 提供 v7 revision 与学习基线数据。',
+          notes: lastLearningMeta
+            ? '已接入最近一次学习快照时间，可用于首页 AI 工作态展示。'
+            : '当前账本尚未发现可用学习快照，首页暂不显示学习完成通知。',
         },
       },
       dataRange: {
-        min: ledgerState.dateRange.start ? toLocalDateKey(ledgerState.dateRange.start) : null,
-        max: ledgerState.dateRange.end ? toLocalDateKey(ledgerState.dateRange.end) : null,
+        min: fullDataRange.min ? toLocalDateKey(fullDataRange.min) : null,
+        max: fullDataRange.max ? toLocalDateKey(fullDataRange.max) : null,
+      },
+      homeDateRange: {
+        start: selectedHomeDateRange.start ? toLocalDateKey(selectedHomeDateRange.start) : null,
+        end: selectedHomeDateRange.end ? toLocalDateKey(selectedHomeDateRange.end) : null,
       },
       isLoading: ledgerState.isLoading,
     };
@@ -306,7 +402,14 @@ export class AppFacade {
     this.batchProcessor.stop();
   }
 
-  private toHomeAiState(currentLedgerId: string, pendingCount: number): HomeAiEngineUiState {
+  private toHomeAiState(
+    currentLedgerId: string,
+    pendingTasks: Awaited<ReturnType<typeof classifyQueue.getPending>>,
+    selectedHomeDateRange: { start: Date | null; end: Date | null },
+    lastLearningMeta: { timestamp: string; message: string } | null,
+  ): HomeAiEngineUiState {
+    const pendingCount = pendingTasks.length;
+    const pendingInRangeCount = pendingTasks.filter((task) => isDateKeyInRange(task.date, selectedHomeDateRange)).length;
     const status: HomeAiEngineUiState['status'] = this.aiStatus === 'ERROR'
       ? 'error'
       : this.aiStatus === 'ANALYZING'
@@ -319,12 +422,58 @@ export class AppFacade {
       status,
       activeLedger: currentLedgerId,
       activeDate: this.aiProgress.currentDate || null,
-      hasPendingInRange: pendingCount > 0,
-      hasPendingOutOfRange: false,
+      hasPendingInRange: pendingInRangeCount > 0,
+      hasPendingOutOfRange: pendingCount > pendingInRangeCount,
       pendingCount,
-      lastLearnedAt: null,
-      lastLearningNotice: null,
+      lastLearnedAt: lastLearningMeta?.timestamp ?? null,
+      lastLearningNotice: lastLearningMeta
+        ? {
+            type: 'learned',
+            message: lastLearningMeta.message,
+          }
+        : null,
     };
+  }
+
+  /**
+   * 计算账本全量时间边界，专门供首页 Date Range Picker 使用。
+   */
+  private computeLedgerBounds(records: Record<string, FullTransactionRecord>): { min: Date | null; max: Date | null } {
+    const allTimes = Object.values(records)
+      .map((record) => record.time.slice(0, 10))
+      .sort();
+    if (allTimes.length === 0) {
+      return { min: null, max: null };
+    }
+    return {
+      min: new Date(`${allTimes[0]}T00:00:00`),
+      max: new Date(`${allTimes[allTimes.length - 1]}T00:00:00`),
+    };
+  }
+
+  /**
+   * 读取最近一次学习快照信息。
+   * 首页只需要一个轻量通知，不直接展开完整记忆内容。
+   */
+  private async loadLastLearningMeta(ledgerId: string): Promise<{ timestamp: string; message: string } | null> {
+    try {
+      const currentId = await SnapshotManager.getCurrentId(ledgerId);
+      const lastLearnedRevision = await SnapshotManager.getLastLearnedExampleRevision(ledgerId);
+      if (!currentId || lastLearnedRevision <= 0) {
+        return null;
+      }
+      const snapshots = await SnapshotManager.list(ledgerId);
+      const currentSnapshot = snapshots.find((snapshot) => snapshot.id === currentId);
+      if (!currentSnapshot || currentSnapshot.trigger !== 'ai_learn') {
+        return null;
+      }
+      return {
+        timestamp: currentSnapshot.timestamp,
+        message: 'AI 已学习新的分类偏好',
+      };
+    } catch {
+      return null;
+    }
   }
 
   private notify(): void {
