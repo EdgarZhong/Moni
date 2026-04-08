@@ -1,6 +1,7 @@
 import { generateSystemPrompt } from './SystemPrompt';
 import { LedgerLoader } from './LedgerLoader';
 import { ConfigManager } from '@system/config/ConfigManager';
+import { DEFAULT_LEDGER_NAME } from '@system/filesystem/fs-storage';
 import { ExampleStore } from '../../services/ExampleStore';
 import { MemoryManager } from '../../services/MemoryManager';
 import type { ChatMessage } from '../types';
@@ -11,7 +12,7 @@ export class PromptBuilder {
   public static async build(
     transactions: TransactionBase[],
     date: Date,
-    ledgerName: string = 'default',
+    ledgerName: string = DEFAULT_LEDGER_NAME,
     language: string = 'Chinese'
   ): Promise<ChatMessage[]> {
     const categoryList = await LedgerLoader.loadCategories(ledgerName);

@@ -12,6 +12,7 @@ import {
   deleteLedgerFile,
   scanForLedgerFiles,
   DEFAULT_LEDGER_INDEX,
+  DEFAULT_LEDGER_NAME,
   type LedgerMeta,
   type LedgerIndex,
   type StorageDirHandle
@@ -46,7 +47,7 @@ export class LedgerManager {
   private ledgerDirHandle: StorageDirHandle | null = null;
 
   // 当前激活的账本名称
-  private activeLedgerName: string = 'default';
+  private activeLedgerName: string = DEFAULT_LEDGER_NAME;
 
   // LedgerService 单例
   private ledgerService: LedgerService;
@@ -143,7 +144,7 @@ export class LedgerManager {
       index = await this.readIndex();
     } catch (e) {
       console.warn('[LedgerManager] Failed to read index, creating default:', e);
-      index = { ledgers: [], activeLedger: 'default' };
+        index = { ledgers: [], activeLedger: DEFAULT_LEDGER_NAME };
     }
 
     // 3. 构建文件名集合
@@ -166,16 +167,16 @@ export class LedgerManager {
       }
     }
 
-    // 6. 确保 default 存在
-    const hasDefault = index.ledgers.some(l => l.name === 'default');
+    // 6. 确保默认账本存在
+    const hasDefault = index.ledgers.some(l => l.name === DEFAULT_LEDGER_NAME);
     if (!hasDefault) {
-      const defaultExists = actualFiles.some(f => f.name === 'default');
+      const defaultExists = actualFiles.some(f => f.name === DEFAULT_LEDGER_NAME);
       if (!defaultExists) {
-        // 创建 default 账本文件
+        // 创建默认账本文件
         console.log('[LedgerManager] Creating default ledger file...');
         const newDefaultHandle = await getLedgerFileHandle(
           this.ledgerDirHandle,
-          'default',
+          DEFAULT_LEDGER_NAME,
           true
         );
         if (newDefaultHandle) {
@@ -185,10 +186,10 @@ export class LedgerManager {
           });
         }
       }
-      // 添加 default 到索引
-      const defaultFile = actualFiles.find(f => f.name === 'default') || {
-        name: 'default',
-        fileName: 'default.moni.json',
+      // 添加默认账本到索引
+      const defaultFile = actualFiles.find(f => f.name === DEFAULT_LEDGER_NAME) || {
+        name: DEFAULT_LEDGER_NAME,
+        fileName: `${DEFAULT_LEDGER_NAME}.moni.json`,
         createdAt: new Date().toISOString(),
         lastOpenedAt: new Date().toISOString()
       };
@@ -198,8 +199,8 @@ export class LedgerManager {
     // 7. 检查 active 账本
     const activeExists = index.ledgers.some(l => l.name === index.activeLedger);
     if (!activeExists) {
-      console.warn('[LedgerManager] Active ledger "' + index.activeLedger + '" not found, falling back to default');
-      index.activeLedger = 'default';
+      console.warn('[LedgerManager] Active ledger "' + index.activeLedger + '" not found, falling back to default ledger');
+      index.activeLedger = DEFAULT_LEDGER_NAME;
     }
 
     // 8. 写入更新后的索引
@@ -490,8 +491,8 @@ export class LedgerManager {
       return false;
     }
 
-    // 不允许删除 default 账本
-    if (ledgerName === 'default') {
+    // 不允许删除默认账本
+    if (ledgerName === DEFAULT_LEDGER_NAME) {
       console.error('[LedgerManager] Cannot delete default ledger');
       return false;
     }
@@ -515,7 +516,7 @@ export class LedgerManager {
 
       // 4. 更新索引
       const updatedLedgers = index.ledgers.filter(l => l.name !== ledgerName);
-      const newActiveLedger = index.activeLedger === ledgerName ? 'default' : index.activeLedger;
+      const newActiveLedger = index.activeLedger === ledgerName ? DEFAULT_LEDGER_NAME : index.activeLedger;
 
       await this.writeIndex({
         ...index,
@@ -523,9 +524,9 @@ export class LedgerManager {
         activeLedger: newActiveLedger
       });
 
-      // 5. 如果删除的是当前账本，切换到 default
+      // 5. 如果删除的是当前账本，切换到默认账本
       if (this.activeLedgerName === ledgerName) {
-        this.activeLedgerName = 'default';
+        this.activeLedgerName = DEFAULT_LEDGER_NAME;
         await this.loadActiveLedger();
       }
 
@@ -543,11 +544,6 @@ export class LedgerManager {
 
     if (!this.ledgerDirHandle) {
       console.error('[LedgerManager] Ledger directory not initialized');
-      return false;
-    }
-
-    if (oldName === 'default') {
-      console.error('[LedgerManager] Cannot rename default ledger');
       return false;
     }
 

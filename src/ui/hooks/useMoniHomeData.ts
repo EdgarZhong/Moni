@@ -57,6 +57,10 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
       notes: '等待记忆系统学习状态补齐。',
     },
   },
+  dataRange: {
+    min: null,
+    max: null,
+  },
   isLoading: true,
 };
 
@@ -90,6 +94,7 @@ export interface MoniHomeData {
   unclassifiedCount: number;
   aiEngineUiState: HomeAiEngineUiState;
   extensions: MoniHomeReadModel['extensions'];
+  dataRange: MoniHomeReadModel['dataRange'];
   actions: {
     switchLedger: (ledgerId: string) => Promise<boolean>;
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
@@ -178,6 +183,7 @@ export function useMoniHomeData(): MoniHomeData {
     unclassifiedCount: readModel.unclassifiedCount,
     aiEngineUiState: readModel.aiEngineUiState,
     extensions: readModel.extensions,
+    dataRange: readModel.dataRange,
     actions: {
       switchLedger: (ledgerId: string) => appFacade.switchLedger(ledgerId),
       updateCategory: (transactionId: string, category: string, reasoning?: string) => {

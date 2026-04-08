@@ -40,7 +40,7 @@ export async function runE2ETest() {
         console.log(`[Test] Ledger Initialized. Transactions: ${state.rawTransactions.length}`);
         
         if (state.rawTransactions.length === 0) {
-            console.warn('[Test] ⚠️ Warning: No transactions loaded. Is default.moni.json present in virtual_android_filesys/Documents_path/Moni/?');
+            console.warn('[Test] ⚠️ Warning: No transactions loaded. Is 日常开销.moni.json present in virtual_android_filesys/Documents_path/Moni/?');
         }
 
         // 4. Trigger AI Engine

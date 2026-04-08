@@ -28,6 +28,7 @@ dist-ssr
 .worktrees/
 .worktrees
 .worktrees/**
+test-img/
 # private data
 2025-11-5to2026-1-5/
 

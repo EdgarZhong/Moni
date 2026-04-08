@@ -863,7 +863,7 @@ interface DateRangeDialogProps {
  * DateRangeDialog — 时间范围选择器
  *
  * 入口：分类概览右上角"本月 >"。
- * 包含快捷项（今天/本周/本月/近三月）和双滑块自定义范围。
+ * 包含快捷项（今天/本周/本月/近三月/全部）和双滑块自定义范围。
  */
 export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, minDate, maxDate, onClose, onQuickSelect, onCustomStartChange, onCustomEndChange, onConfirmCustom }: DateRangeDialogProps) {
   const railRef = useRef<HTMLDivElement>(null);
@@ -945,7 +945,7 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
         <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 12 }}>选择时间范围</div>
         {/* 快捷选项 */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-          {["今天", "本周", "本月", "近三月"].map((label) => (
+          {["今天", "本周", "本月", "近三月", "全部"].map((label) => (
             <div key={label} onClick={() => onQuickSelect(label)} style={{ padding: "8px 16px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: rangeMode === label ? 700 : 500, background: rangeMode === label ? C.dark : C.white, color: rangeMode === label ? C.bg : "#666", border: rangeMode === label ? "none" : `1.5px solid ${C.border}` }}>
               {label}
             </div>

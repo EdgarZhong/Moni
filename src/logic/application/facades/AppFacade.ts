@@ -36,9 +36,16 @@ function buildRecentDays(now: Date, count: number): string[] {
   for (let i = count - 1; i >= 0; i -= 1) {
     const date = new Date(now);
     date.setDate(date.getDate() - i);
-    keys.push(date.toISOString().slice(0, 10));
+    keys.push(toLocalDateKey(date));
   }
   return keys;
+}
+
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function toHomeTransaction(txId: string, record: FullTransactionRecord, index: number): HomeTransactionReadModel {
@@ -138,20 +145,20 @@ export class AppFacade {
       })
     );
 
+    const sortedEntries = Object.entries(records).sort(([, a], [, b]) => b.time.localeCompare(a.time));
     const [availableLedgers, homeBudget, pendingCount] = await Promise.all([
       this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
       this.budgetManager.getHomeBudgetReadModel(currentLedgerId, ledgerState.ledgerMemory, { now }),
       classifyQueue.size(currentLedgerId).catch(() => 0),
     ]);
 
-    const todayKey = now.toISOString().slice(0, 10);
+    const todayKey = toLocalDateKey(now);
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const yesterdayKey = yesterday.toISOString().slice(0, 10);
+    const yesterdayKey = toLocalDateKey(yesterday);
 
     const dayMap = new Map<string, HomeTransactionReadModel[]>();
     const income: MoniHomeReadModel['income'] = [];
-    const sortedEntries = Object.entries(records).sort(([, a], [, b]) => b.time.localeCompare(a.time));
 
     let itemIndex = 0;
     for (const [txId, record] of sortedEntries) {
@@ -238,6 +245,10 @@ export class AppFacade {
           owner: 'agent5',
           notes: '已预留 AI 记忆/学习状态位，等待 Agent 5 提供 v7 revision 与学习基线数据。',
         },
+      },
+      dataRange: {
+        min: ledgerState.dateRange.start ? toLocalDateKey(ledgerState.dateRange.start) : null,
+        max: ledgerState.dateRange.end ? toLocalDateKey(ledgerState.dateRange.end) : null,
       },
       isLoading: ledgerState.isLoading,
     };

@@ -88,12 +88,16 @@ export function formatShortDate(value: string): string {
  * @param mode 快捷模式名称，或 "custom"（走 start/end 参数）
  * @param start 自定义起始日期（"YYYY-MM-DD"），仅 mode 为 "custom" 时使用
  * @param end 自定义结束日期（"YYYY-MM-DD"），仅 mode 为 "custom" 时使用
+ * @param minDate 当前账本可见最小日期，供“全部”快捷项使用
+ * @param maxDate 当前账本可见最大日期，供“全部”快捷项使用
  * @param todayStr 今天的日期字符串，默认取系统当前日期（允许注入以便测试）
  */
 export function getRange(
   mode: string,
   start: string,
   end: string,
+  minDate?: string,
+  maxDate?: string,
   todayStr?: string
 ): DateRange {
   // 使用注入的今天，或动态取系统时间（避免原型里写死的 TODAY 常量）
@@ -124,6 +128,13 @@ export function getRange(
     quarterStart.setMonth(todayBase.getMonth() - 2);
     quarterStart.setDate(1);
     return { start: quarterStart, end: new Date(todayBase), label: "近三月" };
+  }
+  if (mode === "全部") {
+    return {
+      start: toDate(minDate ?? start),
+      end: toDate(maxDate ?? end),
+      label: "全部",
+    };
   }
   // 自定义范围
   return {

@@ -22,23 +22,24 @@ export type NativeDirHandle = {
 export type StorageHandle = FileSystemFileHandle | NativeFileHandle;
 export type StorageDirHandle = FileSystemDirectoryHandle | NativeDirHandle;
 
-export const MEMORY_FILE_NAME = 'default.moni.json';
+export const DEFAULT_LEDGER_NAME = '日常开销';
+export const MEMORY_FILE_NAME = `${DEFAULT_LEDGER_NAME}.moni.json`;
 
 /**
  * 默认分类定义
  * 每个分类附带自然语言描述，作为 AI 冷启动锚点和学习基准
  */
 const DEFAULT_CATEGORIES: Record<string, string> = {
-  meal: '日常正餐支出（早午晚），如快餐、正餐、工作餐',
-  snack: '零食、饮品、小吃等非正餐食品',
-  transport: '公共交通、打车、加油、停车等出行费用',
-  entertainment: '电影、游戏、演出、会员订阅等娱乐消费',
-  feast: '聚餐、大餐、宴请、高档餐厅等特殊餐饮',
-  health: '医疗、药品、保健品、健身器材等健康支出',
-  shopping: '日用品、服装、电子产品、网购等购物消费',
-  education: '书籍、课程、培训、考试等教育支出',
-  housing: '房租、水电煤、物业、维修等居住费用',
-  travel: '旅游、酒店、机票、景点门票等旅行支出'
+  正餐: '日常正餐支出（早午晚），如快餐、正餐、工作餐',
+  零食: '零食、饮品、小吃等非正餐食品',
+  交通: '公共交通、打车、加油、停车等出行费用',
+  娱乐: '电影、游戏、演出、会员订阅等娱乐消费',
+  大餐: '聚餐、大餐、宴请、高档餐厅等特殊餐饮',
+  健康: '医疗、药品、保健品、健身器材等健康支出',
+  购物: '日用品、服装、电子产品、网购等购物消费',
+  教育: '书籍、课程、培训、考试等教育支出',
+  居住: '房租、水电煤、物业、维修等居住费用',
+  旅行: '旅游、酒店、机票、景点门票等旅行支出'
 };
 
 export const DEFAULT_MEMORY: LedgerMemory = {
@@ -69,40 +70,36 @@ export const isFileSystemSupported = () => {
 // --- Main Functions ---
 
 export const getAutoDirectoryHandle = async (): Promise<StorageDirHandle> => {
-  if (isNativePlatform()) {
-    try {
-      const fs = FilesystemService.getInstance();
-      if (fs.requestPermissions) {
-        const status = await fs.requestPermissions();
-        if (status.publicStorage !== 'granted') {
-          console.warn('Storage permission might be denied:', status);
-        }
+  try {
+    const fs = FilesystemService.getInstance();
+    if (fs.requestPermissions) {
+      const status = await fs.requestPermissions();
+      if (status.publicStorage !== 'granted') {
+        console.warn('Storage permission might be denied:', status);
       }
-
-      // 确保 Moni 目录存在于 Documents
-      const pixelBillDir = 'Moni';
-      try {
-        await fs.mkdir({
-          path: pixelBillDir,
-          directory: AdapterDirectory.Documents,
-          recursive: true
-        });
-      } catch (e) {
-        // 目录已存在时忽略
-        console.log('Moni directory might already exist or failed to create:', e);
-      }
-
-      return {
-        kind: 'directory',
-        path: pixelBillDir,
-        name: 'Moni'
-      };
-    } catch (e) {
-      console.error('Failed to init auto directory:', e);
-      throw e;
     }
+
+    // 开发态 mock / Capacitor native 统一使用 Documents/Moni 作为自动账本目录
+    const ledgerDir = 'Moni';
+    try {
+      await fs.mkdir({
+        path: ledgerDir,
+        directory: AdapterDirectory.Documents,
+        recursive: true
+      });
+    } catch (e) {
+      console.log('Moni directory might already exist or failed to create:', e);
+    }
+
+    return {
+      kind: 'directory',
+      path: ledgerDir,
+      name: ledgerDir
+    };
+  } catch (e) {
+    console.error('Failed to init auto directory:', e);
+    throw e;
   }
-  throw new Error('Auto directory handle only supported on Native');
 };
 
 export const requestDirectoryHandle = async (): Promise<StorageDirHandle> => {
@@ -319,13 +316,13 @@ export interface LedgerIndex {
 export const DEFAULT_LEDGER_INDEX: LedgerIndex = {
   ledgers: [
     {
-      name: 'default',
-      fileName: 'default.moni.json',
+      name: DEFAULT_LEDGER_NAME,
+      fileName: MEMORY_FILE_NAME,
       createdAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString()
     }
   ],
-  activeLedger: 'default'
+  activeLedger: DEFAULT_LEDGER_NAME
 };
 
 /**
@@ -539,7 +536,7 @@ export const scanForLedgerFiles = async (
             name,
             fileName: file.name,
             createdAt: new Date(file.ctime || Date.now()).toISOString(),
-            lastOpenedAt: name === 'default'
+            lastOpenedAt: name === DEFAULT_LEDGER_NAME
               ? new Date().toISOString()
               : '1970-01-01T00:00:00.000Z'
           });
@@ -558,7 +555,7 @@ export const scanForLedgerFiles = async (
           name,
           fileName: file.name,
           createdAt: new Date(file.lastModified).toISOString(),
-          lastOpenedAt: name === 'default'
+          lastOpenedAt: name === DEFAULT_LEDGER_NAME
             ? new Date().toISOString()
             : '1970-01-01T00:00:00.000Z'
         });

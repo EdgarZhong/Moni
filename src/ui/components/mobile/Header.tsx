@@ -3,7 +3,7 @@ import { DotMatrixText } from '../DotMatrixText';
 import { triggerHaptic, HapticFeedbackLevel } from '@system/device/haptics';
 import { Cpu } from 'lucide-react';
 import { LedgerSwitcher } from './LedgerSwitcher';
-import type { LedgerMeta } from '@system/filesystem/fs-storage';
+import { DEFAULT_LEDGER_NAME, type LedgerMeta } from '@system/filesystem/fs-storage';
 
 interface HeaderProps {
   isLoading: boolean;
@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   isLoading,
   onImportData,
   ledgers = [],
-  activeLedger = 'default',
+  activeLedger = DEFAULT_LEDGER_NAME,
   onSwitchLedger = () => {},
   onCreateLedger = () => {},
   onDeleteLedger = () => {},

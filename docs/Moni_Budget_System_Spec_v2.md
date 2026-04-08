@@ -113,7 +113,7 @@ interface CategoryBudgetEntry {
 }
 ```
 
-注意：`categoryBudgets` 的键使用与 `LedgerMemory.defined_categories` 相同的英文标识符（如 `meal`、`transport`），不使用中文。
+注意：`categoryBudgets` 的键直接使用账本当前分类键，与 `LedgerMemory.defined_categories` 完全一致；当前默认口径为中文键（如 `正餐`、`交通`），并在存在用户标签定义时由系统自动追加兜底键 `其他`。
 
 ### 3.3 持久化层接口
 
