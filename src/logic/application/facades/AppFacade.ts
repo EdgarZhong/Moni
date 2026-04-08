@@ -138,10 +138,9 @@ export class AppFacade {
       })
     );
 
-    const [availableLedgers, monthlyBudget, categoryBudget, pendingCount] = await Promise.all([
+    const [availableLedgers, homeBudget, pendingCount] = await Promise.all([
       this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
-      this.budgetManager.computeMonthlyBudgetSummary(currentLedgerId, ledgerState.ledgerMemory, now),
-      this.budgetManager.computeCategoryBudgetSummary(currentLedgerId, ledgerState.ledgerMemory, now),
+      this.budgetManager.getHomeBudgetReadModel(currentLedgerId, ledgerState.ledgerMemory, { now }),
       classifyQueue.size(currentLedgerId).catch(() => 0),
     ]);
 
@@ -198,16 +197,11 @@ export class AppFacade {
       };
     });
 
-    const budgetStatus = monthlyBudget.enabled ? monthlyBudget.status : 'none';
-    const budgetCard: HomeBudgetCardReadModel | null = monthlyBudget.enabled
-      ? this.budgetManager.toBudgetCard(monthlyBudget)
+    const budgetStatus = homeBudget.monthlyBudget.enabled ? homeBudget.monthlyBudget.status : 'none';
+    const budgetCard: HomeBudgetCardReadModel | null = homeBudget.monthlyBudget.enabled
+      ? this.budgetManager.toBudgetCard(homeBudget.monthlyBudget)
       : null;
-    const hintCards: HomeHintCardReadModel[] = this.budgetManager.getBudgetHints(
-      null,
-      budgetStatus,
-      categoryBudget,
-      sortedEntries.length
-    );
+    const hintCards: HomeHintCardReadModel[] = homeBudget.budgetHints;
 
     return {
       currentLedger,
@@ -218,7 +212,7 @@ export class AppFacade {
       trend,
       hintCards,
       budget: {
-        enabled: monthlyBudget.enabled,
+        enabled: homeBudget.monthlyBudget.enabled,
         status: budgetStatus,
         card: budgetCard,
       },
@@ -328,4 +322,3 @@ export class AppFacade {
     }
   }
 }
-
