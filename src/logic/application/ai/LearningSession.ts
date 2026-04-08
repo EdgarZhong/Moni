@@ -19,7 +19,7 @@ import { SnapshotManager } from '../services/SnapshotManager';
 import { ExampleStore } from '../services/ExampleStore';
 import { LLMClient } from '../llm/LLMClient';
 import { ConfigManager } from '@system/config/ConfigManager';
-import type { ExampleEntry } from '../services/ExampleStore';
+import type { ExampleEntry, LearningExampleDelta } from '../services/ExampleStore';
 
 /**
  * 学习会话配置
@@ -72,10 +72,13 @@ export class LearningSession {
       ? `\n### Current Memory (Numbered List)\n${currentMemory.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n`
       : '\n### Current Memory\n(Empty — no learned preferences yet.)\n';
 
-    return `You are a pattern analyst for Moni, a personal finance app. Your task is to analyze the user's classification corrections and extract generalizable rules and preferences.
+    return `You are a pattern analyst for Moni, a personal finance app. Your task is to analyze the example-store delta and update the user's learned memory with stable, generalizable rules.
 
 ### Your Role
-The user has been correcting the AI classifier's mistakes. Each correction record shows what the AI predicted, what the user changed it to, and optionally why. Your job is to identify patterns in these corrections and update the memory file accordingly.
+The example store is the authoritative set of user-confirmed classification signals.
+- B examples: AI predicted the wrong category. \`ai_category\` and \`ai_reasoning\` describe the wrong judgment, while \`category\` is the corrected answer.
+- A / C / D examples: \`category\` is the user-confirmed answer directly.
+- D examples come from manual entries. They often have empty \`counterparty\`, so rely more on \`product\`, amount, and context.
 
 ### Category System
 The following categories are currently defined:
@@ -83,6 +86,13 @@ ${JSON.stringify(categories, null, 2)}
 
 Only reference categories that exist in this list. If a correction references a category not in this list, it may be outdated — do not create rules for non-existent categories.
 ${memorySection}
+### Learning Window
+The user message provides either:
+- \`mode: "incremental"\`: only net changes since the last successful learning baseline
+- \`mode: "full_reconcile"\`: the change log cannot be trusted, so \`all_examples\` is the full current truth and should be treated as authoritative
+
+When \`mode\` is \`full_reconcile\`, do not assume any removed pattern is still valid just because it exists in current memory.
+
 ### Output Format
 You MUST return a strictly valid JSON object. No markdown formatting, no introductory text.
 
@@ -105,33 +115,51 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 1. Each memory entry must be a single, self-contained information point. One entry = one insight.
 2. Do not duplicate information already present in the current memory.
 3. Prefer MODIFY over DELETE+ADD when updating an existing rule (e.g., changing a threshold).
-4. If corrections contradict an existing memory entry, MODIFY or DELETE it.
+4. If newer examples contradict an existing memory entry, MODIFY or DELETE it.
 5. Focus on generalizable patterns, not individual transactions. "杨国福 at 45 yuan was meal" is a correction; "Fast food restaurants under 70 yuan during meal hours → meal" is a pattern.
-6. If the corrections don't reveal any new pattern, return an empty operations array: \`{"operations": []}\`
-7. Write entries in the same language the user uses (typically Chinese).
+6. B examples are the strongest signal because they expose both the wrong path and the corrected answer.
+7. If the examples do not reveal any new or changed pattern, return an empty operations array: \`{"operations": []}\`
+8. Write entries in the same language the user uses (typically Chinese).
 `;
   }
 
   /**
    * 构建 User Message
    */
-  private static buildLearningUserMessage(corrections: ExampleEntry[]): string {
-    // 简化 corrections，只保留必要字段
-    const simplified = corrections.map(ex => ({
-      counterparty: ex.counterparty,
-      description: ex.description,
-      amount: ex.amount,
-      time: ex.time,
-      category: ex.category,
-      ai_reason: ex.ai_reason,
-      user_reason: ex.user_reason
-    }));
+  private static buildLearningUserMessage(delta: LearningExampleDelta): string {
+    const payload = {
+      mode: delta.mode,
+      last_learned_example_revision: delta.lastLearnedRevision,
+      current_example_revision: delta.currentRevision,
+      reason: delta.reason,
+      upserts: delta.upserts.map(example => this.simplifyExample(example)),
+      deletions: delta.deletions.map(example => this.simplifyExample(example)),
+      all_examples: delta.allEntries?.map(example => this.simplifyExample(example))
+    };
 
-    return `以下是用户最近的分类修正记录：
+    return `以下是本次学习窗口的实例库数据：
 
-${JSON.stringify(simplified, null, 2)}
+${JSON.stringify(payload, null, 2)}
 
-请分析这些修正，输出你建议的记忆更新操作。`;
+请基于这些样本变更输出记忆更新操作。`;
+  }
+
+  private static simplifyExample(example: ExampleEntry) {
+    return {
+      id: example.id,
+      time: example.time,
+      sourceType: example.sourceType,
+      rawClass: example.rawClass,
+      counterparty: example.counterparty,
+      product: example.product,
+      amount: example.amount,
+      direction: example.direction,
+      category: example.category,
+      ai_category: example.ai_category,
+      ai_reasoning: example.ai_reasoning,
+      user_note: example.user_note,
+      is_verified: example.is_verified
+    };
   }
 
   /**
@@ -148,11 +176,10 @@ ${JSON.stringify(simplified, null, 2)}
     console.log(`[LearningSession] Starting learning for ${ledgerName}...`);
 
     try {
-      // 1. 加载实例库（用户修正记录）
-      const examples = await ExampleStore.load(ledgerName);
+      const baselineRevision = await SnapshotManager.getLastLearnedExampleRevision(ledgerName);
+      const delta = await ExampleStore.getLearningDelta(ledgerName, baselineRevision);
 
-      // 如果没有修正记录，跳过学习
-      if (examples.length === 0) {
+      if (delta.currentRevision === 0 && (delta.allEntries?.length ?? 0) === 0 && delta.upserts.length === 0) {
         console.log('[LearningSession] No corrections to learn from');
         return {
           success: true,
@@ -161,14 +188,20 @@ ${JSON.stringify(simplified, null, 2)}
         };
       }
 
-      // 2. 加载当前记忆
       const currentMemory = await MemoryManager.load(ledgerName);
+      if (delta.mode === 'incremental' && delta.upserts.length === 0 && delta.deletions.length === 0) {
+        await SnapshotManager.setLastLearnedExampleRevision(ledgerName, delta.currentRevision);
+        return {
+          success: true,
+          operations: [],
+          summary: '无新增实例变更，无需学习',
+          snapshotId: await SnapshotManager.getCurrentId(ledgerName) || undefined
+        };
+      }
 
-      // 3. 构建 Prompt
       const systemPrompt = this.generateLearningSystemPrompt(categories, currentMemory);
-      const userMessage = this.buildLearningUserMessage(examples);
+      const userMessage = this.buildLearningUserMessage(delta);
 
-      // 4. 调用 LLM
       const configManager = ConfigManager.getInstance();
       const llmConfig = await configManager.getActiveModelConfig();
 
@@ -186,10 +219,8 @@ ${JSON.stringify(simplified, null, 2)}
       console.log('[LearningSession] Calling LLM...');
       const response = await client.chat(messages);
 
-      // 5. 解析操作指令
       let operations: MemoryOperation[] = [];
       try {
-        // 尝试提取 JSON（处理可能的 markdown 代码块）
         const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) ||
                          response.match(/```\s*([\s\S]*?)```/) ||
                          [null, response];
@@ -207,14 +238,14 @@ ${JSON.stringify(simplified, null, 2)}
         };
       }
 
-      // 6. 执行操作（v6：自动创建快照）
       if (operations.length > 0) {
-        console.log(`[LearningSession] Executing ${operations.length} operations...`);
         const result = await MemoryManager.applyOperations(
           ledgerName,
           operations,
           'ai_learn',
-          `学习会话：基于 ${examples.length} 条修正记录`
+          delta.mode === 'full_reconcile'
+            ? `学习会话：full_reconcile @ revision ${delta.currentRevision}`
+            : `学习会话：revision ${delta.lastLearnedRevision} -> ${delta.currentRevision}`
         );
 
         if (!result.success) {
@@ -227,11 +258,10 @@ ${JSON.stringify(simplified, null, 2)}
         }
       }
 
-      // 7. 获取当前快照 ID（v6：由 applyOperations 自动创建）
+      await SnapshotManager.setLastLearnedExampleRevision(ledgerName, delta.currentRevision);
       const snapshotId = await SnapshotManager.getCurrentId(ledgerName);
 
-      // 8. 生成摘要
-      const summary = this.generateSummary(operations);
+      const summary = this.generateSummary(operations, delta);
       console.log(`[LearningSession] Complete: ${summary}`);
 
       return {
@@ -254,9 +284,9 @@ ${JSON.stringify(simplified, null, 2)}
   /**
    * 生成操作摘要
    */
-  private static generateSummary(operations: MemoryOperation[]): string {
+  private static generateSummary(operations: MemoryOperation[], delta: LearningExampleDelta): string {
     if (operations.length === 0) {
-      return '无更新';
+      return delta.mode === 'full_reconcile' ? 'full_reconcile，无记忆更新' : '无更新';
     }
 
     const adds = operations.filter(o => o.type === 'ADD').length;
@@ -267,6 +297,7 @@ ${JSON.stringify(simplified, null, 2)}
     if (adds > 0) parts.push(`新增 ${adds} 条`);
     if (modifies > 0) parts.push(`修改 ${modifies} 条`);
     if (deletes > 0) parts.push(`删除 ${deletes} 条`);
+    if (delta.mode === 'full_reconcile') parts.push('full_reconcile');
 
     return parts.join('，');
   }

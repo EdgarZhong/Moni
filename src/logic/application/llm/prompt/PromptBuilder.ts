@@ -45,7 +45,7 @@ export class PromptBuilder {
 
     const payload = {
       category_list: categoryList,
-      reference_corrections: referenceCorrections.length > 0 ? referenceCorrections : undefined,
+      reference_corrections: referenceCorrections,
       days: [
         {
           date: format(date, 'yyyy-MM-dd'),

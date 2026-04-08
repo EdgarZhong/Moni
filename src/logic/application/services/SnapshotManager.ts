@@ -38,6 +38,7 @@ export interface SnapshotMeta {
 export interface SnapshotIndex {
   current_snapshot_id: string;
   snapshots: SnapshotMeta[];
+  last_learned_example_revision: number;
 }
 
 /**
@@ -96,8 +97,7 @@ export class SnapshotManager {
       });
 
       if (!exists) {
-        // 索引不存在，返回空索引（v6：包含空的 current_snapshot_id）
-        return { current_snapshot_id: '', snapshots: [] };
+        return { current_snapshot_id: '', snapshots: [], last_learned_example_revision: 0 };
       }
 
       const data = await fs.readFile({
@@ -105,10 +105,9 @@ export class SnapshotManager {
         directory: AdapterDirectory.Documents,
         encoding: AdapterEncoding.UTF8
       });
-      return JSON.parse(data) as SnapshotIndex;
+      return this.normalizeIndex(JSON.parse(data));
     } catch {
-      // 索引不存在，返回空索引（v6：包含空的 current_snapshot_id）
-      return { current_snapshot_id: '', snapshots: [] };
+      return { current_snapshot_id: '', snapshots: [], last_learned_example_revision: 0 };
     }
   }
 
@@ -126,6 +125,22 @@ export class SnapshotManager {
       encoding: AdapterEncoding.UTF8,
       recursive: true
     });
+  }
+
+  private static normalizeIndex(raw: unknown): SnapshotIndex {
+    if (!raw || typeof raw !== 'object') {
+      return { current_snapshot_id: '', snapshots: [], last_learned_example_revision: 0 };
+    }
+
+    const candidate = raw as Partial<SnapshotIndex>;
+    return {
+      current_snapshot_id: typeof candidate.current_snapshot_id === 'string' ? candidate.current_snapshot_id : '',
+      snapshots: Array.isArray(candidate.snapshots) ? candidate.snapshots : [],
+      last_learned_example_revision:
+        typeof candidate.last_learned_example_revision === 'number' && candidate.last_learned_example_revision >= 0
+          ? candidate.last_learned_example_revision
+          : 0
+    };
   }
 
   /**
@@ -261,6 +276,17 @@ export class SnapshotManager {
   public static async getCurrentId(ledgerName: string): Promise<string> {
     const index = await this.loadIndex(ledgerName);
     return index.current_snapshot_id;
+  }
+
+  public static async getLastLearnedExampleRevision(ledgerName: string): Promise<number> {
+    const index = await this.loadIndex(ledgerName);
+    return index.last_learned_example_revision;
+  }
+
+  public static async setLastLearnedExampleRevision(ledgerName: string, revision: number): Promise<void> {
+    const index = await this.loadIndex(ledgerName);
+    index.last_learned_example_revision = Math.max(0, revision);
+    await this.saveIndex(ledgerName, index);
   }
 
   /**

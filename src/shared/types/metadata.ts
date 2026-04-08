@@ -1,6 +1,6 @@
 export type CategoryType = 'meal' | 'others' | string;
 
-export type SourceType = 'wechat' | 'alipay';
+export type SourceType = 'wechat' | 'alipay' | 'manual';
 
 export const TransactionStatus = {
   SUCCESS: 'SUCCESS', // 支付成功, 交易成功, 对方已收钱
