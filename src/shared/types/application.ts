@@ -24,6 +24,23 @@ export interface HomeTrendPoint {
   amount: number;
 }
 
+export interface HomeTrendCardReadModel {
+  /** 当前窗口大小，首轮固定为 7 */
+  windowSize: number;
+  /** 当前窗口内的折线点 */
+  points: HomeTrendPoint[];
+  /** 当前窗口起始日期 */
+  windowStart: string | null;
+  /** 当前窗口结束日期 */
+  windowEnd: string | null;
+  /** 是否还存在更早窗口 */
+  hasEarlierWindow: boolean;
+  /** 是否还存在更晚窗口 */
+  hasLaterWindow: boolean;
+  /** 当前窗口偏移量，供表现层维持交互状态 */
+  windowOffset: number;
+}
+
 export interface HomeBudgetCardReadModel {
   periodLabel: string;
   budgetAmount: number;
@@ -64,11 +81,14 @@ export interface HomeTransactionReadModel {
   title: string;
   amount: number;
   time: string;
+  sourceType: 'wechat' | 'alipay' | 'manual';
+  sourceLabel: string;
   paymentMethod: string;
   category: string | null;
   userCategory: string | null;
   aiCategory: string | null;
   reasoning: string | null;
+  userNote: string | null;
   direction: 'in' | 'out';
   isVerified: boolean;
   sequence: number;
@@ -88,7 +108,10 @@ export interface HomeAiEngineUiState {
   hasPendingOutOfRange: boolean;
   pendingCount: number;
   lastLearnedAt: string | null;
-  lastLearningNotice: string | null;
+  lastLearningNotice: {
+    type: 'learned';
+    message: string;
+  } | null;
 }
 
 export interface HomeExtensionPointState {
@@ -103,7 +126,7 @@ export interface MoniHomeReadModel {
   categoryDefinitions: LedgerCategoryDefinition[];
   dailyTransactionGroups: HomeDayGroupReadModel[];
   income: HomeIncomeEntry[];
-  trend: HomeTrendPoint[];
+  trendCard: HomeTrendCardReadModel;
   hintCards: HomeHintCardReadModel[];
   budget: HomeBudgetSummaryReadModel;
   unclassifiedCount: number;
@@ -117,6 +140,10 @@ export interface MoniHomeReadModel {
   dataRange: {
     min: string | null;
     max: string | null;
+  };
+  homeDateRange: {
+    start: string | null;
+    end: string | null;
   };
   isLoading: boolean;
 }

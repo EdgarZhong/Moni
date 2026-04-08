@@ -39,6 +39,10 @@ export interface HomeTransaction {
   a: number;
   /** 时间（如 "18:10"） */
   t: string;
+  /** 来源类型 */
+  sourceType?: "wechat" | "alipay" | "manual";
+  /** 来源文案 */
+  sourceLabel?: string;
   /** 支付方式 */
   pay: string;
   /** 用户分类（优先级最高） */
@@ -47,6 +51,8 @@ export interface HomeTransaction {
   aiCat?: string | null;
   /** AI 理由 */
   reason?: string | null;
+  /** 手记说明 */
+  userNote?: string | null;
   /** 图标变体索引（对应 CAT[category].icons[ih % 4]） */
   ih: number;
 }
@@ -286,9 +292,9 @@ interface DisplayBoardProps {
   hasBudget: boolean;
   trendData: TrendPoint[];
   trendTrackMax: number;
-  trendTrackTranslate: number;
-  trendIsDragging: boolean;
-  maxTrendOffset: number;
+  trendWindowLabel: string;
+  hasEarlierTrendWindow: boolean;
+  hasLaterTrendWindow: boolean;
   onManualSwitch: (index: number) => void;
   onTrendForward: () => void;
   onTrendBackward: () => void;
@@ -311,9 +317,9 @@ export function DisplayBoard({
   hasBudget,
   trendData,
   trendTrackMax,
-  trendTrackTranslate,
-  trendIsDragging,
-  maxTrendOffset,
+  trendWindowLabel,
+  hasEarlierTrendWindow,
+  hasLaterTrendWindow,
   onManualSwitch,
   onTrendForward,
   onTrendBackward,
@@ -322,7 +328,8 @@ export function DisplayBoard({
 }: DisplayBoardProps) {
   const chartViewportWidth = 260;
   const chartStep = chartViewportWidth / 6;
-  const chartTrackWidth = Math.max(chartViewportWidth, (trendData.length - 1) * chartStep + chartViewportWidth / 7);
+  const chartTrackWidth = chartViewportWidth;
+  const safeTrendMax = Math.max(trendTrackMax, 1);
 
   return (
     <div
@@ -355,12 +362,12 @@ export function DisplayBoard({
         {/* 折线图卡 */}
         <div {...trendHandlers} style={{ height: 132, padding: "12px 14px", position: "relative", touchAction: "pan-y" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <div style={{ fontSize: 10, color: C.sub }}>近 7 天支出</div>
+            <div style={{ fontSize: 10, color: C.sub }}>{trendWindowLabel}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {/* 左箭头：向历史方向（更早） */}
-              <span onClick={onTrendForward} style={{ fontSize: 16, cursor: "pointer", opacity: trendTrackTranslate < 0 ? 0.55 : 0.2, userSelect: "none" }}>‹</span>
+              <span onClick={onTrendForward} style={{ fontSize: 16, cursor: "pointer", opacity: hasEarlierTrendWindow ? 0.55 : 0.2, userSelect: "none" }}>‹</span>
               {/* 右箭头：向最新方向 */}
-              <span onClick={onTrendBackward} style={{ fontSize: 16, cursor: "pointer", opacity: trendTrackTranslate > -(maxTrendOffset * chartStep) ? 0.55 : 0.2, userSelect: "none" }}>›</span>
+              <span onClick={onTrendBackward} style={{ fontSize: 16, cursor: "pointer", opacity: hasLaterTrendWindow ? 0.55 : 0.2, userSelect: "none" }}>›</span>
             </div>
           </div>
           <div style={{ width: "100%", overflow: "hidden", height: 58 }}>
@@ -369,10 +376,9 @@ export function DisplayBoard({
               height="58"
               viewBox={`0 0 ${chartTrackWidth} 58`}
               preserveAspectRatio="none"
-              style={{ transform: `translateX(${trendTrackTranslate}px)`, transition: trendIsDragging ? "none" : "transform .2s ease-out" }}
             >
               <polyline
-                points={trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / trendTrackMax) * 42}`).join(" ")}
+                points={trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / safeTrendMax) * 42}`).join(" ")}
                 fill="none"
                 stroke={C.mint}
                 strokeWidth="2.5"
@@ -380,7 +386,7 @@ export function DisplayBoard({
                 strokeLinejoin="round"
               />
               <polygon
-                points={`${trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / trendTrackMax) * 42}`).join(" ")} ${chartTrackWidth},50 0,50`}
+                points={`${trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / safeTrendMax) * 42}`).join(" ")} ${chartTrackWidth},50 0,50`}
                 fill={C.mint}
                 opacity=".08"
               />
@@ -388,7 +394,7 @@ export function DisplayBoard({
           </div>
           <div style={{ width: "100%", overflow: "hidden" }}>
             <div
-              style={{ display: "flex", fontSize: 8, color: "#BBB", width: chartTrackWidth, transform: `translateX(${trendTrackTranslate}px)`, transition: trendIsDragging ? "none" : "transform .2s ease-out" }}
+              style={{ display: "flex", fontSize: 8, color: "#BBB", width: chartTrackWidth }}
             >
               {trendData.map((item) => (
                 <span key={item.key} style={{ width: chartStep, flexShrink: 0, textAlign: "center" }}>{item.label}</span>
@@ -505,6 +511,7 @@ export function TagRail({ filters, selectedFilter, unclassifiedCount, onSelect }
 interface DayCardProps {
   day: HomeDayGroup;
   isExpanded: boolean;
+  hideCategoryTag?: boolean;
   /** 该天是否正处于 AI 处理状态（显示流光边框和骨架屏） */
   isAi: boolean;
   /** AI 是否处于软停止过渡状态（显示琥珀色"正在完成…"） */
@@ -517,7 +524,7 @@ interface DayCardProps {
 }
 
 /** DayCard — 按天分组流水卡片（三阶段展开：收起/展开/AI工作态） */
-export function DayCard({ day, isExpanded, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, dayRef }: DayCardProps) {
+export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, dayRef }: DayCardProps) {
   const total = day.visibleItems.reduce((sum, item) => sum + item.a, 0);
   const allClassified = day.items.every((item) => getCategory(item));
   // 完全收起摘要态：未展开 且 不是 AI 处理中
@@ -600,14 +607,22 @@ export function DayCard({ day, isExpanded, isAi, aiStop, onToggle, onItemPointer
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>{item.n}</span>
-                    {category ? <TagChip category={category} /> : <TagChip warning />}
+                    <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 999, background: C.blueBg, color: "#3A6EA5" }}>
+                      {item.sourceLabel ?? "来源未知"}
+                    </span>
+                    {!hideCategoryTag && (category ? <TagChip category={category} /> : <TagChip warning />)}
                   </div>
                   <div style={{ fontSize: 9, color: C.muted, marginTop: 2, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-                    {/* AI 理由：只在 aiOnly 模式下且有 reason 时显示 */}
-                    {aiOnly && item.reason && (
+                    {/* 手记说明优先显示 user_note，其余条目在 AI 暂定态显示 reasoning */}
+                    {item.sourceType === "manual" && item.userNote && (
+                      <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 999, background: "#F5F5F5", color: "#666" }}>
+                        {item.userNote}
+                      </span>
+                    )}
+                    {item.sourceType !== "manual" && aiOnly && item.reason && (
                       <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 999, background: C.greenBg, color: C.greenText }}>AI: {item.reason}</span>
                     )}
-                    <span>{item.t} · {item.pay}</span>
+                    <span>{item.t} · {item.sourceType === "manual" ? "手动记录" : item.pay}</span>
                   </div>
                 </div>
                 {/* 右侧金额 */}

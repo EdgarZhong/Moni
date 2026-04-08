@@ -120,6 +120,14 @@ export class ClassifyQueue {
     const queuePath = this.getLedgerQueuePath(ledger);
     try {
       const fs = FilesystemService.getInstance();
+      /**
+       * 分类队列文件不是每个账本都会存在。
+       * 先 stat 再读，避免浏览器开发态因可选文件缺失刷出 404 噪音。
+       */
+      await fs.stat({
+        path: queuePath,
+        directory: AdapterDirectory.Data
+      });
       const data = JSON.parse(await fs.readFile({
         path: queuePath,
         directory: AdapterDirectory.Data,
