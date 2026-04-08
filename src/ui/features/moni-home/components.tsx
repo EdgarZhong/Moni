@@ -211,20 +211,32 @@ export function TagChip({ category, warning }: TagChipProps) {
 
 interface HintCardProps {
   visible: boolean;
+  icon?: string;
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
   onClose: () => void;
 }
 
 /** HintCard — 情景提示卡（有则显示，无则消失） */
-export function HintCard({ visible, onClose }: HintCardProps) {
-  if (!visible) return null;
+export function HintCard({ visible, icon = "📄", title, description, actionLabel, onAction, onClose }: HintCardProps) {
+  if (!visible || !title || !description) return null;
   return (
     <div className="fi" style={{ margin: "6px 16px", background: C.warmBg, border: `1.5px solid ${C.warmBd}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 13 }}>📄</span>
+      <span style={{ fontSize: 13 }}>{icon}</span>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 11, color: "#8B5E2B", fontWeight: 700 }}>距上次导入已 7 天</div>
-        <div style={{ fontSize: 10, color: "#A07040" }}>导入新账单看看最近花了多少？</div>
+        <div style={{ fontSize: 11, color: "#8B5E2B", fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 10, color: "#A07040" }}>{description}</div>
       </div>
-      <div style={{ fontSize: 11, color: "#8B5E2B", fontWeight: 600, background: C.white, border: "1px solid #E0C09A", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}>导入</div>
+      {actionLabel && (
+        <div
+          onClick={onAction}
+          style={{ fontSize: 11, color: "#8B5E2B", fontWeight: 600, background: C.white, border: "1px solid #E0C09A", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+        >
+          {actionLabel}
+        </div>
+      )}
       <span style={{ fontSize: 14, color: "#CCC", cursor: "pointer" }} onClick={onClose}>×</span>
     </div>
   );
@@ -259,6 +271,13 @@ export function StatsBar({ rangeLabel, expenseTotal, incomeTotal, count, isCusto
 
 interface DisplayBoardProps {
   currentIndex: number;
+  budgetPeriodLabel: string;
+  budgetAmount: number;
+  spentAmount: number;
+  remainingAmount: number;
+  remainingDays: number;
+  dailyAvailableAmount: number;
+  budgetStatusLabel: string;
   /** 预算使用百分比（0-100） */
   budgetPct: number;
   /** 预算状态色值 */
@@ -280,6 +299,13 @@ interface DisplayBoardProps {
 /** DisplayBoard — 顶部看板（预算卡 + 折线图卡，上下轮播） */
 export function DisplayBoard({
   currentIndex,
+  budgetPeriodLabel,
+  budgetAmount,
+  spentAmount,
+  remainingAmount,
+  remainingDays,
+  dailyAvailableAmount,
+  budgetStatusLabel,
   budgetPct,
   budgetColor,
   hasBudget,
@@ -310,13 +336,18 @@ export function DisplayBoard({
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${budgetColor} ${budgetPct}%,#EEE ${budgetPct}%)` }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8 }}>
             <div>
-              <div style={{ fontSize: 10, color: C.sub }}>4月预算</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: C.dark, letterSpacing: -1, fontFamily: "'Space Mono',monospace" }}>¥3,128</div>
-              <div style={{ fontSize: 11, color: budgetColor, marginTop: 2 }}>剩余 ¥1,872 · 还有 24 天</div>
+              <div style={{ fontSize: 10, color: C.sub }}>{budgetPeriodLabel}</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: C.dark, letterSpacing: -1, fontFamily: "'Space Mono',monospace" }}>¥{budgetAmount.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: budgetColor, marginTop: 2 }}>
+                {budgetStatusLabel} · 已花 ¥{spentAmount.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+                剩余 ¥{remainingAmount.toLocaleString()} · 还有 {remainingDays} 天
+              </div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 10, color: C.sub }}>日均可用</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: C.dark, fontFamily: "'Space Mono',monospace" }}>¥78</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.dark, fontFamily: "'Space Mono',monospace" }}>¥{dailyAvailableAmount.toLocaleString()}</div>
             </div>
           </div>
         </div>
