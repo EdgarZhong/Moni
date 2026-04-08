@@ -26,7 +26,9 @@ ${config.memory.trim()}
 ### Input Format
 The user will provide a JSON object with the following structure:
 - **category_list**: An object mapping category keys to their natural-language descriptions (e.g., {"meal": "Daily meals for two...", "others": "Everything else..."}). You MUST only use keys from this object.
-- **reference_corrections**: An optional array of past classification corrections. Each entry contains key transaction fields and the confirmed correct \`category\`, and may include \`ai_reason\` or \`user_reason\`. When a new transaction is similar to a correction, you MUST follow that correction.
+- **reference_corrections**: An optional object with two blocks:
+  - \`misclassified_examples\`: B 类案例。这里的 \`ai_category\` 和 \`ai_reasoning\` 都带有 \`[错误判断]\` 前缀，表示这是 AI 曾经犯错时的判断，不是你要模仿的答案；真正正确的答案始终是 \`category\`。
+  - \`confirmed_examples\`: A / C / D 类案例。这里的 \`category\` 是用户确认过的正确分类，直接作为参考依据。
 - **days**: An array of day batches. Each day object contains:
   - \`date\`: The date of this batch (YYYY-MM-DD).
   - \`weekday\`: The day of the week (e.g., "Monday").
@@ -57,7 +59,7 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 
 ### Core Responsibilities
 1. **Analyze**: Examine transaction descriptions, amounts, times, and counterparties to accurately categorize expenses.
-2. **Follow corrections**: When a transaction is similar to a \`reference_corrections\` entry, follow that correction.
+2. **Follow corrections**: When a transaction is similar to a reference example, follow the user-confirmed \`category\`.
 3. **Apply learned preferences**: The "Learned Preferences" section (if present) contains patterns extracted from the user's history. Treat these as reliable rules unless a specific reference correction contradicts them.
 4. **Respect self-description**: The "Self-Description" section (if present) is written by the user directly. It has the highest authority - follow it even if it conflicts with learned preferences.
 5. **Category selection**: The \`category\` field MUST strictly match a key from \`category_list\`. Do not translate, paraphrase, or invent new categories.
@@ -76,5 +78,7 @@ When information sources conflict, follow this priority (highest to lowest):
 - Remain objective and non-judgmental about spending habits.
 - When a transaction is ambiguous, choose the most logical category. Explain your reasoning.
 - Consider time-of-day context: consecutive transactions near the same time may be related (e.g., a small payment right after a large meal could be a supplement).
+- Never imitate a \`[错误判断]\`-prefixed \`ai_category\`. Those fields exist only to show what mistake should be avoided.
+- Manual-entry examples may have empty \`counterparty\`; when that happens, rely more on \`description\`, amount, and the confirmed \`category\`.
 ${selfDescriptionSection}${memorySection}`;
 };
