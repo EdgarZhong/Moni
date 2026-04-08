@@ -3,13 +3,15 @@
  *
  * 单例模式，自动检测运行环境并选择合适的适配器
  * - Capacitor Native: CapacitorFilesystemAdapter
- * - Pure Web: IndexedDBFilesystemAdapter (待实现)
- * - Electron: ElectronFilesystemAdapter (待实现)
+ * - Capacitor Web / Dev Mock: CapacitorFilesystemAdapter
+ * - Pure Browser Web: Browser filesystem adapter (待实现)
+ * - Electron: Electron filesystem adapter (待实现)
  */
 
 import { Capacitor } from '@capacitor/core';
 import type { IFilesystemAdapter } from './IFilesystemAdapter';
 import { CapacitorFilesystemAdapter } from './CapacitorFilesystemAdapter';
+import { getRuntimeInfo } from '@system/runtime/RuntimeInfo';
 
 export class FilesystemService {
   private static instance: IFilesystemAdapter | null = null;
@@ -45,23 +47,21 @@ export class FilesystemService {
    * 创建适配器实例
    */
   private static createAdapter(): IFilesystemAdapter {
-    // 检测运行环境
     const platform = this.detectPlatform();
 
     console.log(`[FilesystemService] Detected platform: ${platform}`);
 
     switch (platform) {
-      case 'capacitor':
+      case 'capacitor-native':
+      case 'capacitor-web':
         return new CapacitorFilesystemAdapter();
 
       case 'electron':
-        // TODO: 实现 ElectronFilesystemAdapter
         console.warn('[FilesystemService] Electron adapter not implemented, falling back to Capacitor');
         return new CapacitorFilesystemAdapter();
 
-      case 'web':
-        // TODO: 实现 IndexedDBFilesystemAdapter
-        console.warn('[FilesystemService] IndexedDB adapter not implemented, falling back to Capacitor');
+      case 'browser-web':
+        console.warn('[FilesystemService] Browser filesystem adapter not implemented, falling back to Capacitor-compatible filesystem');
         return new CapacitorFilesystemAdapter();
 
       default:
@@ -73,19 +73,21 @@ export class FilesystemService {
   /**
    * 检测运行平台
    */
-  private static detectPlatform(): 'capacitor' | 'electron' | 'web' {
-    // 检测 Capacitor Native
+  private static detectPlatform(): 'capacitor-native' | 'capacitor-web' | 'electron' | 'browser-web' {
     if (Capacitor.isNativePlatform()) {
-      return 'capacitor';
+      return 'capacitor-native';
     }
 
-    // 检测 Electron
+    const runtime = getRuntimeInfo();
+    if (runtime.kind === 'capacitor-web') {
+      return 'capacitor-web';
+    }
+
     if (typeof window !== 'undefined' && (window as any).electron) {
       return 'electron';
     }
 
-    // 默认为纯 Web
-    return 'web';
+    return 'browser-web';
   }
 
   /**
