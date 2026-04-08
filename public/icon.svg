@@ -1,0 +1,22 @@
+<!-- 导航栏中央按钮 — 定稿 SVG（数学级无损加宽15%，保留原版所有细节与圆角） -->
+<svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg">
+  <!-- 深色容器（0修改） -->
+  <rect x="2" y="2" width="48" height="48" rx="14" fill="#222"/>
+  
+  <g transform="translate(0.8 1)">
+    <!-- 猫耳 M：纯程序计算 X轴横向缩放 115%，100%保留了 Claude 原有的平滑度和垂直腿部 -->
+    <path d="M12.7 38 C12.7 38 12.7 18 15 14.5
+             C16.7 13 17.8 13.5 23 25
+             C23 25 23.9 27 24.7 25
+             C25.5 23 29.3 13.5 31 14.5
+             C32.8 15.5 33.4 38 33.4 38"
+          stroke="#F5F0EB" stroke-width="3.2"
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          
+    <!-- 三色装饰簇（0修改） -->
+    <circle cx="37" cy="14" r="4" fill="#FF6B6B" opacity="0.8"/>
+    <circle cx="31" cy="9" r="2.6" fill="#7EC8E3" opacity="0.7"/>
+    <rect x="34" y="7" width="4" height="4" rx="0.8"
+          fill="#F9D56E" opacity="0.6" transform="rotate(18 36 9)"/>
+  </g>
+</svg>

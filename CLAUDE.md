@@ -4,6 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目基本信息
 
+### README 与 CLAUDE 分工
+
+- `README.md`：沉淀已经落实的稳定项目信息，不承载动态任务管理
+- `CLAUDE.md`：作为项目任务看板、执行约束与阶段推进文档，必须随集成进度持续更新
+
 ### 项目概述
 
 **Moni** 是一个越用越聪明的 AI 记账助手，采用 Core-UI 分离架构。
@@ -12,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - 目标：整合 UI 原型与后端逻辑，重构为统一项目
 > - UI 设计权威：`Moni-UI-Prototype` 子仓库的 `DESIGN.md`
 > - 后端逻辑参考：`pixel_bill_backend` 子仓库（feat/frontend-separation 分支）
+> - 当前主线：完成主仓库骨架重构，为首页集成、预算系统、随手记、v7 自学习系统迭代提供稳定地基
 
 ### 架构设计
 
@@ -169,8 +175,19 @@ moni/                            # 主仓库（待构建）
 │   │       ├── services/       # LedgerService, PersistenceManager
 │   │       └── ai_engine/      # AI 分类引擎
 │   └── docs/
-├── docs/                       # 主仓库文档（待创建）
+├── docs/                       # 主仓库文档
+├── src/
+│   ├── bootstrap/              # 应用入口与运行时装配
+│   ├── logic/
+│   │   ├── domain/             # 纯领域规则与协议
+│   │   └── application/        # 应用服务、AI 编排、读模型、用例
+│   ├── system/                 # 文件系统、Capacitor、网络、设备能力
+│   ├── ui/                     # React 表现层
+│   ├── shared/                 # 跨层共享类型与工具
+│   └── devtools/               # 调试与开发脚本
+├── .archive/                   # 归档目录（禁止直接删除文件）
 ├── CLAUDE.md                   # 本文件
+├── README.md                   # 稳定项目说明
 └── .gitmodules                 # Submodule 配置
 ```
 
@@ -229,14 +246,29 @@ npm run dev
 | 仓库结构设计 | 确定 Core-UI 分离架构 |
 | Submodule 整合 | UI 原型 + 后端逻辑作为参考子仓库 |
 | 技术栈确定 | React + TypeScript + Vite + Tailwind + Capacitor |
+| 主仓库骨架冻结（里程碑 1） | 已确定 `bootstrap / logic / system / ui / shared` 为有效主骨架 |
+| 主仓库迁移归位（里程碑 2） | 已完成 `src/bootstrap`、`src/logic/domain`、`src/logic/application` 结构落位，类型检查通过 |
+| README 建立 | 已建立稳定事实说明，并与 `CLAUDE.md` 分工 |
 
 ### 进行中 🚧
 
 | 任务 | 说明 |
 |------|------|
-| 主仓库初始化 | 尚未创建主仓库代码结构 |
-| 架构迁移 | 将后端逻辑从 pixel_bill_backend 迁移到主仓库 |
-| UI 集成 | 将 UI 原型的交互实现集成到主仓库 |
+| 旧目录遗留收口 | `src/app`、`src/core` 保留为迁移遗留参考，不参与主编译路径，不得继续作为开发入口 |
+| 应用层门面化 | 需要收敛 `ui -> logic/application facade` 访问边界 |
+| 首页首轮集成 | 以 `Moni_Homepage_Integration_Spec.md` 为主指导文档推进 |
+| 逻辑层升级 | 按预算系统、随手记、v7 自学习系统规格继续迭代 |
+
+### 当前任务看板
+
+| 状态 | 任务 | 说明 |
+|------|------|------|
+| ✅ | 里程碑 1 | 冻结主仓库目标架构与目录语义 |
+| ✅ | 里程碑 2 | 完成主仓库骨架迁移归位 |
+| ⏭️ | 里程碑 3 | 建立首页应用层门面与聚合读模型 |
+| ⏭️ | 里程碑 4 | 接入预算系统与随手记系统 |
+| ⏭️ | 里程碑 5 | 升级 v7 记忆系统 |
+| ⏭️ | 里程碑 6 | 安卓 Capacitor 目标环境联调与验收 |
 
 ---
 
