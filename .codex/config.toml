@@ -1,0 +1,47 @@
+# Moni 项目级 Codex MCP 配置
+# 依据 OpenAI Codex 官方 MCP 文档，项目可在受信任仓库内使用 .codex/config.toml 声明 MCP server。
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+enabled = true
+required = false
+tool_timeout_sec = 60
+
+[mcp_servers.playwright]
+command = "npx"
+args = [
+  "-y",
+  "@playwright/mcp@latest",
+  "--browser",
+  "chromium",
+  "--device",
+  "iPhone 15",
+  "--headless",
+  "--output-dir",
+  ".codex/artifacts/playwright",
+  "--caps",
+  "vision"
+]
+cwd = "."
+enabled = true
+required = false
+startup_timeout_sec = 90
+tool_timeout_sec = 120
+
+[mcp_servers.playwright.tools.browser_navigate]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_resize]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_evaluate]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_click]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_select_option]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_run_code]
+approval_mode = "approve"
