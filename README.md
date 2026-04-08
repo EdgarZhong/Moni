@@ -62,11 +62,12 @@ src/
 - 随手记规格：[docs/Moni_Manual_Entry_Spec_v3.md](D:/Code/Moni/docs/Moni_Manual_Entry_Spec_v3.md)
 - 浏览器调试入口与 MCP 验证记录：[docs/Moni_E2E_RECORD_INT1.md](D:/Code/Moni/docs/Moni_E2E_RECORD_INT1.md)
 
-## 当前里程碑状态
+## 当前稳定状态
 
-- 里程碑 1：主仓库目标架构与目录语义已冻结
-- 里程碑 2：主仓库骨架已迁移到 `bootstrap / logic / system / ui / shared`
-- 下一步：开始为并行子 agent 输出正式迭代计划，并进入首页、预算、随手记、v7 记忆系统的集成迭代
+- 主仓库目标架构与目录语义已冻结
+- 主仓库已迁移到 `bootstrap / logic / system / ui / shared`
+- 首页主舞台读模型、随手记逻辑链路、预算逻辑链路、v7 记忆核心链路均已接入主线
+- 浏览器调试入口、Playwright / MCP 验证链路已固定为稳定开发测试工具
 
 ## 开发与验证
 
