@@ -1,6 +1,7 @@
 import { type TransactionBase, type TransactionMeta } from './metadata';
 export * from './metadata';
 export * from './application';
+export * from './budget';
 
 // 运行时交易数据结构
 // 继承自 TransactionBase (JSON结构)，并添加运行时特有的 originalDate

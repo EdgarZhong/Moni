@@ -13,118 +13,35 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import type { LedgerMemory, FullTransactionRecord } from '@shared/types/metadata';
+import type {
+  BudgetConfig,
+  BudgetHintCard,
+  BudgetService,
+  BudgetStatus,
+  BudgetStore,
+  CategoryBudgetEntry,
+  CategoryBudgetItem,
+  CategoryBudgetSummary,
+  DisplayBoardBudgetCard,
+  HomeBudgetReadModel,
+  MonthlyBudget,
+  MonthlyBudgetSummary,
+} from '@shared/types/budget';
 
-// ──────────────────────────────────────────────
-// 数据结构类型定义
-// ──────────────────────────────────────────────
-
-/** 月度预算配置 */
-export interface MonthlyBudget {
-  /** 月预算金额 */
-  amount: number;
-  /** 币种（本轮固定 CNY，预留字段） */
-  currency: string;
-}
-
-/** 单个分类的预算条目 */
-export interface CategoryBudgetEntry {
-  /** 该分类的月预算额度 */
-  amount: number;
-}
-
-/** 预算配置（per ledger 独立文件） */
-export interface BudgetConfig {
-  /** 月度总预算（null = 未设置） */
-  monthly: MonthlyBudget | null;
-  /** 分类预算表（key = 标签键名，null = 整体失效） */
-  categoryBudgets: Record<string, CategoryBudgetEntry> | null;
-  /** 分类预算配置版本戳——标签结构变更时自动递增 */
-  categoryBudgetSchemaVersion: number;
-  /** 最后更新时间（ISO 8601） */
-  updatedAt: string;
-}
-
-// ──────────────────────────────────────────────
-// 逻辑层读模型类型定义
-// ──────────────────────────────────────────────
-
-/** 总预算状态三级 */
-export type BudgetStatus = 'none' | 'healthy' | 'warning' | 'exceeded';
-
-/** 分类预算状态二级 */
-export type CategoryBudgetStatus = 'within' | 'exceeded';
-
-/** 总预算读模型（无预算时 enabled=false） */
-export type MonthlyBudgetSummary =
-  | { enabled: false }
-  | {
-      enabled: true;
-      status: 'healthy' | 'warning' | 'exceeded';
-      /** 月份标签，如 "2026-04" */
-      period: string;
-      /** 预算金额 */
-      amount: number;
-      /** 当月已支出 */
-      spent: number;
-      /** 剩余（可负） */
-      remaining: number;
-      /** spent / amount */
-      usageRatio: number;
-      /** 含今天的剩余天数 */
-      remainingDays: number;
-      /** 日均可用金额（超支时为 0） */
-      dailyAvailable: number;
-    };
-
-/** 单个分类预算读模型条目 */
-export interface CategoryBudgetItem {
-  /** 标签键名 */
-  categoryKey: string;
-  /** 该分类月预算 */
-  budgetAmount: number;
-  /** 该分类当月已支出 */
-  spent: number;
-  /** 剩余（可负） */
-  remaining: number;
-  /** 状态 */
-  status: CategoryBudgetStatus;
-  /** 超出金额（未超时为 0） */
-  overageAmount: number;
-}
-
-/** 分类预算读模型（未设置时 enabled=false） */
-export type CategoryBudgetSummary =
-  | { enabled: false }
-  | {
-      enabled: true;
-      /** 各分类的预算状态（只包含设了预算的分类） */
-      items: CategoryBudgetItem[];
-    };
-
-/** 预算相关情景提示卡 */
-export interface BudgetHintCard {
-  id: string;
-  type: 'budget_alert' | 'budget_nudge';
-  priority: 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  dismissible: boolean;
-}
-
-/** 看板预算卡读模型（供 DisplayBoard 组件消费） */
-export interface DisplayBoardBudgetCard {
-  /** 月份标签，如 "4月预算" */
-  periodLabel: string;
-  budgetAmount: number;
-  spentAmount: number;
-  remainingAmount: number;
-  remainingDays: number;
-  /** 超支时为 0 */
-  dailyAvailableAmount: number;
-  status: 'healthy' | 'warning' | 'exceeded';
-  /** 供进度条宽度使用（0-1） */
-  usageRatio: number;
-}
+export type {
+  BudgetConfig,
+  BudgetHintCard,
+  BudgetStatus,
+  BudgetStore,
+  BudgetService,
+  CategoryBudgetEntry,
+  CategoryBudgetItem,
+  CategoryBudgetSummary,
+  DisplayBoardBudgetCard,
+  HomeBudgetReadModel,
+  MonthlyBudget,
+  MonthlyBudgetSummary,
+} from '@shared/types/budget';
 
 // ──────────────────────────────────────────────
 // 预算状态阈值（终版冻结值）
@@ -137,7 +54,7 @@ const BUDGET_EXCEEDED_THRESHOLD = 1.0;
 // BudgetManager 实现
 // ──────────────────────────────────────────────
 
-export class BudgetManager {
+export class BudgetManager implements BudgetStore, BudgetService {
   private static instance: BudgetManager;
 
   private constructor() {}
@@ -156,6 +73,23 @@ export class BudgetManager {
   /** 构造存储路径 */
   private filePath(ledgerId: string): string {
     return `budget_config/${ledgerId}.json`;
+  }
+
+  private createEmptyConfig(): BudgetConfig {
+    return {
+      monthly: null,
+      categoryBudgets: null,
+      categoryBudgetSchemaVersion: 0,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private getMonthlyStatus(summary: MonthlyBudgetSummary): BudgetStatus {
+    return summary.enabled ? summary.status : 'none';
+  }
+
+  private countSuccessfulTransactions(records: Record<string, FullTransactionRecord>): number {
+    return Object.values(records).filter((record) => record.transactionStatus === 'SUCCESS').length;
   }
 
   /** 序列化并写入配置文件 */
@@ -211,12 +145,7 @@ export class BudgetManager {
   ): Promise<void> {
     // 先读取现有配置，再局部更新
     const existing = await this.loadBudgetConfig(ledgerId);
-    const config: BudgetConfig = existing ?? {
-      monthly: null,
-      categoryBudgets: null,
-      categoryBudgetSchemaVersion: 0,
-      updatedAt: '',
-    };
+    const config: BudgetConfig = existing ?? this.createEmptyConfig();
     config.monthly = budget;
     config.updatedAt = new Date().toISOString();
     await this.write(ledgerId, config);
@@ -232,12 +161,7 @@ export class BudgetManager {
     schemaVersion: number
   ): Promise<void> {
     const existing = await this.loadBudgetConfig(ledgerId);
-    const config: BudgetConfig = existing ?? {
-      monthly: null,
-      categoryBudgets: null,
-      categoryBudgetSchemaVersion: 0,
-      updatedAt: '',
-    };
+    const config: BudgetConfig = existing ?? this.createEmptyConfig();
     config.categoryBudgets = budgets;
     config.categoryBudgetSchemaVersion = schemaVersion;
     config.updatedAt = new Date().toISOString();
@@ -489,12 +413,20 @@ export class BudgetManager {
    * @param categorySummary 当前分类预算摘要
    * @param totalTransactionCount 当前账本总交易数（用于判断是否有足够流水）
    */
-  public getBudgetHints(
-    prevMonthlyStatus: BudgetStatus | null,
-    currentMonthlyStatus: BudgetStatus,
-    categorySummary: CategoryBudgetSummary,
-    totalTransactionCount: number
-  ): BudgetHintCard[] {
+  public getBudgetHints(input: {
+    prevMonthlyStatus: BudgetStatus | null;
+    currentMonthlyStatus: BudgetStatus;
+    categorySummary: CategoryBudgetSummary;
+    totalTransactionCount: number;
+    hasInvalidatedCategoryBudget?: boolean;
+  }): BudgetHintCard[] {
+    const {
+      prevMonthlyStatus,
+      currentMonthlyStatus,
+      categorySummary,
+      totalTransactionCount,
+      hasInvalidatedCategoryBudget = false,
+    } = input;
     const hints: BudgetHintCard[] = [];
 
     // 总预算：healthy → warning 跳变
@@ -511,12 +443,18 @@ export class BudgetManager {
 
     // 总预算：warning → exceeded 跳变
     if (prevMonthlyStatus === 'warning' && currentMonthlyStatus === 'exceeded') {
+      const exceededItemCount = categorySummary.enabled
+        ? categorySummary.items.filter((item) => item.status === 'exceeded').length
+        : 0;
       hints.push({
         id: 'budget_exceeded',
         type: 'budget_alert',
         priority: 'high',
         title: '本月预算已超出',
-        description: '本月支出已超过预算上限',
+        description:
+          exceededItemCount > 0
+            ? `本月支出已超过预算上限，且有 ${exceededItemCount} 个分类已超支`
+            : '本月支出已超过预算上限',
         dismissible: true,
       });
     }
@@ -551,7 +489,48 @@ export class BudgetManager {
       }
     }
 
+    if (hasInvalidatedCategoryBudget) {
+      hints.push({
+        id: 'category_budget_invalidated',
+        type: 'budget_alert',
+        priority: 'medium',
+        title: '分类预算已重置',
+        description: '标签结构发生变更，分类预算需要重新配置',
+        dismissible: true,
+      });
+    }
+
     return hints;
+  }
+
+  public async getHomeBudgetReadModel(
+    ledgerId: string,
+    ledgerMemory: LedgerMemory | null,
+    options?: {
+      now?: Date;
+      prevMonthlyStatus?: BudgetStatus | null;
+    }
+  ): Promise<HomeBudgetReadModel> {
+    const now = options?.now ?? new Date();
+    const monthlyBudget = await this.computeMonthlyBudgetSummary(ledgerId, ledgerMemory, now);
+    const categoryBudget = await this.computeCategoryBudgetSummary(ledgerId, ledgerMemory, now);
+    const budgetConfig = await this.loadBudgetConfig(ledgerId);
+    const records = ledgerMemory?.records ?? {};
+
+    const budgetHints = this.getBudgetHints({
+      prevMonthlyStatus: options?.prevMonthlyStatus ?? null,
+      currentMonthlyStatus: this.getMonthlyStatus(monthlyBudget),
+      categorySummary: categoryBudget,
+      totalTransactionCount: this.countSuccessfulTransactions(records),
+      hasInvalidatedCategoryBudget:
+        budgetConfig?.categoryBudgets === null && (budgetConfig?.categoryBudgetSchemaVersion ?? 0) > 0,
+    });
+
+    return {
+      monthlyBudget,
+      categoryBudget,
+      budgetHints,
+    };
   }
 
   /**
