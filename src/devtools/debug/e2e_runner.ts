@@ -2,6 +2,7 @@ import { appFacade } from '@bootstrap/appFacade';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
 import { CompressionSession } from '@logic/application/ai/CompressionSession';
 import type { CompressionContext, CompressionResult } from '@logic/application/ai/CompressionSession';
+import { LearningAutomationService, type AutoLearningStatus } from '@logic/application/ai/LearningAutomationService';
 import { LearningSession, type LearningDeltaPayload } from '@logic/application/ai/LearningSession';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
 import { ExampleStore } from '@logic/application/services/ExampleStore';
@@ -97,6 +98,7 @@ interface MoniDebugApi {
   };
   learning: {
     getDeltaPayload: (ledgerId?: string, baselineRevision?: number) => Promise<LearningDeltaPayload>;
+    getAutoTriggerState: (ledgerId?: string) => Promise<AutoLearningStatus>;
   };
   compression: {
     getContext: (ledgerId?: string, force?: boolean) => Promise<CompressionContext>;
@@ -123,6 +125,7 @@ interface MoniE2EApi {
     runBudgetFlowTest: () => Promise<DebugTestReport>;
     runExampleStoreSpecTest: () => Promise<DebugTestReport>;
     runLearningPayloadSpecTest: () => Promise<DebugTestReport>;
+    runLearningAutomationSpecTest: () => Promise<DebugTestReport>;
     runCompressionSpecTest: () => Promise<DebugTestReport>;
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
   };
@@ -966,6 +969,114 @@ async function runLearningPayloadSpecTest(): Promise<DebugTestReport> {
   return report;
 }
 
+async function runLearningAutomationSpecTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runLearningAutomationSpecTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const prefsManager = LedgerPreferencesManager.getInstance();
+  const manualManager = ManualEntryManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('学习偏好测试账本');
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '自动学习偏好测试先创建独立临时账本');
+
+    const savedPrefs = await prefsManager.update(tempLedger, {
+      learning: {
+        threshold: 2,
+        autoLearn: true,
+      },
+    });
+    assertStep(
+      report,
+      'persistInitialLearningPrefs',
+      savedPrefs.learning.threshold === 2 && savedPrefs.learning.autoLearn === true,
+      savedPrefs.learning,
+      '学习阈值与 autoLearn 应写入 ledger_prefs'
+    );
+
+    const seededId = await manualManager.addEntry(tempLedger, {
+      amount: 26,
+      direction: 'out',
+      category: '正餐',
+      subject: '学习自动触发样本',
+      description: '用于验证自动学习阈值',
+      date: '2026-04-09 12:30:00',
+    });
+    assertStep(report, 'seedManualExample', Boolean(seededId), { seededId }, '应成功写入一条 D 类样本');
+
+    const beforeTrigger = await LearningAutomationService.inspect(tempLedger);
+    assertStep(
+      report,
+      'thresholdBlocksAutoLearning',
+      beforeTrigger.pendingCount === 1 && beforeTrigger.threshold === 2 && beforeTrigger.shouldTrigger === false,
+      beforeTrigger,
+      '当 pendingCount 小于阈值时，不应触发自动学习'
+    );
+
+    const loweredPrefs = await prefsManager.update(tempLedger, {
+      learning: {
+        threshold: 1,
+        autoLearn: true,
+      },
+    });
+    assertStep(
+      report,
+      'lowerLearningThreshold',
+      loweredPrefs.learning.threshold === 1,
+      loweredPrefs.learning,
+      '降低阈值后，自动学习判定应变为可触发'
+    );
+
+    const afterLowering = await LearningAutomationService.inspect(tempLedger);
+    assertStep(
+      report,
+      'thresholdEnablesAutoLearning',
+      afterLowering.pendingCount === 1 && afterLowering.threshold === 1 && afterLowering.shouldTrigger === true,
+      afterLowering,
+      '当 pendingCount 达到阈值时，应进入可自动学习状态'
+    );
+
+    const disabledPrefs = await prefsManager.update(tempLedger, {
+      learning: {
+        autoLearn: false,
+      },
+    });
+    assertStep(
+      report,
+      'disableAutoLearn',
+      disabledPrefs.learning.autoLearn === false,
+      disabledPrefs.learning,
+      '关闭 autoLearn 后，配置文件应保留该状态'
+    );
+
+    const afterDisable = await LearningAutomationService.inspect(tempLedger);
+    assertStep(
+      report,
+      'autoLearnStopsTrigger',
+      afterDisable.pendingCount === 1 && afterDisable.autoLearn === false && afterDisable.shouldTrigger === false,
+      afterDisable,
+      '即便达到阈值，只要 autoLearn 关闭，就不应自动触发学习'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+  };
+  return report;
+}
+
 async function runCompressionSpecTest(): Promise<DebugTestReport> {
   await ensureAppReady();
 
@@ -1347,6 +1458,14 @@ function createDebugApi(): MoniDebugApi {
         const delta = await ExampleStore.getLearningDelta(targetLedger, baselineRevision);
         return LearningSession.buildLearningPayload(delta);
       },
+      getAutoTriggerState: async (ledgerId?: string) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await LearningAutomationService.inspect(targetLedger);
+      },
     },
     compression: {
       getContext: async (ledgerId?: string, force: boolean = false) => {
@@ -1392,6 +1511,7 @@ function createE2EApi(): MoniE2EApi {
       runBudgetFlowTest,
       runExampleStoreSpecTest,
       runLearningPayloadSpecTest,
+      runLearningAutomationSpecTest,
       runCompressionSpecTest,
       runHomeReadModelSmokeTest,
     },

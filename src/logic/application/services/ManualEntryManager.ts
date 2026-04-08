@@ -3,6 +3,7 @@ import type { CategoryType, FullTransactionRecord } from '@shared/types/metadata
 import { TransactionStatus } from '@shared/types/metadata';
 import { LedgerService } from './LedgerService';
 import { ExampleStore } from './ExampleStore';
+import { LearningAutomationService } from '../ai/LearningAutomationService';
 
 export interface ManualEntryInput {
   amount: number;
@@ -44,6 +45,11 @@ export class ManualEntryManager {
 
     if (record.product.trim()) {
       await ExampleStore.addOrUpdate(ledgerName, record, false);
+      /**
+       * D 类手记样本成功入库后，异步检查是否达到自动学习阈值。
+       * 这里不阻塞手记保存结果。
+       */
+      void LearningAutomationService.evaluateAndRun(ledgerName, this.ledgerService.getCategories());
     }
 
     return record.id;
@@ -67,6 +73,11 @@ export class ManualEntryManager {
 
     if (existingRecord.sourceType === 'manual') {
       await ExampleStore.deleteByTxId(ledgerName, id);
+      /**
+       * 手记样本删除会改变学习窗口的净变更集，
+       * 因此删除后也应重新评估自动学习触发条件。
+       */
+      void LearningAutomationService.evaluateAndRun(ledgerName, this.ledgerService.getCategories());
     }
 
     if (linkedId && linkedStatus === 'merged') {

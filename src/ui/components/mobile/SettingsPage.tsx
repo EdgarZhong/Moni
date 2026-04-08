@@ -9,6 +9,7 @@ import { MemoryManager } from '@logic/application/services/MemoryManager';
 import { SnapshotManager, type SnapshotMeta, type SnapshotContent } from '@logic/application/services/SnapshotManager';
 import { LearningSession } from '@logic/application/ai/LearningSession';
 import { LedgerService } from '@logic/application/services/LedgerService';
+import { LedgerPreferencesManager } from '@logic/application/services/LedgerPreferencesManager';
 import { ReclassifyConfirmDialog, type ReclassifyMode } from './ReclassifyConfirmDialog';
 
 interface SettingsPageProps {
@@ -1491,13 +1492,21 @@ const AIMemoryPanel: React.FC<AIMemoryPanelProps> = ({
   const [editingMemories, setEditingMemories] = useState<string[]>([]);
   const [isSavingMemories, setIsSavingMemories] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotContent | null>(null);
+  /**
+   * 阈值滑杆现在接到 ledger_prefs。
+   * 这里用一个“是否已完成首轮水合”的标记，避免 loadPanelData 刚把配置读进来，
+   * useEffect 又立刻把相同值当成用户修改重新写回磁盘。
+   */
+  const thresholdHydratedRef = useRef(false);
+  const thresholdPersistTimerRef = useRef<number | null>(null);
 
   const loadPanelData = useCallback(async () => {
-    const [mems, stats, snaps, currentSnapId] = await Promise.all([
+    const [mems, stats, snaps, currentSnapId, prefs] = await Promise.all([
       MemoryManager.load(ledgerName),
       ExampleStore.getStats(ledgerName),
       SnapshotManager.list(ledgerName),
-      SnapshotManager.findMatchingSnapshot(ledgerName)
+      SnapshotManager.findMatchingSnapshot(ledgerName),
+      LedgerPreferencesManager.getInstance().getLearningPreferences(ledgerName)
     ]);
 
     let finalSnapshots = snaps;
@@ -1521,7 +1530,49 @@ const AIMemoryPanel: React.FC<AIMemoryPanelProps> = ({
     setExampleCount(stats.count);
     setSnapshots(finalSnapshots);
     setCurrentSnapshotId(finalCurrentSnapshotId);
+    setThreshold(prefs.threshold);
+    thresholdHydratedRef.current = true;
   }, [ledgerName]);
+
+  /**
+   * 切换账本时，先重置“已水合”标记。
+   * 否则新账本第一次加载完成前，旧账本残留的 threshold 可能被误写回新账本配置。
+   */
+  useEffect(() => {
+    thresholdHydratedRef.current = false;
+  }, [ledgerName]);
+
+  /**
+   * 将学习阈值静默持久化到 ledger_prefs。
+   * 当前 UI 仍保持原来的滑杆交互，不额外新增按钮，
+   * 只是把原先的本地状态接成真实账本级配置。
+   */
+  useEffect(() => {
+    if (!thresholdHydratedRef.current) {
+      return;
+    }
+
+    if (thresholdPersistTimerRef.current !== null) {
+      window.clearTimeout(thresholdPersistTimerRef.current);
+    }
+
+    thresholdPersistTimerRef.current = window.setTimeout(() => {
+      void LedgerPreferencesManager.getInstance().update(ledgerName, {
+        learning: {
+          threshold,
+        },
+      }).catch((error) => {
+        console.error('[AIMemoryPanel] Failed to persist learning threshold:', error);
+      });
+    }, 250);
+
+    return () => {
+      if (thresholdPersistTimerRef.current !== null) {
+        window.clearTimeout(thresholdPersistTimerRef.current);
+        thresholdPersistTimerRef.current = null;
+      }
+    };
+  }, [ledgerName, threshold]);
 
   // 加载数据
   useEffect(() => {

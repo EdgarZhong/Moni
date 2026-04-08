@@ -4,6 +4,7 @@ import type {
   LedgerCompressionPreferences,
   LedgerLearningPreferences,
   LedgerPreferences,
+  LedgerPreferencesPatch,
 } from '@shared/types/ledger-preferences';
 
 /**
@@ -85,7 +86,7 @@ export class LedgerPreferencesManager {
    */
   public async update(
     ledgerId: string,
-    patch: Partial<LedgerPreferences>
+    patch: LedgerPreferencesPatch
   ): Promise<LedgerPreferences> {
     const current = await this.load(ledgerId);
     const next = this.normalizePreferences({
