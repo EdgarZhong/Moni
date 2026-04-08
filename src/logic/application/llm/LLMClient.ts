@@ -10,6 +10,14 @@ interface LLMResponse {
   }>;
 }
 
+/**
+ * Chat 调用选项。
+ * 默认保持现有 JSON 模式不变，只有收编这类纯文本输出场景才显式切到 text。
+ */
+export interface ChatOptions {
+  responseFormat?: 'json_object' | 'text';
+}
+
 export class LLMClient {
   private config: LLMConfig;
   private logger: RawLogger;
@@ -19,15 +27,18 @@ export class LLMClient {
     this.logger = new RawLogger();
   }
 
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     // 修复双斜杠问题：如果 baseUrl 以 / 结尾，去掉它
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
+    const responseFormat = options.responseFormat ?? 'json_object';
     
     const payload = {
       model: this.config.model,
       messages: messages,
-      response_format: { type: "json_object" },
+      ...(responseFormat === 'json_object'
+        ? { response_format: { type: 'json_object' } }
+        : {}),
       temperature: this.config.temperature || 0.3,
       stream: false
     };

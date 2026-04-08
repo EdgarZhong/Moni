@@ -95,6 +95,9 @@ npm run lint
 - 账本 CRUD 逻辑链路测试：`window.__MONI_E2E__.tests.runLedgerCrudTest()`
 - 随手记逻辑链路测试：`window.__MONI_E2E__.tests.runManualEntryFlowTest()`
 - 预算逻辑链路测试：`window.__MONI_E2E__.tests.runBudgetFlowTest()`
+- 实例库 v7 / 手记映射规格测试：`window.__MONI_E2E__.tests.runExampleStoreSpecTest()`
+- 学习 payload v7 规格测试：`window.__MONI_E2E__.tests.runLearningPayloadSpecTest()`
+- 收编配置与上下文规格测试：`window.__MONI_E2E__.tests.runCompressionSpecTest()`
 - 首页读模型 smoke test：`window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()`
 
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：

@@ -15,11 +15,13 @@
  */
 
 import { MemoryManager, type MemoryOperation } from '../services/MemoryManager';
+import { LedgerPreferencesManager } from '../services/LedgerPreferencesManager';
 import { SnapshotManager } from '../services/SnapshotManager';
 import { ExampleStore } from '../services/ExampleStore';
 import { LLMClient } from '../llm/LLMClient';
 import { ConfigManager } from '@system/config/ConfigManager';
 import type { ExampleEntry, LearningExampleDelta } from '../services/ExampleStore';
+import { CompressionSession } from './CompressionSession';
 
 /**
  * 学习会话配置
@@ -55,12 +57,42 @@ export interface LearningStatus {
   lastLearnedAt: string | null;
 }
 
-export class LearningSession {
-  private static readonly DEFAULT_CONFIG: LearningConfig = {
-    threshold: 5,
-    autoLearn: true
-  };
+/**
+ * 学习阶段发给模型的 rich schema。
+ * 这套结构与 v7 文档保持一致：
+ * - 使用 from_revision / to_revision
+ * - full_reconcile 时使用 current_examples
+ * - 保留完整交易上下文，但不带 created_at
+ */
+export interface LearningCorrection {
+  id: string;
+  time: string;
+  sourceType: ExampleEntry['sourceType'];
+  rawClass: string;
+  counterparty: string;
+  product: string;
+  amount: number;
+  direction: ExampleEntry['direction'];
+  paymentMethod: string;
+  transactionStatus: ExampleEntry['transactionStatus'];
+  remark: string;
+  category: string;
+  ai_category: string;
+  ai_reasoning: string;
+  is_verified: boolean;
+  user_note: string;
+}
 
+export interface LearningDeltaPayload {
+  mode: 'delta' | 'full_reconcile';
+  from_revision: number;
+  to_revision: number;
+  upserts: LearningCorrection[];
+  deletions: LearningCorrection[];
+  current_examples?: LearningCorrection[];
+}
+
+export class LearningSession {
   /**
    * 生成学习 Prompt 的 System 部分
    */
@@ -88,8 +120,8 @@ Only reference categories that exist in this list. If a correction references a 
 ${memorySection}
 ### Learning Window
 The user message provides either:
-- \`mode: "incremental"\`: only net changes since the last successful learning baseline
-- \`mode: "full_reconcile"\`: the change log cannot be trusted, so \`all_examples\` is the full current truth and should be treated as authoritative
+- \`mode: "delta"\`: only net changes since the last successful learning baseline
+- \`mode: "full_reconcile"\`: the change log cannot be trusted, so \`current_examples\` is the full current truth and should be treated as authoritative
 
 When \`mode\` is \`full_reconcile\`, do not assume any removed pattern is still valid just because it exists in current memory.
 
@@ -127,15 +159,7 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
    * 构建 User Message
    */
   private static buildLearningUserMessage(delta: LearningExampleDelta): string {
-    const payload = {
-      mode: delta.mode,
-      last_learned_example_revision: delta.lastLearnedRevision,
-      current_example_revision: delta.currentRevision,
-      reason: delta.reason,
-      upserts: delta.upserts.map(example => this.simplifyExample(example)),
-      deletions: delta.deletions.map(example => this.simplifyExample(example)),
-      all_examples: delta.allEntries?.map(example => this.simplifyExample(example))
-    };
+    const payload = this.buildLearningPayload(delta);
 
     return `以下是本次学习窗口的实例库数据：
 
@@ -144,7 +168,11 @@ ${JSON.stringify(payload, null, 2)}
 请基于这些样本变更输出记忆更新操作。`;
   }
 
-  private static simplifyExample(example: ExampleEntry) {
+  /**
+   * 统一把内部 ExampleEntry 转成学习阶段 rich schema。
+   * created_at 只属于存储层稳定性细节，不进入学习 Prompt。
+   */
+  private static simplifyExample(example: ExampleEntry): LearningCorrection {
     return {
       id: example.id,
       time: example.time,
@@ -154,11 +182,32 @@ ${JSON.stringify(payload, null, 2)}
       product: example.product,
       amount: example.amount,
       direction: example.direction,
+      paymentMethod: example.paymentMethod,
+      transactionStatus: example.transactionStatus,
+      remark: example.remark,
       category: example.category,
       ai_category: example.ai_category,
       ai_reasoning: example.ai_reasoning,
-      user_note: example.user_note,
-      is_verified: example.is_verified
+      is_verified: example.is_verified,
+      user_note: example.user_note
+    };
+  }
+
+  /**
+   * 供运行时和浏览器调试入口共用的学习 payload 构造器。
+   * 这样 E2E 可以直接断言 rich schema，而不是只通过字符串猜测 Prompt 内容。
+   */
+  public static buildLearningPayload(delta: LearningExampleDelta): LearningDeltaPayload {
+    return {
+      mode: delta.mode === 'incremental' ? 'delta' : 'full_reconcile',
+      from_revision: delta.lastLearnedRevision,
+      to_revision: delta.currentRevision,
+      upserts: delta.upserts.map(example => this.simplifyExample(example)),
+      deletions: delta.deletions.map(example => this.simplifyExample(example)),
+      current_examples:
+        delta.mode === 'full_reconcile'
+          ? (delta.allEntries ?? []).map(example => this.simplifyExample(example))
+          : undefined
     };
   }
 
@@ -264,10 +313,31 @@ ${JSON.stringify(payload, null, 2)}
       const summary = this.generateSummary(operations, delta);
       console.log(`[LearningSession] Complete: ${summary}`);
 
+      /**
+       * 学习成功后，按 v7 口径检查是否需要自动触发收编。
+       * 收编失败不应反向污染学习结果，因此这里只是追加日志和摘要，不回滚 ai_learn 快照。
+       */
+      let finalSummary = summary;
+      try {
+        const prefs = await LedgerPreferencesManager.getInstance().getCompressionPreferences(ledgerName);
+        const currentMemory = await MemoryManager.load(ledgerName);
+        if (CompressionSession.shouldTrigger(currentMemory.length, prefs.threshold)) {
+          const compression = await CompressionSession.run(ledgerName, categories);
+          if (compression.success) {
+            finalSummary = `${summary}；${compression.summary}`;
+          } else {
+            finalSummary = `${summary}；收编失败`;
+            console.warn('[LearningSession] Compression failed after learning:', compression.error);
+          }
+        }
+      } catch (compressionError) {
+        console.warn('[LearningSession] Failed to evaluate compression after learning:', compressionError);
+      }
+
       return {
         success: true,
         operations,
-        summary,
+        summary: finalSummary,
         snapshotId: snapshotId || undefined
       };
     } catch (e) {
@@ -308,7 +378,7 @@ ${JSON.stringify(payload, null, 2)}
    * @param config 学习配置
    */
   public static shouldTrigger(pendingCount: number, config?: Partial<LearningConfig>): boolean {
-    const threshold = config?.threshold ?? this.DEFAULT_CONFIG.threshold;
+    const threshold = config?.threshold ?? LedgerPreferencesManager.getInstance().getDefaults().learning.threshold;
     return pendingCount >= threshold;
   }
 
@@ -316,6 +386,6 @@ ${JSON.stringify(payload, null, 2)}
    * 获取默认配置
    */
   public static getDefaultConfig(): LearningConfig {
-    return { ...this.DEFAULT_CONFIG };
+    return { ...LedgerPreferencesManager.getInstance().getDefaults().learning };
   }
 }
