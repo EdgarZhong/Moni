@@ -37,6 +37,31 @@
 MONI_CODEX_RUN_FULL_VERIFY=1 ./.codex/scripts/worktree-init.sh
 ```
 
+## MCP 配置
+
+仓库已补充项目级 MCP 配置文件：
+
+- `/.codex/config.toml`
+
+当前预置两个 MCP server：
+
+- `openaiDeveloperDocs`
+  - 指向 OpenAI Developers MCP 端点，用于查官方文档
+- `playwright`
+  - 通过 `npx @playwright/mcp@latest` 启动
+  - 默认参数已固定为移动端尺寸验证友好的 Chrome + `iPhone 15` 设备模拟
+  - 产物输出目录：`/.codex/artifacts/playwright`
+  - 首次启动可能因为 `npx` 下载和浏览器探测超过 20 秒，因此项目配置已把 `startup_timeout_sec` 提高到 `90`
+
+建议用法：
+
+```bash
+codex mcp list
+codex mcp get playwright
+```
+
+若本机尚未安装浏览器自动化所需依赖，首次启动 `playwright` MCP 时会触发 `npx` 下载对应包。
+
 ## 说明
 
 - 受限沙箱内 `npm run build` 可能触发 `esbuild spawn EPERM`

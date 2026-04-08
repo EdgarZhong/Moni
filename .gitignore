@@ -29,6 +29,7 @@ dist-ssr
 .worktrees
 .worktrees/**
 test-img/
+.codex/artifacts/
 # private data
 2025-11-5to2026-1-5/
 
