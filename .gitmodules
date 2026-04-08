@@ -4,4 +4,4 @@
 [submodule "pixel_bill_backend"]
 	path = pixel_bill_backend
 	url = git@github.com:EdgarZhong/PixelBill.git
-	branch = feat/frontend-separation
+	branch = feat/moni-integration
