@@ -23,8 +23,8 @@ export function useAppLogic() {
     filter, 
     direction, 
     dateRange, 
-    TABS,
-    service // Access the singleton instance
+    tabs,
+    appFacade
   } = useLedger();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,20 +48,20 @@ export function useAppLogic() {
   // --- Actions ---
 
   const handleTabChange = (newFilter: string) => {
-    service.setFilter(newFilter);
+    appFacade.setFilter(newFilter);
   };
 
   const updateCategory = (id: string, newCategory: string, newReasoning?: string) => {
-    service.updateCategory(id, newCategory, newReasoning);
+    appFacade.updateTransactionCategory(id, newCategory, newReasoning);
   };
 
   const setUserNote = (id: string, userNote: string) => {
     // 将备注更新走专用通道，避免连带写入用户分类
-    service.updateUserNote(id, userNote);
+    appFacade.updateUserNote(id, userNote);
   };
 
   const setVerification = (id: string, isVerified: boolean) => {
-    service.setVerification(id, isVerified);
+    appFacade.setTransactionVerification(id, isVerified);
   };
 
   // const setDateRange = (_range: { start: Date | null; end: Date | null }) => {
@@ -97,7 +97,7 @@ export function useAppLogic() {
         }
         
         const parsedData = await parseFiles(files);
-        service.ingestParsedData(parsedData, dirHandle);
+        await appFacade.importParsedData(parsedData, dirHandle);
         
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
@@ -121,7 +121,7 @@ export function useAppLogic() {
 
     try {
       const parsedData = await parseFiles(fileArray);
-      service.ingestRawData(parsedData);
+      await appFacade.importRawData(parsedData);
     } catch (error) {
        console.error('Error parsing files:', error);
     }
@@ -177,13 +177,13 @@ export function useAppLogic() {
   // I will assume I'll add `memoryFileHandle` to `LedgerState` in the next step.
   
   // Mock function for now to prevent TS error until I update Service
-  const memoryFileHandle = service.getState().memoryFileHandle;
+  const memoryFileHandle = appFacade.getLedgerState().memoryFileHandle;
 
   const handleExternalFileChange = (_info: FileChangeInfo) => {
      void _info;
      // Loopback detection logic moved to Service? 
      // Or just call reload.
-     service.reloadMemory();
+     void appFacade.reloadLedgerMemory();
   };
 
   useFileWatcher(memoryFileHandle, handleExternalFileChange);
@@ -204,7 +204,7 @@ export function useAppLogic() {
     setDateRange: (range: { start: Date | null; end: Date | null }) => {
         // We need to update Service state
         // I'll add this method to Service.
-        service.setDateRange(range);
+        appFacade.setDateRange(range);
     },
     fileInputRef,
     handleFileChange,
@@ -212,7 +212,7 @@ export function useAppLogic() {
     handleImportData: () => fileInputRef.current?.click(),
     totalExpense,
     totalIncome,
-    TABS,
+    TABS: tabs,
     uiNotice,
     clearUiNotice: () => setUiNotice(null)
   };

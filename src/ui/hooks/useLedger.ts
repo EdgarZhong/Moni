@@ -1,16 +1,14 @@
 import { useSyncExternalStore } from 'react';
-import { LedgerService } from '@logic/application/services/LedgerService';
+import { appFacade } from '@bootstrap/appFacade';
 
 export function useLedger() {
-  const service = LedgerService.getInstance();
-
   const state = useSyncExternalStore(
-    (callback) => service.subscribe(callback),
-    () => service.getState()
+    (callback) => appFacade.subscribe(callback),
+    () => appFacade.getLedgerState()
   );
 
   return {
     ...state,
-    service // Expose service for actions
+    appFacade
   };
 }
