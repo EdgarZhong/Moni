@@ -1,6 +1,6 @@
 // Mock Capacitor Core
 export const Capacitor = {
-  isNativePlatform: () => false,
+  isNativePlatform: () => true,
   getPlatform: () => 'web',
   isPluginAvailable: (name: string) => ['Filesystem', 'Haptics'].includes(name),
   pluginMethodNoop: () => {}

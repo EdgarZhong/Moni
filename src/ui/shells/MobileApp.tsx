@@ -14,7 +14,7 @@ import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { LedgerService } from '@logic/application/services/LedgerService';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
 import type { Transaction } from '@shared/types';
-import type { LedgerMeta } from '@system/filesystem/fs-storage';
+import { DEFAULT_LEDGER_NAME, type LedgerMeta } from '@system/filesystem/fs-storage';
 import { format } from 'date-fns';
 import { triggerHaptic, HapticFeedbackLevel } from '@system/device/haptics';
 import { ConfigManager } from '@system/config/ConfigManager';
@@ -51,7 +51,7 @@ export function MobileApp() {
 
   // [CHOOSE_LEDGER]状态
   const [ledgers, setLedgers] = useState<LedgerMeta[]>([]);
-  const [activeLedger, setActiveLedger] = useState<string>('default');
+  const [activeLedger, setActiveLedger] = useState<string>(DEFAULT_LEDGER_NAME);
 
   // [SETTINGS]下拉设置页面状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -232,7 +232,7 @@ export function MobileApp() {
     const manager = LedgerManager.getInstance();
     const success = await manager.deleteLedger(name);
     if (success) {
-      setActiveLedger('default');
+      setActiveLedger(DEFAULT_LEDGER_NAME);
       await loadLedgers();
     }
   }, [loadLedgers]);

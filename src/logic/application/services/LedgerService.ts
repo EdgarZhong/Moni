@@ -433,8 +433,8 @@ export class LedgerService {
     const defined = Object.keys(this.getDefinedCategoriesMap(memory));
     const tabs = ['ALL', ...defined];
 
-    if (defined.length > 0 && !defined.includes('others')) {
-      tabs.push('others');
+    if (defined.length > 0 && !defined.includes('其他')) {
+      tabs.push('其他');
     }
     if (!tabs.includes('uncategorized')) {
       tabs.push('uncategorized');
@@ -1129,9 +1129,9 @@ export class LedgerService {
       return { success: false, affectedTxIds: [], dirtyDates: [], enqueueSuccess: false };
     }
 
-    // 不能删除 others（兜底标签）
-    if (name === 'others') {
-      console.error('[LedgerService] Cannot delete "others" category');
+    // 不能删除 其他（兜底标签）
+    if (name === '其他') {
+      console.error('[LedgerService] Cannot delete "其他" category');
       return { success: false, affectedTxIds: [], dirtyDates: [], enqueueSuccess: false };
     }
 
@@ -1497,8 +1497,8 @@ export class LedgerService {
 
   private orderDefinedCategories(categories: Record<string, string>): Record<string, string> {
     const entries = Object.entries(categories);
-    const otherEntries = entries.filter(([key]) => key === 'others');
-    const regularEntries = entries.filter(([key]) => key !== 'others');
+    const otherEntries = entries.filter(([key]) => key === '其他');
+    const regularEntries = entries.filter(([key]) => key !== '其他');
     return LedgerService.createCategoryMap([...regularEntries, ...otherEntries]);
   }
 
@@ -1540,9 +1540,12 @@ export class LedgerService {
   }
 
   private static createOrderedCategoryMap(entries: Array<[string, string]>): Record<string, string> {
-    const otherEntries = entries.filter(([key]) => key === 'others');
-    const regularEntries = entries.filter(([key]) => key !== 'others');
-    return LedgerService.createCategoryMap([...regularEntries, ...otherEntries]);
+    const autoEntries = entries.filter(([key]) => key === '其他');
+    const regularEntries = entries.filter(([key]) => key !== '其他');
+    const baseEntries: Array<[string, string]> = regularEntries.length > 0 && autoEntries.length === 0
+      ? [...regularEntries, ['其他', LedgerService.sanitizeCategoryDescription(undefined, '其他')]]
+      : [...regularEntries, ...autoEntries];
+    return LedgerService.createCategoryMap(baseEntries);
   }
 
   private static createCategoryMap(entries: Array<[string, string]>): Record<string, string> {
@@ -1571,6 +1574,40 @@ export class LedgerService {
       return null;
     }
 
+    if (trimmed === 'others') {
+      return '其他';
+    }
+    if (trimmed === 'meal') {
+      return '正餐';
+    }
+    if (trimmed === 'snack') {
+      return '零食';
+    }
+    if (trimmed === 'transport') {
+      return '交通';
+    }
+    if (trimmed === 'entertainment') {
+      return '娱乐';
+    }
+    if (trimmed === 'feast') {
+      return '大餐';
+    }
+    if (trimmed === 'health') {
+      return '健康';
+    }
+    if (trimmed === 'shopping') {
+      return '购物';
+    }
+    if (trimmed === 'education') {
+      return '教育';
+    }
+    if (trimmed === 'housing') {
+      return '居住';
+    }
+    if (trimmed === 'travel') {
+      return '旅行';
+    }
+
     return trimmed;
   }
 
@@ -1585,17 +1622,17 @@ export class LedgerService {
     }
 
     const fallback = {
-      meal: '日常正餐支出（早午晚），如快餐、正餐、工作餐',
-      snack: '零食、饮品、小吃等非正餐食品',
-      transport: '公共交通、打车、加油、停车等出行费用',
-      entertainment: '电影、游戏、演出、会员订阅等娱乐消费',
-      feast: '聚餐、大餐、宴请、高档餐厅等特殊餐饮',
-      health: '医疗、药品、保健品、健身器材等健康支出',
-      shopping: '日用品、服装、电子产品、网购等购物消费',
-      education: '书籍、课程、培训、考试等教育支出',
-      housing: '房租、水电煤、物业、维修等居住费用',
-      travel: '旅游、酒店、机票、景点门票等旅行支出',
-      others: '其他未分类支出'
+      正餐: '日常正餐支出（早午晚），如快餐、正餐、工作餐',
+      零食: '零食、饮品、小吃等非正餐食品',
+      交通: '公共交通、打车、加油、停车等出行费用',
+      娱乐: '电影、游戏、演出、会员订阅等娱乐消费',
+      大餐: '聚餐、大餐、宴请、高档餐厅等特殊餐饮',
+      健康: '医疗、药品、保健品、健身器材等健康支出',
+      购物: '日用品、服装、电子产品、网购等购物消费',
+      教育: '书籍、课程、培训、考试等教育支出',
+      居住: '房租、水电煤、物业、维修等居住费用',
+      旅行: '旅游、酒店、机票、景点门票等旅行支出',
+      其他: '其他未分类支出'
     } as Record<string, string>;
 
     return fallback[categoryName] || `${categoryName} 相关支出`;

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { triggerHaptic, HapticFeedbackLevel } from '@system/device/haptics';
-import type { LedgerMeta } from '@system/filesystem/fs-storage';
+import { DEFAULT_LEDGER_NAME, type LedgerMeta } from '@system/filesystem/fs-storage';
 
 interface LedgerSwitcherProps {
   ledgers: LedgerMeta[];
@@ -271,7 +271,7 @@ export const LedgerSwitcher: React.FC<LedgerSwitcherProps> = ({
                         key={ledger.name}
                         ledger={ledger}
                         isActive={ledger.name === activeLedger}
-                        isDefault={ledger.name === 'default'}
+                        isDefault={ledger.name === DEFAULT_LEDGER_NAME}
                         onClick={() => handleLedgerClick(ledger.name)}
                         onDeleteClick={() => setDeleteConfirm(ledger.name)}
                         disabled={isAdding || !!deleteConfirm}

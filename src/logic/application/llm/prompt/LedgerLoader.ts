@@ -1,13 +1,13 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import type { LedgerMemory } from '@shared/types/metadata';
-import { DEFAULT_MEMORY } from '@system/filesystem/fs-storage';
+import { DEFAULT_LEDGER_NAME, DEFAULT_MEMORY } from '@system/filesystem/fs-storage';
 import { LedgerService } from '../../services/LedgerService';
 
 export class LedgerLoader {
   private static readonly LEDGER_PATH_PREFIX = 'Moni';
 
-  public static async loadCategories(ledgerName: string = 'default'): Promise<Record<string, string>> {
+  public static async loadCategories(ledgerName: string = DEFAULT_LEDGER_NAME): Promise<Record<string, string>> {
     try {
       const fs = FilesystemService.getInstance();
       const memory = JSON.parse(await fs.readFile({

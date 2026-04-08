@@ -1,15 +1,16 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { DEFAULT_LEDGER_NAME } from '@system/filesystem/fs-storage';
 
 export class RuleLoader {
   private static readonly BASE_PATH = 'Moni/classify_rules';
 
   /**
    * 加载指定账本的分类规则
-   * @param ledgerName 账本名称 (默认为 'default')
+   * @param ledgerName 账本名称
    * @returns Markdown 格式的规则字符串
    */
-  public static async load(ledgerName: string = 'default'): Promise<string> {
+  public static async load(ledgerName: string = DEFAULT_LEDGER_NAME): Promise<string> {
     const fileName = `${ledgerName}.md`;
     const fullPath = `${this.BASE_PATH}/${fileName}`;
 

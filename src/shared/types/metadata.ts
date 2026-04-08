@@ -1,4 +1,4 @@
-export type CategoryType = 'meal' | 'others' | string;
+export type CategoryType = '正餐' | '其他' | string;
 
 export type SourceType = 'wechat' | 'alipay' | 'manual';
 
@@ -13,8 +13,8 @@ export const TransactionStatus = {
 export type TransactionStatus = typeof TransactionStatus[keyof typeof TransactionStatus];
 
 export const CategoryDict: Record<string, string> = {
-  meal: 'MEAL',
-  others: 'OTHERS',
+  正餐: 'MEAL',
+  其他: 'OTHERS',
 };
 
 // 基础交易数据结构 (JSON 友好，存储用)
@@ -71,7 +71,7 @@ export interface LedgerMemory {
   /**
    * 支持的分类列表，格式为 { 标签名: 描述 }
    * 每个标签必须附带一句自然语言描述
-   * 示例: { meal: "日常正餐支出", others: "所有非正餐支出" }
+   * 示例: { 正餐: "日常正餐支出", 其他: "其他未分类支出" }
    */
   defined_categories: Record<string, string>;
   arbitration_config?: ArbitrationConfig; // 仲裁配置

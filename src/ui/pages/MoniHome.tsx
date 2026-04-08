@@ -78,6 +78,7 @@ export default function MoniHome() {
     isLoading,
     unclassifiedCount,
     aiEngineUiState,
+    dataRange,
     actions,
   } = useMoniHomeData();
 
@@ -87,8 +88,8 @@ export default function MoniHome() {
 
   const [selectedFilter, setSelectedFilter] = useState("全部");
   const [rangeMode, setRangeMode] = useState("本月");
-  const [customStart, setCustomStart] = useState("2026-03-01");
-  const [customEnd, setCustomEnd] = useState("2026-04-07");
+  const [customStart, setCustomStart] = useState(dataRange.min ?? new Date().toISOString().slice(0, 10));
+  const [customEnd, setCustomEnd] = useState(dataRange.max ?? new Date().toISOString().slice(0, 10));
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
 
   const [hintVisible, setHintVisible] = useState(true);
@@ -123,8 +124,11 @@ export default function MoniHome() {
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
   const aiStop = aiEngineUiState.status === "draining";
   const aiCurrentDate = aiEngineUiState.activeDate;
-
-  const range = useMemo(() => getRange(rangeMode, customStart, customEnd), [rangeMode, customStart, customEnd]);
+  const clampDateString = useCallback((value: string, min: string, max: string) => {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+  }, []);
 
   const railFilters = useMemo(() => {
     const categories = availableCategories.filter((category) => category && category !== "uncategorized");
@@ -138,16 +142,42 @@ export default function MoniHome() {
   }, [railFilters, selectedFilter]);
 
   const rangeBounds = useMemo(() => {
-    const dates = [
-      ...realDays.map((day) => day.id),
-      ...realIncome.map((item) => item.date),
-      ...realTrend.map((item) => item.key),
-    ].sort();
+    const fallback = new Date().toISOString().slice(0, 10);
     return {
-      min: dates[0] ?? new Date().toISOString().slice(0, 10),
-      max: dates[dates.length - 1] ?? new Date().toISOString().slice(0, 10),
+      min: dataRange.min ?? fallback,
+      max: dataRange.max ?? fallback,
     };
-  }, [realDays, realIncome, realTrend]);
+  }, [dataRange.max, dataRange.min]);
+
+  const range = useMemo(
+    () => getRange(rangeMode, customStart, customEnd, rangeBounds.min, rangeBounds.max),
+    [customEnd, customStart, rangeBounds.max, rangeBounds.min, rangeMode],
+  );
+
+  useEffect(() => {
+    if (!rangeBounds.min || !rangeBounds.max) {
+      return;
+    }
+
+    const nextStart = clampDateString(customStart, rangeBounds.min, rangeBounds.max);
+    const nextEnd = clampDateString(customEnd, rangeBounds.min, rangeBounds.max);
+
+    if (nextStart !== customStart) {
+      setCustomStart(nextStart);
+    }
+    if (nextEnd !== customEnd) {
+      setCustomEnd(nextEnd < nextStart ? nextStart : nextEnd);
+    }
+  }, [clampDateString, customEnd, customStart, rangeBounds.max, rangeBounds.min]);
+
+  useEffect(() => {
+    if (!rangeBounds.min || !rangeBounds.max) {
+      return;
+    }
+    setCustomStart(rangeBounds.min);
+    setCustomEnd(rangeBounds.max);
+    setRangeMode("本月");
+  }, [currentLedger.id, rangeBounds.max, rangeBounds.min]);
 
   const maxTrendOffset = Math.max(0, realTrend.length - 7);
   const trendStepPx = 260 / 6;
@@ -646,11 +676,13 @@ export default function MoniHome() {
           onClose={() => setHintVisible(false)}
         />
 
-        <OnboardingBanner
-          ledgerId={ledgerId}
-          hasTransactions={realDays.length > 0}
-          onDismiss={() => {}}
-        />
+        {!primaryHint && (
+          <OnboardingBanner
+            ledgerId={ledgerId}
+            hasTransactions={realDays.length > 0}
+            onDismiss={() => {}}
+          />
+        )}
 
         <StatsBar
           rangeLabel={range.label}

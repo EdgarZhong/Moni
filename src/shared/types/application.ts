@@ -114,6 +114,10 @@ export interface MoniHomeReadModel {
     manualEntry: HomeExtensionPointState;
     memory: HomeExtensionPointState;
   };
+  dataRange: {
+    min: string | null;
+    max: string | null;
+  };
   isLoading: boolean;
 }
 
@@ -134,4 +138,3 @@ export interface LedgerImportInput {
   parsedData: Transaction[];
   dirHandle: StorageDirHandle;
 }
-
