@@ -637,6 +637,71 @@ export class LedgerManager {
   }
 
   /**
+   * 探测目标路径是否存在。
+   * 统一封装 stat，可以在开发态减少“可选文件/目录不存在”造成的控制台噪音。
+   */
+  private async pathExists(path: string, directory: AdapterDirectory): Promise<boolean> {
+    try {
+      await FilesystemService.getInstance().stat({
+        path,
+        directory
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 安静删除可选文件。
+   * 如果文件不存在，直接返回，不让 mock fs 打出 404。
+   */
+  private async safeDeleteFile(path: string, directory: AdapterDirectory): Promise<void> {
+    const fs = FilesystemService.getInstance();
+    const exists = await this.pathExists(path, directory);
+    if (!exists) {
+      return;
+    }
+    await fs.deleteFile({
+      path,
+      directory
+    });
+  }
+
+  /**
+   * 递归删除目录。
+   * 某些 mock / node 适配层即使传了 recursive，也可能在目录未清空时抛 ENOTEMPTY。
+   * 因此这里先手动深度删除子项，再删目录自身，确保浏览器开发态与目标语义一致。
+   */
+  private async safeRemoveDir(path: string, directory: AdapterDirectory): Promise<void> {
+    const fs = FilesystemService.getInstance();
+    const exists = await this.pathExists(path, directory);
+    if (!exists) {
+      return;
+    }
+
+    const entries = await fs.readdir({
+      path,
+      directory
+    });
+
+    for (const entry of entries) {
+      const childPath = `${path}/${entry.name}`;
+      if (entry.type === 'directory') {
+        await this.safeRemoveDir(childPath, directory);
+        continue;
+      }
+      await this.safeDeleteFile(childPath, directory);
+    }
+
+    await fs.rmdir({
+      path,
+      directory,
+      recursive: true
+    });
+  }
+
+  /**
    * 删除账本时清理所有关联的 AI 数据文件（v6 语义）
    * - Documents/Moni/classify_memory/{ledger}/ 整个目录（含 index.json 和所有快照文件）
    * - Documents/Moni/self_description/user_profile.md（如果存在）
@@ -648,12 +713,7 @@ export class LedgerManager {
     // 1. 删除快照目录（v6：Documents/Moni/classify_memory/{ledger}/）
     const snapshotDir = `Moni/classify_memory/${ledgerName}`;
     try {
-      const fs = FilesystemService.getInstance();
-      await fs.rmdir({
-        path: snapshotDir,
-        directory: AdapterDirectory.Documents,
-        recursive: true
-      });
+      await this.safeRemoveDir(snapshotDir, AdapterDirectory.Documents);
       console.log(`[LedgerManager] Deleted snapshot directory for: ${ledgerName}`);
     } catch {
       // 目录不存在时静默忽略
@@ -661,11 +721,7 @@ export class LedgerManager {
 
     // 2. 删除自述文件（Documents）
     try {
-      const fs = FilesystemService.getInstance();
-      await fs.deleteFile({
-        path: `Moni/self_description/user_profile.md`,
-        directory: AdapterDirectory.Documents
-      });
+      await this.safeDeleteFile(`Moni/self_description/user_profile.md`, AdapterDirectory.Documents);
       console.log(`[LedgerManager] Deleted self-description file`);
     } catch {
       // 文件不存在时静默忽略
@@ -673,11 +729,7 @@ export class LedgerManager {
 
     // 3. 删除实例库文件（沙箱）
     try {
-      const fs = FilesystemService.getInstance();
-      await fs.deleteFile({
-        path: `classify_examples/${ledgerName}.json`,
-        directory: AdapterDirectory.Data
-      });
+      await this.safeDeleteFile(`classify_examples/${ledgerName}.json`, AdapterDirectory.Data);
       console.log(`[LedgerManager] Deleted examples file for: ${ledgerName}`);
     } catch {
       // 文件不存在时静默忽略
@@ -706,36 +758,43 @@ export class LedgerManager {
     const newSnapshotDir = `Moni/classify_memory/${newName}`;
     try {
       const fs = FilesystemService.getInstance();
-      const result = await fs.readdir({
-        path: oldSnapshotDir,
-        directory: AdapterDirectory.Documents
-      });
-      for (const entry of result) {
-        const fileName = entry.name;
-        try {
-          const fileContent = await fs.readFile({
-            path: `${oldSnapshotDir}/${fileName}`,
-            directory: AdapterDirectory.Documents,
-            encoding: AdapterEncoding.UTF8
-          });
-          await fs.writeFile({
-            path: `${newSnapshotDir}/${fileName}`,
-            data: fileContent,
-            directory: AdapterDirectory.Documents,
-            encoding: AdapterEncoding.UTF8,
-            recursive: true
-          });
-        } catch (e) {
-          console.warn(`[LedgerManager] Failed to copy snapshot file ${fileName}:`, e);
+      const exists = await this.pathExists(oldSnapshotDir, AdapterDirectory.Documents);
+      if (exists) {
+        const result = await fs.readdir({
+          path: oldSnapshotDir,
+          directory: AdapterDirectory.Documents
+        });
+        for (const entry of result) {
+          const fileName = entry.name;
+          try {
+            const sourcePath = `${oldSnapshotDir}/${fileName}`;
+            const targetPath = `${newSnapshotDir}/${fileName}`;
+            if (entry.type === 'directory') {
+              await this.copyDirectoryRecursive(sourcePath, targetPath, AdapterDirectory.Documents);
+              continue;
+            }
+            const fileContent = await fs.readFile({
+              path: sourcePath,
+              directory: AdapterDirectory.Documents,
+              encoding: AdapterEncoding.UTF8
+            });
+            await fs.writeFile({
+              path: targetPath,
+              data: fileContent,
+              directory: AdapterDirectory.Documents,
+              encoding: AdapterEncoding.UTF8,
+              recursive: true
+            });
+          } catch (e) {
+            console.warn(`[LedgerManager] Failed to copy snapshot file ${fileName}:`, e);
+          }
         }
+        // 删除旧目录。
+        // 这里不用直接 rmdir(oldDir, recursive)，而是复用手动递归删除，
+        // 避免开发态 mock fs 因目录未清空抛 ENOTEMPTY。
+        await this.safeRemoveDir(oldSnapshotDir, AdapterDirectory.Documents);
+        console.log(`[LedgerManager] Migrated snapshot directory: ${oldName} -> ${newName}`);
       }
-      // 删除旧目录
-      await fs.rmdir({
-        path: oldSnapshotDir,
-        directory: AdapterDirectory.Documents,
-        recursive: true
-      });
-      console.log(`[LedgerManager] Migrated snapshot directory: ${oldName} -> ${newName}`);
     } catch {
       // 源目录不存在时静默忽略
     }
@@ -743,23 +802,24 @@ export class LedgerManager {
     // 2. 迁移实例库文件（沙箱）
     try {
       const fs = FilesystemService.getInstance();
-      const exContent = await fs.readFile({
-        path: `classify_examples/${oldName}.json`,
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8
-      });
-      await fs.writeFile({
-        path: `classify_examples/${newName}.json`,
-        data: exContent,
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8,
-        recursive: true
-      });
-      await fs.deleteFile({
-        path: `classify_examples/${oldName}.json`,
-        directory: AdapterDirectory.Data
-      });
-      console.log(`[LedgerManager] Migrated examples file: ${oldName} -> ${newName}`);
+      const examplesPath = `classify_examples/${oldName}.json`;
+      const exists = await this.pathExists(examplesPath, AdapterDirectory.Data);
+      if (exists) {
+        const exContent = await fs.readFile({
+          path: examplesPath,
+          directory: AdapterDirectory.Data,
+          encoding: AdapterEncoding.UTF8
+        });
+        await fs.writeFile({
+          path: `classify_examples/${newName}.json`,
+          data: exContent,
+          directory: AdapterDirectory.Data,
+          encoding: AdapterEncoding.UTF8,
+          recursive: true
+        });
+        await this.safeDeleteFile(examplesPath, AdapterDirectory.Data);
+        console.log(`[LedgerManager] Migrated examples file: ${oldName} -> ${newName}`);
+      }
     } catch {
       // 源文件不存在时静默忽略
     }
@@ -770,6 +830,44 @@ export class LedgerManager {
       console.log(`[LedgerManager] Migrated budget config: ${oldName} -> ${newName}`);
     } catch {
       // 文件不存在时静默忽略
+    }
+  }
+
+  /**
+   * 递归复制目录。
+   * 目前主要用于账本重命名时迁移 classify_memory 快照目录。
+   */
+  private async copyDirectoryRecursive(
+    sourcePath: string,
+    targetPath: string,
+    directory: AdapterDirectory
+  ): Promise<void> {
+    const fs = FilesystemService.getInstance();
+    const entries = await fs.readdir({
+      path: sourcePath,
+      directory
+    });
+
+    for (const entry of entries) {
+      const sourceChildPath = `${sourcePath}/${entry.name}`;
+      const targetChildPath = `${targetPath}/${entry.name}`;
+      if (entry.type === 'directory') {
+        await this.copyDirectoryRecursive(sourceChildPath, targetChildPath, directory);
+        continue;
+      }
+
+      const content = await fs.readFile({
+        path: sourceChildPath,
+        directory,
+        encoding: AdapterEncoding.UTF8
+      });
+      await fs.writeFile({
+        path: targetChildPath,
+        data: content,
+        directory,
+        encoding: AdapterEncoding.UTF8,
+        recursive: true
+      });
     }
   }
 
