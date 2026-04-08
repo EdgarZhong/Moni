@@ -1,0 +1,25 @@
+{
+  "workspace": "moni",
+  "nodeVersion": "22",
+  "packageManager": "npm",
+  "worktreeRoot": "/home/edgar/code/moni-worktree",
+  "postWorktreeCreate": [
+    "./.codex/scripts/worktree-init.sh"
+  ],
+  "checks": {
+    "minimal": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "full": [
+      "npm",
+      "run",
+      "verify"
+    ]
+  },
+  "notes": [
+    "仓库当前以 npm + package-lock.json 为基线，暂不切换 pnpm。",
+    "受限沙箱内 build 可能遇到 esbuild spawn EPERM，因此 worktree 初始化默认先跑 minimal check。"
+  ]
+}

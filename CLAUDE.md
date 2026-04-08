@@ -1,290 +1,233 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件是 Moni 主仓库当前阶段的任务看板、执行约束与并行编排中心。
+
+## 本轮目标摘要
 
-## 项目基本信息
+当前阶段目标不是直接把全部业务一次做完，而是先把主仓库整理成“可安全并行派发 6 个子 agent”的状态，并据此推进：
+
+- Agent 1：应用层门面与边界收口
+- Agent 2：首页主舞台集成
+- Agent 3：预算系统
+- Agent 4：随手记系统
+- Agent 5：v7 记忆系统核心升级
+- Agent 6：Capacitor / System 层适配核验
+- Agent 0：主协调、规则固化、脚手架准备、最终集成准备
+
+## README 与 CLAUDE 分工
+
+- `README.md`：沉淀稳定项目事实，不承担动态任务管理
+- `CLAUDE.md`：维护任务看板、并行关系、风险、启动条件、完成定义
+
+## 现状审计摘要
+
+### 已有文件
+
+- 已有：`CLAUDE.md`
+- 已有：`README.md`
+- 已有：`docs/`
+- 已有：`docs/Moni_Homepage_Integration_Spec.md`
+- 已有：`docs/Moni_Budget_System_Spec_v2.md`
+- 已有：`docs/Moni_Manual_Entry_Spec_v3.md`
+- 已有：`docs/AI_SELF_LEARNING_DESIGN_v7.md`
+- 已有：`package.json`
+- 已有：`package-lock.json`
+- 已有：`capacitor.config.ts`
+
+### 原先缺失或异常
+
+- 缺失：`AGENTS.md`
+- 异常：根目录 `.codex` 原先是空文件，不是可用配置目录
 
-### README 与 CLAUDE 分工
+### 当前已补齐
 
-- `README.md`：沉淀已经落实的稳定项目信息，不承载动态任务管理
-- `CLAUDE.md`：作为项目任务看板、执行约束与阶段推进文档，必须随集成进度持续更新
+- 已补：`AGENTS.md`
+- 已补：`.codex/config.json`
+- 已补：`.codex/scripts/worktree-init.sh`
+- 已补：`.codex/README.md`
+- 已补：`docs/parallel/Agent_Task_Packets.md`
+- 已补：`docs/parallel/Agent_Prompts.md`
+- 已补：`docs/parallel/Parallel_Runbook.md`
 
-### 项目概述
+### 仍需由业务 agent 填补的空白
 
-**Moni** 是一个越用越聪明的 AI 记账助手，采用 Core-UI 分离架构。
+- 应用层 facade 尚未形成统一公开口径
+- 首页主舞台仍需接真实读模型
+- 预算系统、随手记系统、v7 记忆系统仍需按规格实施
+- Capacitor / Android 真环境约束仍需持续核验
 
-> **🎯 当前阶段：仓库整合与重构**
-> - 目标：整合 UI 原型与后端逻辑，重构为统一项目
-> - UI 设计权威：`Moni-UI-Prototype` 子仓库的 `DESIGN.md`
-> - 后端逻辑参考：`pixel_bill_backend` 子仓库（feat/frontend-separation 分支）
-> - 当前主线：完成主仓库骨架重构，为首页集成、预算系统、随手记、v7 自学习系统迭代提供稳定地基
+## 仓库与环境基线
 
-### 架构设计
+- 主仓库是唯一运行时代码来源
+- `Moni-UI-Prototype/` 与 `pixel_bill_backend/` 仅作只读参考
+- 目标运行环境：Android Capacitor
+- 人工测试环境：浏览器 F12 移动端模式
+- worktree 统一父目录：`/home/edgar/code/moni-worktree`
+- Node 基线：22.x
+- 当前既定包管理器：`npm`
+- CI 基线：`npm ci` -> `npm run typecheck` -> `npm run build` -> `npm run lint`
 
-```
-Moni/
-├── Moni-UI-Prototype/     # UI/UX 原型（参考子仓库，只读）
-│   ├── DESIGN.md          # UI/UX 唯一执行标准
-│   └── src/               # React + TypeScript + Vite
-├── pixel_bill_backend/    # 后端逻辑参考（参考子仓库，只读）
-│   └── src/core/          # 核心业务逻辑（仲裁系统、AI引擎、持久化）
-└── [主仓库将整合两者]      # 尚未构建
-```
+## 文档优先级
 
-**核心架构（来自 pixel_bill_backend）**：
+1. `docs/Moni_Homepage_Integration_Spec.md`
+2. `docs/Moni_Budget_System_Spec_v2.md`
+3. `docs/Moni_Manual_Entry_Spec_v3.md`
+4. `docs/AI_SELF_LEARNING_DESIGN_v7.md`
+5. `README.md`
+6. 本文件
 
-```
-CSV 导入 → Parser → LedgerService → Arbiter → Plugins → 最终分类决策
-                                    ↓
-                            PersistenceManager
-                                    ↓
-                         *.moni.json (JSON 存储)
-```
+补充：
 
-**仲裁系统优先级链**：
-1. **USER** - 用户手动分类（最高优先级）
-2. **RULE_ENGINE** - 规则引擎匹配
-3. **AI_AGENT** - AI 智能分类（异步）
+- 视觉与交互定稿仍以 `Moni-UI-Prototype/DESIGN.md` 为准
+- 两个参考子仓库禁止作为运行时代码依赖
 
-### 技术栈
+## 并行模型
 
-- **前端**：React + TypeScript + Vite + Tailwind CSS + Framer Motion + Capacitor
-- **后端**：Core-UI 分离架构（来自 pixel_bill_backend）
-- **存储**：Capacitor Filesystem API → JSON 文件
-- **AI**：LLM 服务（PromptBuilder + SystemPrompt）
+- Agent 1 先启动，产出 facade 初版
+- Agent 2 依赖 Agent 1 的 facade
+- Agent 3、Agent 4、Agent 5 可以并行
+- Agent 6 全程并行，持续提供目标环境约束
+- Agent 0 最后统一合并
 
----
+## Agent 状态看板
 
-## 子仓库管理策略（重要）
+| Agent | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| Agent 0 | 编排、规则固化、脚手架、看板维护 | In Progress | 当前正在执行 |
+| Agent 1 | 应用层门面与边界收口 | Ready | 可优先启动 |
+| Agent 2 | 首页主舞台集成 | Blocked | 等 Agent 1 facade 初版 |
+| Agent 3 | 预算系统 | Ready | 可并行启动 |
+| Agent 4 | 随手记系统 | Ready | 可并行启动 |
+| Agent 5 | v7 记忆系统核心升级 | Ready | 高优先级，可立即启动 |
+| Agent 6 | Capacitor / System 层适配核验 | Ready | 可全程并行 |
 
-### 子仓库性质：信息参考 + 可复制源码
+## 并行依赖关系
 
-本仓库包含两个 **只读参考子仓库**。
+- Agent 1 -> Agent 2
+- Agent 1 -> Agent 0 最终合并
+- Agent 5 <-> Agent 4：在 `ExampleStore` 接口上需要协同，但不互相吞并职责
+- Agent 3 -> Agent 1：预算读模型应通过 Agent 1 facade 对外暴露
+- Agent 6 -> 全体：输出环境约束，不直接替代业务实现
 
-**核心原则**：
-- 子仓库是**信息参考来源**，包含设计文档和架构参考
-- **允许复制**子仓库的代码到主仓库（复制后代码属于主仓库）
-- **禁止直接依赖**子仓库的代码（禁止 import/require/npm link 等方式引用子仓库代码）
+## 合并顺序建议
 
-| 子仓库 | 用途 | 分支 | 参考内容 |
-|--------|------|------|----------|
-| `Moni-UI-Prototype` | UI/UX 设计原型与实现参考 | main | DESIGN.md、交互逻辑、组件结构 |
-| `pixel_bill_backend` | 后端逻辑与架构参考 | feat/frontend-separation | Core 业务逻辑、数据流设计 |
+1. Agent 5
+2. Agent 1
+3. Agent 2
+4. Agent 3
+5. Agent 4
+6. Agent 6
+7. Agent 0 做最终统一集成
 
-**为什么使用 Submodule**：
-- 保持参考源的唯一事实来源
-- 可以追踪参考仓库的历史版本
-- 方便开发者在同一仓库中查阅设计文档和架构参考
+## 风险清单
 
-**Submodule 机制说明**：
+- `ExampleStore.ts` 同时被 Agent 4 与 Agent 5 关注，存在冲突风险
+- Agent 2 容易因联调便利直接下潜到底层 service，必须受 Agent 1 facade 约束
+- 预算系统与 Ledger 生命周期连锁处理可能影响现有 service 边界
+- Capacitor 真实环境与浏览器模拟环境的文件系统、设备能力存在差异
+- 当前仓库使用 `npm` 与 `package-lock.json`，并行期不适合同时切换到 `pnpm`
+- 沙箱环境中的 `build` 可能触发 `esbuild spawn EPERM`
 
-Submodule 本质是主仓库存储子仓库的特定 **commit SHA**（指针），而非分支引用。
+## 启动条件
 
-```
-# 主仓库 .git/modules/ 存储 submodule 的 git 元数据
-# 主仓库 working directory 存储 submodule 的文件快照
-```
+### Agent 1
 
-**更新子仓库的正确方式**：
-
-```bash
-# 1. 进入子仓库
-cd Moni-UI-Prototype
-
-# 2. 获取最新代码（在子仓库中操作）
-git fetch origin
-git checkout origin/main  # 或指定分支
-
-# 3. 返回主仓库，更新指针
-cd ..
-git add Moni-UI-Prototype
-git commit -m "chore: update Moni-UI-Prototype to latest"
-```
-
-### 避免源码管理层面的版本控制问题
-
-**核心原则**：禁止通过 import/require/npm 等方式直接依赖子仓库代码，但允许复制代码。
-
-#### 子仓库工作区必须保持干净
-
-主仓库内的子仓库工作区**必须是干净的代码快照**：
-- 必须指向远程分支的最新 commit
-- 不能存在本地修改、未跟踪文件等脏状态
-- 如果需要开发子仓库，**必须将工作区迁移到主仓库外部**
-
-#### 为什么要禁止直接依赖
-
-如果主仓库通过 Submodule/npm 直接依赖子仓库代码：
-- 子仓库更新可能破坏主仓库
-- 构建流程强耦合
-- 主仓库失去独立演进能力
-
-#### 正确做法：可复制代码，禁止直接依赖
-
-1. **阅读 DESIGN.md** - 理解 UI/UX 规范后，在主仓库独立实现
-2. **阅读 pixel_bill_backend/src/core/** - 理解架构后，复制需要的代码到主仓库
-3. **允许复制** - 可以将子仓库的代码复制到主仓库，但必须独立实现而非建立引用依赖
-4. **独立构建** - 主仓库必须能够独立构建，不依赖子仓库的构建产物
-5. **保持工作区干净** - 主仓库的 submodule 目录永远是只读的代码快照，不进行任何开发工作
-
-#### Submodule 在本项目中的作用
-
-Submodule 用于：
-- 保持参考源的可追溯性
-- 方便开发者在同一仓库中查阅设计文档和架构参考
-- **仅作版本化的快照参考，不用于运行时依赖**
-
-### 子仓库使用规范（绝对禁止项）
-
-1. **纯信息参考** - 子仓库作为设计文档和架构参考来源
-2. **允许复制代码** - 可以将子仓库的代码复制到主仓库，复制后代码属于主仓库
-3. **禁止直接依赖** - 禁止通过 `import`、`require`、`npm link` 等方式直接引用子仓库代码
-4. **禁止直接修改** - 不要在主仓库的子仓库目录中做任何修改
-5. **独立演进** - 主仓库必须能够独立构建、独立部署
-6. **工作区必须干净** - 主仓库内的子仓库工作区**必须是干净的代码快照**，指向远程分支的最新提交，**不能存在任何本地脏状态**（修改、未跟踪文件等）
+- 已阅读统一输入文档
+- 明确自己的写入范围
+- 确认不会直接改首页舞台 UI
 
-**正确认知**：子仓库是"快照参考"。允许从其中复制代码，但禁止让主仓库通过 submodule 或包管理工具直接依赖子仓库。
+### Agent 2
 
-**Submodule 工作区的要求**：
-
-主仓库内的子仓库工作区必须满足：
-- ✅ 指向远程分支的最新 commit（干净状态）
-- ✅ 无本地修改
-- ✅ 无未跟踪文件
-- ❌ 不能有正在进行的开发工作
+- 已拿到 Agent 1 facade 初版
+- 已理解首页规格中的状态模型与组件边界
 
-如果需要进行子仓库的开发工作，**必须将工作区迁移到主仓库外部**，不得在主仓库的 submodule 目录内进行开发。
-
----
-
-## 项目目录结构
-
-```
-moni/                            # 主仓库（待构建）
-├── Moni-UI-Prototype/          # 子仓库：UI 原型参考（只读）
-│   ├── docs/
-│   │   └── DESIGN.md           # UI/UX 设计标准（核心权威）
-│   ├── src/
-│   │   └── features/moni-home/ # UI 组件实现
-│   └── package.json
-├── pixel_bill_backend/         # 子仓库：后端逻辑参考（只读）
-│   ├── src/
-│   │   └── core/               # 核心业务逻辑
-│   │       ├── arbiter/        # 仲裁系统
-│   │       ├── plugin/         # 分类插件
-│   │       ├── services/       # LedgerService, PersistenceManager
-│   │       └── ai_engine/      # AI 分类引擎
-│   └── docs/
-├── docs/                       # 主仓库文档
-├── src/
-│   ├── bootstrap/              # 应用入口与运行时装配
-│   ├── logic/
-│   │   ├── domain/             # 纯领域规则与协议
-│   │   └── application/        # 应用服务、AI 编排、读模型、用例
-│   ├── system/                 # 文件系统、Capacitor、网络、设备能力
-│   ├── ui/                     # React 表现层
-│   ├── shared/                 # 跨层共享类型与工具
-│   └── devtools/               # 调试与开发脚本
-├── .archive/                   # 归档目录（禁止直接删除文件）
-├── CLAUDE.md                   # 本文件
-├── README.md                   # 稳定项目说明
-└── .gitmodules                 # Submodule 配置
-```
-
----
-
-## 重要文档索引表
-
-| 文档名称 | 内容描述 | 文件路径 |
-|----------|----------|----------|
-| UI/UX 设计标准 | 唯一执行标准，含首页全部交互规则、手势实现规范 | `Moni-UI-Prototype/DESIGN.md` |
-| 品牌视觉规范 | 品牌色、字体、SVG 资产、Memphis 装饰规则 | `Moni-UI-Prototype/Moni_Brand_Design_Spec.md` |
-| 功能需求参考 | 产品功能需求文档 | `Moni-UI-Prototype/Moni_Requirements_v2.md` |
-| AI 自学习设计 | P0/P1/P2/P3 完整 AI 学习功能设计 | `pixel_bill_backend/AI_SELF_LEARNING_DESIGN_v6.md` |
-| 后端架构文档 | Core-UI 分离架构、仲裁系统、持久化规范 | `pixel_bill_backend/docs/` |
-
----
-
-## 开发测试闭环 SOP（待完善）
-
-### 初始化项目
-
-```bash
-# 克隆主仓库（含 submodule）
-git clone --recurse-submodules git@github.com:EdgarZhong/Moni.git
-
-# 进入目录
-cd Moni
-
-# 初始化 submodule（如克隆时未自动执行）
-git submodule update --init --recursive
-```
-
-### 参考子仓库
-
-```bash
-# 查看 UI 原型设计
-cat Moni-UI-Prototype/DESIGN.md
-
-# 查看后端逻辑结构
-ls pixel_bill_backend/src/core/
-
-# 在浏览器中启动 UI 原型（独立运行）
-cd Moni-UI-Prototype
-npm install
-npm run dev
-```
-
----
-
-## 项目当前进展
-
-### 已完成 ✅
-
-| 任务 | 说明 |
-|------|------|
-| 仓库结构设计 | 确定 Core-UI 分离架构 |
-| Submodule 整合 | UI 原型 + 后端逻辑作为参考子仓库 |
-| 技术栈确定 | React + TypeScript + Vite + Tailwind + Capacitor |
-| 主仓库骨架冻结（里程碑 1） | 已确定 `bootstrap / logic / system / ui / shared` 为有效主骨架 |
-| 主仓库迁移归位（里程碑 2） | 已完成 `src/bootstrap`、`src/logic/domain`、`src/logic/application` 结构落位，类型检查通过 |
-| README 建立 | 已建立稳定事实说明，并与 `CLAUDE.md` 分工 |
-
-### 进行中 🚧
-
-| 任务 | 说明 |
-|------|------|
-| 旧目录遗留收口 | `src/app`、`src/core` 保留为迁移遗留参考，不参与主编译路径，不得继续作为开发入口 |
-| 应用层门面化 | 需要收敛 `ui -> logic/application facade` 访问边界 |
-| 首页首轮集成 | 以 `Moni_Homepage_Integration_Spec.md` 为主指导文档推进 |
-| 逻辑层升级 | 按预算系统、随手记、v7 自学习系统规格继续迭代 |
-
-### 当前任务看板
-
-| 状态 | 任务 | 说明 |
-|------|------|------|
-| ✅ | 里程碑 1 | 冻结主仓库目标架构与目录语义 |
-| ✅ | 里程碑 2 | 完成主仓库骨架迁移归位 |
-| ⏭️ | 里程碑 3 | 建立首页应用层门面与聚合读模型 |
-| ⏭️ | 里程碑 4 | 接入预算系统与随手记系统 |
-| ⏭️ | 里程碑 5 | 升级 v7 记忆系统 |
-| ⏭️ | 里程碑 6 | 安卓 Capacitor 目标环境联调与验收 |
-
----
-
-## 用户规则
-
-- **永远用中文回答用户问题，中文撰写项目 CLAUDE.md 文件**
-- **所有代码必须包含详细中文注释**
-- 当用户要求查看项目，总览项目，扫描项目目录时：**必须递归的查看项目目录结构**
-- 用户要求读取/查看任何图片/文档时，**必须真正阅读图片/文档内容**
-- **行动偏好更改**：如果用户的指令略显模糊，**不要**基于经验做出假设并直接执行，**必须先询问用户具体需求**
-- **绝对禁止先干活，后汇报**：在执行代码修改和命令运行前，必须先**描述清楚意图**，然后再执行
-- **交互设计红线**：涉及前端交互逻辑变更，必须先汇报计划的设计细则并获得用户明确"确认"指令授权后方可实施代码
-- DESIGN.md 是唯一理念/视觉/功能设计指导（来自 UI 原型仓库）
-
----
-
-## Mermaid 绘图规范
-
-- 文本中的特殊字符（如括号、空格、中文字符）会与 Mermaid 解析器发生冲突。必须使用双引号将包含特殊字符的文本包裹起来
+### Agent 3
+
+- 已阅读预算规格
+- 已确认独立文件存储方案和标签联动规则
+
+### Agent 4
+
+- 已阅读手记规格
+- 已确认 `sourceType: 'manual'`、实例库写入条件、去重预留接口
+
+### Agent 5
+
+- 已阅读 v7 规格
+- 已确认 revision / change log / baseline 机制
+
+### Agent 6
+
+- 已审阅 `capacitor.config.ts`、`src/system/**`、README 环境说明
+
+## 完成定义
+
+### Agent 1 Done
+
+- 提供 facade 初版
+- 首页聚合读模型可以被 Agent 2 消费
+- `npm run typecheck` 通过
+- 输出改动文件、设计决策、风险与待确认事项
+
+### Agent 2 Done
+
+- 首页主舞台主要状态已接入真实读模型
+- 未越权进入 service 内部
+- `npm run typecheck` 通过
+- 输出改动文件、缺失接口、风险与待确认事项
+
+### Agent 3 Done
+
+- 预算配置读写、状态计算、标签联动落地
+- 预算读模型可被 facade 暴露
+- `npm run typecheck` 通过
+- 输出改动文件、设计决策、风险与待确认事项
+
+### Agent 4 Done
+
+- 手记条目录入 / 删除链路与实例库联动落地
+- 去重接口已预留
+- `npm run typecheck` 通过
+- 输出改动文件、设计决策、风险与待确认事项
+
+### Agent 5 Done
+
+- v7 revision / change log / baseline 机制落地
+- Prompt 注入口径与文档一致
+- `npm run typecheck` 通过
+- 输出改动文件、设计决策、风险与待确认事项
+
+### Agent 6 Done
+
+- 输出系统层核验结论与环境约束
+- 必要系统层补丁已落地
+- `npm run typecheck` 通过
+- 输出改动文件、设计决策、风险与待确认事项
+
+## 通用工程要求
+
+- 每个 agent 一个 worktree，一个明确任务边界
+- 所有 worktree 放在 `/home/edgar/code/moni-worktree`
+- 所有实现必须优先复用主仓库现有目录语义，不得大规模重构目录
+- 提交前至少运行：`npm run typecheck`
+- 条件允许时运行：`npm run lint`
+- 完整验收命令：`npm run verify`
+- 如果无法安全跑重型命令，必须在交付说明中明确写出阻塞原因
+
+## 冲突处理原则
+
+- 发现职责重叠时，只记录并上报，不擅自扩边界
+- 若接口尚未稳定，优先提交最小占位与 TODO 约定
+- 严禁因为联调方便而越权进入他人目录
+
+## 相关文档
+
+- `AGENTS.md`
+- `docs/parallel/Agent_Task_Packets.md`
+- `docs/parallel/Agent_Prompts.md`
+- `docs/parallel/Parallel_Runbook.md`
+
+## 备注
+
+- 当前仓库结构与并行分工基本匹配，仅需在 `src/logic/application/` 下收口 facade，而不是重组整棵目录树
+- 本文件必须随集成推进持续更新
