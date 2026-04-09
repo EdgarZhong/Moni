@@ -442,7 +442,7 @@
       "sourceType": "alipay",
       "category": "uncategorized",
       "rawClass": "餐饮美食",
-      "counterparty": "西安市���包码头东大店",
+      "counterparty": "西安市�����包码头东大店",
       "product": "面包码头（东大店）店内购物",
       "amount": 16.8,
       "direction": "out",
@@ -11106,7 +11106,7 @@
       "id": "721a6ca996e460f4",
       "time": "2026-04-09 11:31:57",
       "sourceType": "manual",
-      "category": "正餐",
+      "category": "零食",
       "rawClass": "",
       "counterparty": "",
       "product": "12",
@@ -11117,16 +11117,16 @@
       "remark": "",
       "ai_category": "",
       "ai_reasoning": "",
-      "user_category": "正餐",
+      "user_category": "零食",
       "user_note": "",
       "is_verified": false,
-      "updated_at": "2026-04-09T07:25:36.556Z"
+      "updated_at": "2026-04-09T08:08:57.601Z"
     },
     "b81f7ca46af5d89e": {
       "id": "b81f7ca46af5d89e",
       "time": "2026-04-09 15:29:33",
       "sourceType": "manual",
-      "category": "大餐",
+      "category": "教育",
       "rawClass": "",
       "counterparty": "",
       "product": "cai",
@@ -11137,10 +11137,10 @@
       "remark": "",
       "ai_category": "",
       "ai_reasoning": "",
-      "user_category": "大餐",
-      "user_note": "asd",
-      "is_verified": true,
-      "updated_at": "2026-04-09 15:29:33"
+      "user_category": "教育",
+      "user_note": "",
+      "is_verified": false,
+      "updated_at": "2026-04-09T08:00:55.712Z"
     }
   }
 }

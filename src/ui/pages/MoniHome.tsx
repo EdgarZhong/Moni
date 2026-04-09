@@ -97,6 +97,7 @@ function TransactionDetailPanel({
   const [isClosing, setIsClosing] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number; at: number } | null>(null);
   const openedAtRef = useRef(0);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setReasoningInput("");
@@ -105,7 +106,8 @@ function TransactionDetailPanel({
     setIsVerified(Boolean(detail.item.isVerified));
     setIsClosing(false);
     openedAtRef.current = Date.now();
-  }, [detail]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail.item.id]);
 
   const requestClose = useCallback((source: "backdrop" | "gesture" | "button" = "backdrop") => {
     if (isClosing) return;
@@ -144,18 +146,25 @@ function TransactionDetailPanel({
     const deltaX = endTouch.clientX - touchStartRef.current.x;
     const deltaY = Math.abs(endTouch.clientY - touchStartRef.current.y);
     const elapsed = Date.now() - touchStartRef.current.at;
-    const width = window.innerWidth;
-    const fromLeftEdge = touchStartRef.current.x < 50 && deltaX > 50;
-    const fromRightEdge = touchStartRef.current.x > width - 50 && deltaX < -50;
-    if ((fromLeftEdge || fromRightEdge) && deltaY < 50 && elapsed < 350) {
-      requestClose("gesture");
+
+    // 用面板自身坐标判断边缘，而非视口坐标
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (rect) {
+      const startRelX = touchStartRef.current.x - rect.left;
+      const fromLeftEdge = startRelX < 50 && deltaX > 50;
+      const fromRightEdge = startRelX > rect.width - 50 && deltaX < -50;
+      if ((fromLeftEdge || fromRightEdge) && deltaY < 50 && elapsed < 350) {
+        requestClose("gesture");
+      }
     }
+
     touchStartRef.current = null;
   }, [requestClose]);
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 70, background: "rgba(0,0,0,.35)" }} onClick={() => requestClose("backdrop")}>
       <div
+        ref={panelRef}
         onClick={(event) => event.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -232,7 +241,7 @@ function TransactionDetailPanel({
               value={reasoningInput}
               onChange={(event) => setReasoningInput(event.target.value)}
               placeholder="例如：这是下午茶不是正餐"
-              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, outline: "none", fontFamily: "inherit" }}
+              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, color: C.dark, outline: "none", fontFamily: "inherit" }}
             />
           </div>
 
@@ -263,7 +272,7 @@ function TransactionDetailPanel({
               onChange={(event) => setNoteInput(event.target.value)}
               rows={3}
               placeholder="给这笔交易补充说明"
-              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, color: C.dark, outline: "none", resize: "vertical", fontFamily: "inherit" }}
             />
             <div
               onClick={handleSaveNote}

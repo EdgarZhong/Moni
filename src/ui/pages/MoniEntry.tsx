@@ -459,6 +459,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               {direction === "out" ? "−¥" : "+¥"}
             </span>
             <input
+              className="entry-amount-input"
               ref={amountRef}
               type="number"
               inputMode="decimal"
@@ -502,6 +503,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               主题 <span style={{ fontWeight: 400, color: C.muted }}>（选填）</span>
             </div>
             <input
+              className="entry-form-input"
               type="text"
               placeholder="这笔花在哪了？比如「火锅聚餐」"
               value={subject}
@@ -519,6 +521,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               补充说明 <span style={{ fontWeight: 400, color: C.muted }}>（选填）</span>
             </div>
             <input
+              className="entry-form-input"
               type="text"
               placeholder="周年聚餐，比较贵的餐厅"
               value={description}
@@ -536,6 +539,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               日期 <span style={{ fontWeight: 400, color: C.muted }}>（默认今天）</span>
             </div>
             <input
+              className="entry-form-input"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -880,8 +884,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Nunito',-apple-system,sans-serif",
-        height: "100dvh",
-        maxHeight: PHONE_FRAME_HEIGHT,
+        height: PHONE_FRAME_HEIGHT,
         paddingTop: "env(safe-area-inset-top)",
       }}
     >
@@ -891,6 +894,23 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .entry-scroll-container { scrollbar-width: none; -ms-overflow-style: none; }
+        .entry-scroll-container::-webkit-scrollbar { display: none; }
+        .entry-amount-input {
+          color: ${C.dark};
+        }
+        .entry-amount-input::placeholder {
+          color: #7A869C;
+          opacity: 1;
+        }
+        .entry-form-input {
+          color: ${C.dark};
+          font-weight: 600;
+        }
+        .entry-form-input::placeholder {
+          color: #7A869C;
+          opacity: 1;
+        }
         * { box-sizing: border-box }
         html, body { touch-action: manipulation; -webkit-touch-callout: none; overscroll-behavior: none }
         input, textarea, button { touch-action: manipulation }
@@ -912,7 +932,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
+      <div className="entry-scroll-container" style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
         <div style={{ padding: "12px 16px 6px" }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif" }}>记账</div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>导入账单或随手记录一笔</div>

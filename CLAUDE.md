@@ -14,6 +14,8 @@
 - v7 实例库、学习 payload、收编上下文、账本行为配置已落主线
 - 浏览器调试入口 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 已落地
 - Playwright / MCP 浏览器验证链路已固定
+- 记账页（MoniEntry）已集成：导入账单、随手记、分类拖放、记一笔表单
+- 交易详情面板已集成：分类修改、锁定、备注、AI 判断理由展示、边缘滑动返回
 
 ## 当前剩余缺口
 
@@ -31,6 +33,8 @@
 | 随手记逻辑链路 | Done | 录入、删除、实例库联动、首页手记展示链路已接通 |
 | 预算逻辑链路 | Done | 预算配置读写、首页预算卡、预算提示卡、标签联动已接通 |
 | v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、ledger_prefs 已落地 |
+| 记账页集成 | Done | MoniEntry 页面、useMoniEntryData hook、AppFacade 记账读模型、导入/随手记/分类拖放/表单均已接通 |
+| 交易详情面板 | Done | TransactionDetailPanel：分类修改、锁定、备注、AI 理由、边缘滑动返回手势 |
 | 浏览器调试入口与逻辑测试 | In Progress | 已接入主要调试入口与 smoke test，后续仍可继续扩覆盖面 |
 | 预算设置页 UI | Ready | 当前最大功能缺口，逻辑层已具备，表现层未完成 |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
