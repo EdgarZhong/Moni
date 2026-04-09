@@ -52,6 +52,7 @@ interface PressState {
   startX: number;
   startY: number;
   startScrollTop: number;
+  startedAt: number;
   mode: "pending" | "scroll";
 }
 
@@ -62,6 +63,221 @@ interface ReasonItem {
 
 interface MoniHomeProps {
   onNavigate?: (page: "home" | "entry") => void;
+}
+
+interface DetailContext {
+  item: HomeTransaction;
+  dayId: string;
+  dayLabel: string;
+}
+
+interface TransactionDetailPanelProps {
+  detail: DetailContext;
+  availableCategories: string[];
+  onClose: () => void;
+  onUpdateCategory: (transactionId: string, category: string, reasoning?: string) => void;
+  onUpdateUserNote: (transactionId: string, note: string) => void;
+  onSetTransactionVerification: (transactionId: string, isVerified: boolean) => void;
+}
+
+function TransactionDetailPanel({
+  detail,
+  availableCategories,
+  onClose,
+  onUpdateCategory,
+  onUpdateUserNote,
+  onSetTransactionVerification,
+}: TransactionDetailPanelProps) {
+  const EXIT_ANIMATION_MS = 220;
+  const OPEN_GUARD_MS = 260;
+  const [reasoningInput, setReasoningInput] = useState("");
+  const [noteInput, setNoteInput] = useState(detail.item.userNote ?? "");
+  const [selectedCategory, setSelectedCategory] = useState(getCategory(detail.item));
+  const [isVerified, setIsVerified] = useState(Boolean(detail.item.isVerified));
+  const [isClosing, setIsClosing] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number; at: number } | null>(null);
+  const openedAtRef = useRef(0);
+
+  useEffect(() => {
+    setReasoningInput("");
+    setNoteInput(detail.item.userNote ?? "");
+    setSelectedCategory(getCategory(detail.item));
+    setIsVerified(Boolean(detail.item.isVerified));
+    setIsClosing(false);
+    openedAtRef.current = Date.now();
+  }, [detail]);
+
+  const requestClose = useCallback((source: "backdrop" | "gesture" | "button" = "backdrop") => {
+    if (isClosing) return;
+    if (source === "backdrop" && Date.now() - openedAtRef.current < OPEN_GUARD_MS) {
+      return;
+    }
+    setIsClosing(true);
+    window.setTimeout(() => {
+      onClose();
+    }, EXIT_ANIMATION_MS);
+  }, [isClosing, onClose]);
+
+  const handleUpdateCategory = useCallback((category: string) => {
+    setSelectedCategory(category);
+    onUpdateCategory(String(detail.item.id), category, reasoningInput.trim() || undefined);
+  }, [detail.item.id, onUpdateCategory, reasoningInput]);
+
+  const handleSaveNote = useCallback(() => {
+    onUpdateUserNote(String(detail.item.id), noteInput.trim());
+  }, [detail.item.id, noteInput, onUpdateUserNote]);
+
+  const handleToggleVerified = useCallback(() => {
+    const next = !isVerified;
+    setIsVerified(next);
+    onSetTransactionVerification(String(detail.item.id), next);
+  }, [detail.item.id, isVerified, onSetTransactionVerification]);
+
+  const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    const touch = event.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, at: Date.now() };
+  }, []);
+
+  const handleTouchEnd = useCallback((event: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const endTouch = event.changedTouches[0];
+    const deltaX = endTouch.clientX - touchStartRef.current.x;
+    const deltaY = Math.abs(endTouch.clientY - touchStartRef.current.y);
+    const elapsed = Date.now() - touchStartRef.current.at;
+    const width = window.innerWidth;
+    const fromLeftEdge = touchStartRef.current.x < 50 && deltaX > 50;
+    const fromRightEdge = touchStartRef.current.x > width - 50 && deltaX < -50;
+    if ((fromLeftEdge || fromRightEdge) && deltaY < 50 && elapsed < 350) {
+      requestClose("gesture");
+    }
+    touchStartRef.current = null;
+  }, [requestClose]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 70, background: "rgba(0,0,0,.35)" }} onClick={() => requestClose("backdrop")}>
+      <div
+        onClick={(event) => event.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className={isClosing ? "frx" : "fr"}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          width: "100%",
+          maxWidth: 390,
+          height: "100%",
+          background: C.bg,
+          borderLeft: `2px solid ${C.dark}`,
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.white }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.dark }}>交易详情</div>
+            <div style={{ fontSize: 11, color: C.sub }}>{detail.dayLabel} · {detail.item.t}</div>
+          </div>
+          <div onClick={() => requestClose("button")} style={{ fontSize: 20, color: C.muted, lineHeight: 1, cursor: "pointer" }}>×</div>
+        </div>
+
+        <div style={{ padding: "14px 16px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>商户 / 主题</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.dark }}>{detail.item.n}</div>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, color: detail.item.direction === "in" ? C.mint : C.coral, fontFamily: "'Space Mono',monospace" }}>
+              {detail.item.direction === "in" ? "+" : "-"}¥{detail.item.a}
+            </div>
+          </div>
+
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 8, fontWeight: 700 }}>分类</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {availableCategories.map((category) => {
+                const active = selectedCategory === category;
+                return (
+                  <div
+                    key={category}
+                    onClick={() => handleUpdateCategory(category)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: `1.5px solid ${active ? C.dark : C.border}`,
+                      background: active ? C.dark : C.white,
+                      color: active ? C.bg : C.dark,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {category}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {detail.item.reason && (
+            <div style={{ background: C.greenBg, border: `1.5px solid ${C.mint}33`, borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11, color: C.greenText, fontWeight: 700, marginBottom: 4 }}>AI 判断理由</div>
+              <div style={{ fontSize: 12, color: C.greenText }}>{detail.item.reason}</div>
+            </div>
+          )}
+
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 6, fontWeight: 700 }}>修正理由（可选）</div>
+            <input
+              type="text"
+              value={reasoningInput}
+              onChange={(event) => setReasoningInput(event.target.value)}
+              placeholder="例如：这是下午茶不是正餐"
+              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, outline: "none", fontFamily: "inherit" }}
+            />
+          </div>
+
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, color: C.dark, fontWeight: 700 }}>锁定该分类</div>
+              <div
+                onClick={handleToggleVerified}
+                style={{
+                  width: 42,
+                  height: 24,
+                  borderRadius: 999,
+                  border: `1.5px solid ${isVerified ? C.mint : C.border}`,
+                  background: isVerified ? C.mint : "#F4F4F4",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: C.white, position: "absolute", top: 1, left: isVerified ? 21 : 2, transition: "left .18s ease" }} />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 6, fontWeight: 700 }}>备注</div>
+            <textarea
+              value={noteInput}
+              onChange={(event) => setNoteInput(event.target.value)}
+              rows={3}
+              placeholder="给这笔交易补充说明"
+              style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+            />
+            <div
+              onClick={handleSaveNote}
+              style={{ marginTop: 8, display: "inline-block", padding: "7px 12px", borderRadius: 8, background: C.dark, color: C.bg, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              保存备注
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: C.muted, textAlign: "right" }}>{detail.dayId} · {detail.item.sourceLabel ?? "未知来源"}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function MoniHome({ onNavigate }: MoniHomeProps) {
@@ -96,6 +312,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [hoverCategory, setHoverCategory] = useState<string | null>(null);
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
+  const [detailTxId, setDetailTxId] = useState<string | null>(null);
 
   const [controlOpen, setControlOpen] = useState(false);
   const [controlHit, setControlHit] = useState<string | null>(null);
@@ -204,6 +421,20 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     () => rangeDays.map((day) => ({ ...day, visibleItems: filterItems(day.items) })).filter((day) => day.visibleItems.length > 0),
     [rangeDays, filterItems],
   );
+  const detailContext = useMemo<DetailContext | null>(() => {
+    if (!detailTxId) return null;
+    for (const day of realDays) {
+      const matched = day.items.find((item) => String(item.id) === detailTxId);
+      if (matched) {
+        return {
+          item: matched,
+          dayId: day.id,
+          dayLabel: day.label,
+        };
+      }
+    }
+    return null;
+  }, [detailTxId, realDays]);
 
   const latestId = renderDays[0]?.id;
   const expenseItems = useMemo(() => rangeDays.flatMap((day) => day.items), [rangeDays]);
@@ -425,6 +656,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         startX: event.clientX,
         startY: event.clientY,
         startScrollTop: scrollRef.current?.scrollTop ?? 0,
+        startedAt: Date.now(),
         mode: "pending",
       };
       startHold(() => {
@@ -463,9 +695,21 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     [cancelPendingPress, dragItem, stopHold],
   );
 
-  const handleItemPointerUp = useCallback(() => {
+  const handleItemPointerUp = useCallback((event: React.PointerEvent) => {
+    const pressState = pressRef.current;
     if (pressRef.current) pressRef.current = null;
-    if (!dragItem) stopHold();
+    if (dragItem) return;
+
+    stopHold();
+    if (!pressState || pressState.pointerId !== event.pointerId || pressState.mode !== "pending") return;
+
+    const deltaX = Math.abs(event.clientX - pressState.startX);
+    const deltaY = Math.abs(event.clientY - pressState.startY);
+    const duration = Date.now() - pressState.startedAt;
+    const isTap = deltaX <= 8 && deltaY <= 8 && duration < 420;
+    if (isTap) {
+      setDetailTxId(String(pressState.item.id));
+    }
   }, [dragItem, stopHold]);
 
   const handleDropCategory = useCallback(
@@ -569,6 +813,12 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     setHintVisible(Boolean(primaryHint));
   }, [primaryHint]);
 
+  useEffect(() => {
+    if (detailTxId && !detailContext) {
+      setDetailTxId(null);
+    }
+  }, [detailContext, detailTxId]);
+
   const boardHandlers = {
     onPointerDown: handleBoardPointerDown,
     onPointerMove: handleBoardPointerMove,
@@ -604,10 +854,14 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         @keyframes p  { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
         @keyframes sk { 0%,100% { opacity: .42 } 50% { opacity: .16 } }
         @keyframes fu { from { transform: translateY(10px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+        @keyframes fr { from { transform: translateX(100%); opacity: .9 } to { transform: translateX(0); opacity: 1 } }
+        @keyframes frx { from { transform: translateX(0); opacity: 1 } to { transform: translateX(100%); opacity: .92 } }
         .ab { animation: rb 3s linear infinite; border-width: 2.5px; border-style: solid }
         .ag { animation: rbs 3s linear infinite }
         .sk { animation: sk 1.7s ease-in-out infinite; background: #ddd; border-radius: 4px }
         .fi { animation: fu .28s ease-out }
+        .fr { animation: fr .24s ease-out }
+        .frx { animation: frx .22s ease-out forwards }
         * { box-sizing: border-box }
         html, body { touch-action: manipulation; -webkit-touch-callout: none; overscroll-behavior: none }
         input, textarea, button { touch-action: manipulation }
@@ -772,6 +1026,17 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
           setReasonItem(null);
         }}
       />
+
+      {detailContext && (
+        <TransactionDetailPanel
+          detail={detailContext}
+          availableCategories={availableCategories}
+          onClose={() => setDetailTxId(null)}
+          onUpdateCategory={actions.updateCategory}
+          onUpdateUserNote={actions.updateUserNote}
+          onSetTransactionVerification={actions.setTransactionVerification}
+        />
+      )}
 
       <DateRangeDialog
         visible={rangeDialogOpen}
