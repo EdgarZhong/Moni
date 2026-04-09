@@ -1,5 +1,5 @@
 {
-  "revision": 31,
+  "revision": 34,
   "entries": [
     {
       "id": "d4c25dc4f6d61923",
@@ -22,7 +22,7 @@
     },
     {
       "id": "721a6ca996e460f4",
-      "created_at": "2026-04-09T06:51:12.521Z",
+      "created_at": "2026-04-09T07:25:36.232Z",
       "time": "2026-04-09 11:31:57",
       "sourceType": "manual",
       "rawClass": "",
@@ -37,6 +37,25 @@
       "ai_category": "",
       "ai_reasoning": "",
       "user_note": "",
+      "is_verified": true
+    },
+    {
+      "id": "b81f7ca46af5d89e",
+      "created_at": "2026-04-09T07:29:34.293Z",
+      "time": "2026-04-09 15:29:33",
+      "sourceType": "manual",
+      "rawClass": "",
+      "counterparty": "",
+      "product": "cai",
+      "amount": 12,
+      "direction": "out",
+      "paymentMethod": "",
+      "transactionStatus": "SUCCESS",
+      "remark": "",
+      "category": "大餐",
+      "ai_category": "",
+      "ai_reasoning": "",
+      "user_note": "asd",
       "is_verified": true
     }
   ]

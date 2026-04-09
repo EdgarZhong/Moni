@@ -466,7 +466,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               style={{
-                flex: 1, fontSize: 32, fontWeight: 700, color: C.dark,
+                flex: 1, minWidth: 0, fontSize: 32, fontWeight: 700, color: C.dark,
                 fontFamily: "'Space Mono',monospace", border: "none", background: "transparent",
                 outline: "none", padding: 0, WebkitAppearance: "none",
                 MozAppearance: "textfield" as React.CSSProperties["MozAppearance"],
