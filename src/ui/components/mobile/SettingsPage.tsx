@@ -66,7 +66,7 @@ const PREDEFINED_MODELS: Record<string, string[]> = {
     'moonshot-v1-auto',    // 自动选择上下文长度
     'kimi-k2.5',           // Kimi K2.5 系列模型
   ],
-  siliconflow: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen2.5-72B-Instruct'],
+  siliconflow: ['deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen2.5-72B-Instruct'],
   modelscope: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1'],
   zhipu: ['glm-4-flash', 'glm-4-air', 'glm-4-plus'],
   custom: [],
