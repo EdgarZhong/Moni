@@ -413,21 +413,22 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
       onClick={onClose}
       style={{
         position: "absolute", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 55,
-        display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center",
+        display: "flex", flexDirection: "column", justifyContent: "flex-end",
         overflow: "hidden",
         animation: "fadeIn .2s ease",
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: C.white, borderRadius: "20px 20px 0 0",
-          padding: "20px 20px 24px", border: `2px solid ${C.dark}`, borderBottom: "none",
-          animation: "slideUp .3s cubic-bezier(.4,0,.2,1)",
-          maxHeight: "78%", overflowY: "auto", overflowX: "hidden",
-          width: "100%", maxWidth: 390, boxSizing: "border-box",
-        }}
-      >
+      <div style={{ width: "100%", maxWidth: 390, margin: "0 auto", padding: "0 12px", boxSizing: "border-box" }}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: C.white, borderRadius: "20px 20px 0 0",
+            padding: "20px 20px 24px", border: `2px solid ${C.dark}`, borderBottom: "none",
+            animation: "slideUp .3s cubic-bezier(.4,0,.2,1)",
+            maxHeight: "75dvh", overflowY: "auto", overflowX: "hidden",
+            width: "100%", boxSizing: "border-box",
+          }}
+        >
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
         </div>
@@ -576,6 +577,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
             </>
           )}
           记一笔
+        </div>
         </div>
       </div>
     </div>

@@ -53,6 +53,10 @@ export interface HomeTransaction {
   reason?: string | null;
   /** 手记说明 */
   userNote?: string | null;
+  /** 收支方向 */
+  direction?: "in" | "out";
+  /** 是否已锁定/确认 */
+  isVerified?: boolean;
   /** 图标变体索引（对应 CAT[category].icons[ih % 4]） */
   ih: number;
 }

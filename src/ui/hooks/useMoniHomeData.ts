@@ -89,6 +89,8 @@ function toHomeTransaction(item: MoniHomeReadModel['dailyTransactionGroups'][num
     aiCat: item.aiCategory,
     reason: item.reasoning,
     userNote: item.userNote,
+    direction: item.direction,
+    isVerified: item.isVerified,
     ih: item.sequence,
   };
 }
@@ -114,6 +116,8 @@ export interface MoniHomeData {
   actions: {
     switchLedger: (ledgerId: string) => Promise<boolean>;
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
+    updateUserNote: (transactionId: string, note: string) => void;
+    setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
     setHomeDateRange: (range: { start: Date | null; end: Date | null }) => void;
@@ -203,6 +207,12 @@ export function useMoniHomeData(): MoniHomeData {
   const updateCategory = useCallback((transactionId: string, category: string, reasoning?: string) => {
     appFacade.updateTransactionCategory(transactionId, category, reasoning);
   }, []);
+  const updateUserNote = useCallback((transactionId: string, note: string) => {
+    appFacade.updateUserNote(transactionId, note);
+  }, []);
+  const setTransactionVerification = useCallback((transactionId: string, isVerified: boolean) => {
+    appFacade.setTransactionVerification(transactionId, isVerified);
+  }, []);
   const startAiProcessing = useCallback(() => appFacade.startAiProcessing(), []);
   const stopAiProcessing = useCallback(() => {
     appFacade.stopAiProcessing();
@@ -226,13 +236,25 @@ export function useMoniHomeData(): MoniHomeData {
     () => ({
       switchLedger,
       updateCategory,
+      updateUserNote,
+      setTransactionVerification,
       startAiProcessing,
       stopAiProcessing,
       setHomeDateRange: updateHomeDateRange,
       setTrendWindowOffset: updateTrendWindowOffset,
       refresh: loadReadModel,
     }),
-    [loadReadModel, startAiProcessing, stopAiProcessing, switchLedger, updateCategory, updateHomeDateRange, updateTrendWindowOffset]
+    [
+      loadReadModel,
+      setTransactionVerification,
+      startAiProcessing,
+      stopAiProcessing,
+      switchLedger,
+      updateCategory,
+      updateHomeDateRange,
+      updateTrendWindowOffset,
+      updateUserNote,
+    ]
   );
 
   return {
