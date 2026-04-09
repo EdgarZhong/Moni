@@ -508,6 +508,7 @@ function BottomSheet({ visible, title, children, onClose }: { visible: boolean; 
  * 中央首页按钮保持品牌主入口，设置页自身显示 active 态。
  */
 function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: () => void; onOpenEntry: () => void; aiStatus: string }) {
+  const aiRunning = aiStatus === "ANALYZING";
   const homeLabel = aiStatus === "ANALYZING"
     ? "进行中"
     : aiStatus === "ERROR"
@@ -543,20 +544,22 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: 
       <div onClick={onOpenHome} style={{ position: "relative", textAlign: "center", cursor: "pointer" }}>
         <div style={{ marginTop: -12 }}>
           <div
+            className={aiRunning ? "ag" : ""}
             style={{
               width: 52,
               height: 52,
-              background: aiStatus === "ANALYZING" ? C.mint : C.dark,
+              background: C.dark,
               borderRadius: 16,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               transform: "rotate(2deg)",
+              transition: "box-shadow .6s",
             }}
           >
             <NavIcon />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: aiStatus === "ANALYZING" ? C.mint : C.dark }}>{homeLabel}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: aiRunning ? C.mint : C.dark }}>{homeLabel}</div>
         </div>
       </div>
       <div onClick={onOpenEntry} style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }}>
@@ -2944,6 +2947,18 @@ export default function MoniSettings({
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <style>{`
+        @keyframes settings-nav-glow {
+          0%   { box-shadow: 0 0 0 2.5px ${C.coral}, 0 0 12px ${C.coral}44; }
+          25%  { box-shadow: 0 0 0 2.5px ${C.yellow}, 0 0 12px ${C.yellow}44; }
+          50%  { box-shadow: 0 0 0 2.5px ${C.blue}, 0 0 12px ${C.blue}44; }
+          75%  { box-shadow: 0 0 0 2.5px ${C.mint}, 0 0 12px ${C.mint}44; }
+          100% { box-shadow: 0 0 0 2.5px ${C.coral}, 0 0 12px ${C.coral}44; }
+        }
+        .ag {
+          animation: settings-nav-glow 3s linear infinite;
+        }
+      `}</style>
       <Decor />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
       <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
