@@ -40,6 +40,14 @@ const mapAlipayStatus = (statusStr: string = ''): TransactionStatus => {
   return TransactionStatus.OTHER;
 };
 
+const parseDirection = (directionStr: string): 'in' | 'out' | null => {
+  const d = directionStr.trim();
+  if (!d) return null;
+  if (d === '收入' || d === 'in' || d.includes('收款') || d.includes('已收钱')) return 'in';
+  if (d === '支出' || d === 'out' || d.includes('付款')) return 'out';
+  return null;
+};
+
 // 解析微信 CSV
 const parseWeChatCSV = async (csvText: string): Promise<Transaction[]> => {
   // 微信CSV前16行是头部信息，第17行是表头
@@ -58,6 +66,7 @@ const parseWeChatCSV = async (csvText: string): Promise<Transaction[]> => {
   });
 
   const transactions: Transaction[] = [];
+  let skippedNoTradeNo = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of results.data as any[]) {
@@ -85,7 +94,10 @@ const parseWeChatCSV = async (csvText: string): Promise<Transaction[]> => {
 
     // 构造去重指纹
     // 策略：必须存在官方交易单号，否则丢弃。
-    if (!tradeNo) continue;
+    if (!tradeNo) {
+      skippedNoTradeNo += 1;
+      continue;
+    }
     const uniqueFingerprint = `wx:${tradeNo}`;
 
     const id = await generateId(uniqueFingerprint);
@@ -108,6 +120,9 @@ const parseWeChatCSV = async (csvText: string): Promise<Transaction[]> => {
     });
   }
 
+  if (skippedNoTradeNo > 0) {
+    console.warn(`[parser] WeChat rows skipped due to missing 交易单号: ${skippedNoTradeNo}`);
+  }
   return transactions;
 };
 
@@ -118,7 +133,74 @@ const parseAlipayCSV = async (csvText: string): Promise<Transaction[]> => {
   const lines = csvText.split('\n');
   const headerIndex = lines.findIndex(line => line.includes('交易时间') && line.includes('交易分类'));
   
-  if (headerIndex === -1) return [];
+  const parseAlipayRowsByColumns = async (rows: string[][]): Promise<Transaction[]> => {
+    const transactions: Transaction[] = [];
+    let skippedNoTradeNo = 0;
+
+    for (const row of rows) {
+      if (!row || row.length < 10) continue;
+
+      const dateStr = (row[0] || '').trim();
+      if (!dateStr) continue;
+
+      const date = parse(dateStr, 'yyyy-MM-dd HH:mm:ss', new Date());
+      if (!isValid(date)) continue;
+
+      const direction = parseDirection((row[5] || '').trim());
+      if (!direction) continue;
+
+      const amount = cleanAmount((row[6] || '').trim());
+      const counterparty = (row[2] || '').trim() || 'Unknown';
+      const product = (row[4] || '').trim() || 'Unknown';
+      const category = (row[1] || '').trim() || 'Unknown';
+      const tradeNo = ((row[9] || row[10] || '') as string).trim();
+      const paymentMethod = (row[7] || '').trim() || 'Unknown';
+      const statusStr = (row[8] || '').trim();
+      const remark = (row[11] || '').trim();
+
+      if (!tradeNo) {
+        skippedNoTradeNo += 1;
+        continue;
+      }
+
+      const uniqueFingerprint = `ali:${tradeNo}`;
+      const id = await generateId(uniqueFingerprint);
+      transactions.push({
+        id,
+        originalId: tradeNo,
+        originalDate: date,
+        time: format(date, 'yyyy-MM-dd HH:mm:ss'),
+        sourceType: 'alipay',
+        category: 'uncategorized',
+        rawClass: category,
+        counterparty,
+        product,
+        amount,
+        direction,
+        paymentMethod,
+        transactionStatus: mapAlipayStatus(statusStr),
+        remark,
+      });
+    }
+
+    if (skippedNoTradeNo > 0) {
+      console.warn(`[parser] Alipay rows skipped due to missing trade number: ${skippedNoTradeNo}`);
+    }
+    return transactions;
+  };
+
+  if (headerIndex === -1) {
+    // 兜底：兼容乱码表头（如 GBK 被错误解码），按列位解析
+    const firstDataIndex = lines.findIndex((line) =>
+      /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},/.test(line.trim())
+    );
+    if (firstDataIndex === -1) return [];
+    const fallbackRows = Papa.parse<string[]>(lines.slice(firstDataIndex).join('\n'), {
+      header: false,
+      skipEmptyLines: true,
+    }).data;
+    return parseAlipayRowsByColumns(fallbackRows);
+  }
 
   // 支付宝CSV末尾可能有注释，通常以 --------- 结束或者空行
   // 这里直接取从header开始的内容
@@ -131,6 +213,7 @@ const parseAlipayCSV = async (csvText: string): Promise<Transaction[]> => {
   });
 
   const transactions: Transaction[] = [];
+  let skippedNoTradeNo = 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of results.data as any[]) {
@@ -144,10 +227,10 @@ const parseAlipayCSV = async (csvText: string): Promise<Transaction[]> => {
     const date = parse(dateStr, 'yyyy-MM-dd HH:mm:ss', new Date());
     if (!isValid(date)) continue;
 
-    const directionStr = (row['收/支'] || '').trim(); // 支付宝可能是 "支出" 或 "收入" 或空（不计收支）
+    const direction = parseDirection((row['收/支'] || '').trim()); // 支付宝可能是 "支出" 或 "收入" 或空（不计收支）
     const amountStr = (row['金额'] || '').trim();
 
-    if (directionStr !== '收入' && directionStr !== '支出') continue;
+    if (!direction) continue;
 
     const amount = cleanAmount(amountStr);
     const counterparty = (row['交易对方'] || '').trim() || 'Unknown';
@@ -160,7 +243,10 @@ const parseAlipayCSV = async (csvText: string): Promise<Transaction[]> => {
     const remark = (row['备注'] || '').trim();
 
     // 构造去重指纹
-    if (!tradeNo) continue;
+    if (!tradeNo) {
+      skippedNoTradeNo += 1;
+      continue;
+    }
     const uniqueFingerprint = `ali:${tradeNo}`;
 
     const id = await generateId(uniqueFingerprint);
@@ -176,13 +262,16 @@ const parseAlipayCSV = async (csvText: string): Promise<Transaction[]> => {
       counterparty: counterparty,
       product: product,
       amount: amount,
-      direction: directionStr === '收入' ? 'in' : 'out',
+      direction,
       paymentMethod: paymentMethod,
       transactionStatus: mapAlipayStatus(statusStr),
       remark: remark,
     });
   }
 
+  if (skippedNoTradeNo > 0) {
+    console.warn(`[parser] Alipay rows skipped due to missing trade number: ${skippedNoTradeNo}`);
+  }
   return transactions;
 };
 
@@ -227,7 +316,18 @@ export const parseFiles = async (files: File[]): Promise<Transaction[]> => {
         const txs = await parseAlipayCSV(text);
         allTransactions.push(...txs);
       } else {
-        console.warn(`Unknown CSV format for file: ${file.name}`);
+        // 兜底策略：关键词缺失时按表头特征尝试两种解析器，避免误判为 unknown format
+        const alipayFallback = await parseAlipayCSV(text);
+        if (alipayFallback.length > 0) {
+          allTransactions.push(...alipayFallback);
+        } else {
+          const wechatFallback = await parseWeChatCSV(text);
+          if (wechatFallback.length > 0) {
+            allTransactions.push(...wechatFallback);
+          } else {
+            console.warn(`Unknown CSV format for file: ${file.name}`);
+          }
+        }
       }
 
     } catch (err) {

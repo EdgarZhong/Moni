@@ -13,6 +13,14 @@ const ROOTS: Record<string, string> = {
   DATA: path.resolve(__dirname, 'virtual_android_filesys/sandbox_path')
 };
 
+function mapNodeEncoding(encoding?: string): BufferEncoding | undefined {
+  if (!encoding) return undefined;
+  if (encoding === 'utf8') return 'utf8';
+  if (encoding === 'ascii') return 'ascii';
+  if (encoding === 'utf16') return 'utf16le';
+  return 'utf8';
+}
+
 // Ensure roots exist
 Object.values(ROOTS).forEach(root => {
   if (!fs.existsSync(root)) {
@@ -70,7 +78,15 @@ export function mockFsMiddleware(): Plugin {
 
             if (action === 'read') {
               if (fs.existsSync(absPath)) {
-                const data = fs.readFileSync(absPath, 'utf-8');
+                const encoding = mapNodeEncoding(typeof body.encoding === 'string' ? body.encoding : undefined);
+                let data: string;
+                if (encoding) {
+                  // 模拟 Capacitor：显式传 encoding 时返回文本
+                  data = fs.readFileSync(absPath, encoding);
+                } else {
+                  // 模拟 Capacitor：不传 encoding 时返回 base64（保留原始字节）
+                  data = fs.readFileSync(absPath).toString('base64');
+                }
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ data }));
               } else {
