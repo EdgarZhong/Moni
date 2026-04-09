@@ -322,6 +322,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [hoverCategory, setHoverCategory] = useState<string | null>(null);
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
+  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
 
   const [controlOpen, setControlOpen] = useState(false);
   const [controlHit, setControlHit] = useState<string | null>(null);
@@ -345,11 +346,13 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const hoverCategoryRef = useRef<string | null>(null);
   const dragLockRef = useRef<DragLock | null>(null);
   const pendingDropRef = useRef<{ txId: string; category: string } | null>(null);
+  const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
 
   const primaryHint = hintCards[0] ?? null;
   const aiStop = aiEngineUiState.status === "draining" || optimisticStopping;
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining" || optimisticStopping;
   const aiCurrentDate = aiEngineUiState.activeDate;
+  const currentLedgerName = currentLedger.name || availableLedgers.find((ledger) => ledger.id === currentLedger.id)?.name || "未设置账本";
   const clampDateString = useCallback((value: string, min: string, max: string) => {
     if (value < min) return min;
     if (value > max) return max;
@@ -828,6 +831,27 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   }, [hoverCategory]);
 
   useEffect(() => {
+    if (!ledgerDropdownOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const root = ledgerDropdownWrapRef.current;
+      if (!root) {
+        return;
+      }
+      if (!root.contains(event.target as Node)) {
+        setLedgerDropdownOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [ledgerDropdownOpen]);
+
+  useEffect(() => {
     setHintVisible(Boolean(primaryHint));
   }, [primaryHint]);
 
@@ -890,25 +914,87 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
 
       <div style={{ padding: "12px 16px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg, zIndex: 20, flexShrink: 0, position: "relative" }}>
         <Logo />
-        <div style={{ fontSize: 12, color: "#666", background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 6 }}>
-          <select
-            value={currentLedger.id}
-            onChange={(event) => {
-              void actions.switchLedger(event.target.value).catch((error) => {
-                console.error("[MoniHome] Failed to switch ledger:", error);
-              });
+        <div
+          ref={ledgerDropdownWrapRef}
+          style={{
+            minWidth: 120,
+            display: "flex",
+            justifyContent: "flex-end",
+            position: "relative",
+          }}
+        >
+          <div
+            onClick={() => setLedgerDropdownOpen((open) => !open)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 14px",
+              borderRadius: 999,
+              background: C.white,
+              border: `1.8px solid ${C.dark}`,
+              color: C.dark,
+              fontSize: 13,
+              fontWeight: 650,
+              lineHeight: 1,
+              cursor: "pointer",
+              boxShadow: "0 1px 0 rgba(0,0,0,.04)",
             }}
-            style={{ border: "none", background: "transparent", color: "inherit", fontSize: 12, fontFamily: "inherit", outline: "none", cursor: "pointer", maxWidth: 120 }}
           >
-            {availableLedgers.map((ledger) => (
-              <option key={ledger.id} value={ledger.id}>
-                {ledger.name}
-              </option>
-            ))}
-          </select>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M2 4L5 7L8 4" stroke="#888" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-          </svg>
+            <span style={{ maxWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {currentLedgerName}
+            </span>
+            <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 3.8L5 6.8L8 3.8" stroke={C.dark} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          {ledgerDropdownOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 36,
+                right: 0,
+                minWidth: 146,
+                maxWidth: 220,
+                background: C.white,
+                border: `2px solid ${C.dark}`,
+                borderRadius: 14,
+                boxShadow: "0 8px 20px rgba(0,0,0,.14)",
+                overflow: "hidden",
+                zIndex: 40,
+              }}
+            >
+              {availableLedgers.map((ledger, index) => {
+                const selected = ledger.id === currentLedger.id;
+                return (
+                  <div
+                    key={ledger.id}
+                    onClick={() => {
+                      void actions.switchLedger(ledger.id).catch((error) => {
+                        console.error("[MoniHome] Failed to switch ledger:", error);
+                      });
+                      setLedgerDropdownOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                      borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : "none",
+                      background: selected ? C.blueBg : C.white,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {ledger.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: selected ? C.dark : "transparent", fontWeight: 700 }}>✓</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
