@@ -1,8 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { C, CAT, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
+import { C, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
+import type {
+  MoniSettingsData,
+} from "@ui/hooks/useMoniSettingsData";
+import type {
+  SettingsAiConfig,
+  SettingsExampleLibrarySummary,
+  SettingsLedgerItem,
+  SettingsLedgerTransaction,
+  SettingsSnapshotItem,
+} from "@shared/types";
 
 /**
  * 设置页原型以功能规格和 UI/UX 规格为准。
@@ -59,22 +69,60 @@ const PROVIDERS = [
   },
 ];
 
-const INITIAL_CUSTOM_TAGS = [
-  { key: "正餐", desc: "日常正餐支出（早午晚），仅限双人用餐，不含大餐和零食" },
-  { key: "零食", desc: "零食、饮品、小吃等非正餐食品" },
-  { key: "交通", desc: "公共交通、打车、加油、停车等出行费用" },
-  { key: "娱乐", desc: "电影、游戏、演出、会员订阅等娱乐消费" },
-  { key: "大餐", desc: "聚餐、大餐、宴请、高档餐厅等特殊餐饮" },
-  { key: "购物", desc: "日用品、服装、电子产品、网购等购物消费" },
-];
+type BtnVariant = "primary" | "secondary" | "danger" | "mint" | "ghost";
+type SettingsPageKey =
+  | "root"
+  | "aiConfig"
+  | "selfDesc"
+  | "ledgerManage"
+  | "tagManage"
+  | "aiMemory"
+  | "budget"
+  | "learnSettings"
+  | "fullReclass"
+  | "about";
 
-const SYSTEM_FALLBACK_TAG = { key: "其他", desc: "所有未落入用户显式标签的兜底支出", isSystem: true };
-const MOCK_MEMORY = [
-  "我是西工大学生，和女朋友一起生活，正餐只统计双人用餐",
-  "单笔餐饮 > 70 元视为大餐/聚餐，归 大餐",
-  "同一餐点时段已有正餐，后续小吃/面包归 零食",
-  "大餐的补差价（即使金额很小）也归 大餐",
-];
+type LearningSettingsDraft = {
+  autoLearn: boolean;
+  threshold: number;
+  compThreshold: number;
+};
+
+type BudgetDraft = {
+  monthly: string;
+  catBudgets: Record<string, string>;
+};
+
+type CustomTag = {
+  key: string;
+  desc: string;
+  isSystem?: boolean;
+};
+
+type AddFollowupDialogState = {
+  tagKey: string;
+};
+
+type DeleteScopeDialogState = {
+  tagKey: string;
+  affectedDates: string[];
+  affectedCount: number;
+};
+
+type DescScopeDialogState = {
+  tagKey: string;
+};
+
+type LockedSheetMode = "delete_full" | "desc_all";
+type LockedSheetState = {
+  mode: LockedSheetMode;
+  tagKey: string;
+  candidates: SettingsLedgerTransaction[];
+  title: string;
+  desc: string;
+};
+
+const SYSTEM_FALLBACK_TAG: CustomTag = { key: "其他", desc: "所有未落入用户显式标签的兜底支出", isSystem: true };
 
 /**
  * S32 渐进式重分类在原型中需要可观测的数据承载。
@@ -83,7 +131,7 @@ const MOCK_MEMORY = [
  * - `isVerified`：是否锁定（锁定条目默认不参与自动覆盖）
  * - `date`：用于 dirtyDates 的按天入队
  */
-const INITIAL_LEDGER_TRANSACTIONS = {
+const INITIAL_LEDGER_TRANSACTIONS: Record<string, SettingsLedgerTransaction[]> = {
   daily: [
     { id: "d-001", date: "2026-04-07", title: "盒马鲜生", amount: 86, category: "正餐", isVerified: false },
     { id: "d-002", date: "2026-04-07", title: "瑞幸咖啡", amount: 21, category: "零食", isVerified: true },
@@ -105,7 +153,7 @@ const INITIAL_LEDGER_TRANSACTIONS = {
  * 初始分类队列同样按账本隔离。
  * 队列元素冻结为“日期字符串”，对应 v7 的 `{ date }` 语义简化表示。
  */
-const INITIAL_CLASSIFY_QUEUE_BY_LEDGER = {
+const INITIAL_CLASSIFY_QUEUE_BY_LEDGER: Record<string, string[]> = {
   daily: ["2026-04-04"],
   travel: [],
 };
@@ -113,24 +161,24 @@ const INITIAL_CLASSIFY_QUEUE_BY_LEDGER = {
 /**
  * 帮助函数：按日期去重并升序输出，确保“同天只保留一个任务”。
  */
-function uniqueSortedDates(dates) {
-  return [...new Set(dates.filter(Boolean))].sort();
+function uniqueSortedDates(dates: Array<string | null | undefined>): string[] {
+  return [...new Set(dates.filter((value): value is string => Boolean(value)))].sort();
 }
 
 /**
  * 帮助函数：原型里统一金额显示格式，避免不同弹窗里写出多套模板。
  */
-function formatAmount(amount) {
+function formatAmount(amount: number): string {
   const sign = amount >= 0 ? "+" : "-";
   return `${sign}¥${Math.abs(amount)}`;
 }
 
-const INITIAL_EXAMPLE_LIBRARY_SUMMARY = {
+const INITIAL_EXAMPLE_LIBRARY_SUMMARY: SettingsExampleLibrarySummary = {
   delta: 3,
   total: 18,
 };
 
-const INITIAL_LEARNING_SETTINGS = {
+const INITIAL_LEARNING_SETTINGS: LearningSettingsDraft = {
   autoLearn: true,
   threshold: 5,
   compThreshold: 30,
@@ -148,7 +196,7 @@ function BackArrow() {
   );
 }
 
-function ChevronRight({ color = C.muted }) {
+function ChevronRight({ color = C.muted }: { color?: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
       <path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -160,8 +208,22 @@ function ChevronRight({ color = C.muted }) {
  * 设置页统一按钮。
  * 这里保留和规格一致的 4 种主要视觉变体，同时增加 ghost 以承载次要文本动作。
  */
-function Btn({ children, onClick, variant = "primary", full, disabled, small }) {
-  const baseStyle = {
+function Btn({
+  children,
+  onClick,
+  variant = "primary",
+  full = false,
+  disabled = false,
+  small = false,
+}: {
+  children: React.ReactNode;
+  onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  variant?: BtnVariant;
+  full?: boolean;
+  disabled?: boolean;
+  small?: boolean;
+}) {
+  const baseStyle: React.CSSProperties = {
     padding: small ? "8px 14px" : "12px 20px",
     borderRadius: 12,
     fontSize: small ? 12 : 14,
@@ -172,7 +234,7 @@ function Btn({ children, onClick, variant = "primary", full, disabled, small }) 
     opacity: disabled ? 0.45 : 1,
   };
 
-  const variants = {
+  const variants: Record<BtnVariant, React.CSSProperties> = {
     primary: { ...baseStyle, background: C.dark, color: C.bg, border: `2px solid ${C.dark}` },
     secondary: { ...baseStyle, background: C.white, color: C.dark, border: `1.5px solid ${C.border}` },
     danger: { ...baseStyle, background: C.pinkBg, color: C.coral, border: `1.5px solid ${C.pinkBd}` },
@@ -197,7 +259,7 @@ function Btn({ children, onClick, variant = "primary", full, disabled, small }) 
  * 统一页头只保留返回和标题。
  * 这是本次调整的核心之一：所有表单动作不再挤进 header 右上角。
  */
-function SubPageHeader({ title, onBack }) {
+function SubPageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <div
       style={{
@@ -223,7 +285,7 @@ function SubPageHeader({ title, onBack }) {
  * Root 页卡片与行项直接沿用参考文档中的结构语义，
  * 但具体实现落在当前仓库的视觉 token 上。
  */
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -245,7 +307,21 @@ function SectionCard({ title, subtitle, children }) {
   );
 }
 
-function SettingRow({ icon, label, desc, value, onClick, danger }) {
+function SettingRow({
+  icon,
+  label,
+  desc,
+  value,
+  onClick,
+  danger = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  desc?: string;
+  value?: string;
+  onClick?: () => void;
+  danger?: boolean;
+}) {
   return (
     <div
       onClick={onClick}
@@ -287,7 +363,19 @@ function SettingRow({ icon, label, desc, value, onClick, danger }) {
  * 二级页内部的内容块统一使用 FormCard。
  * 这样可以把动作按钮稳定地挂在对应内容块底部右侧，符合用户提出的手指触达逻辑。
  */
-function FormCard({ title, desc, children, footer, tone = "default" }) {
+function FormCard({
+  title,
+  desc,
+  children,
+  footer,
+  tone = "default",
+}: {
+  title: string;
+  desc?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  tone?: "default" | "danger";
+}) {
   const toneBorder = tone === "danger" ? C.pinkBd : C.border;
   const toneBg = tone === "danger" ? C.pinkBg : C.white;
 
@@ -309,7 +397,7 @@ function FormCard({ title, desc, children, footer, tone = "default" }) {
   );
 }
 
-function Toast({ visible, message }) {
+function Toast({ visible, message }: { visible: boolean; message: string }) {
   if (!visible) {
     return null;
   }
@@ -356,7 +444,7 @@ function Toast({ visible, message }) {
   );
 }
 
-function Dialog({ visible, title, children, onClose }) {
+function Dialog({ visible, title, children, onClose }: { visible: boolean; title: string; children: React.ReactNode; onClose: () => void }) {
   if (!visible) {
     return null;
   }
@@ -384,7 +472,7 @@ function Dialog({ visible, title, children, onClose }) {
   );
 }
 
-function BottomSheet({ visible, title, children, onClose }) {
+function BottomSheet({ visible, title, children, onClose }: { visible: boolean; title: string; children: React.ReactNode; onClose: () => void }) {
   if (!visible) {
     return null;
   }
@@ -419,7 +507,7 @@ function BottomSheet({ visible, title, children, onClose }) {
  * 设置页底部导航与首页、记账页采用同一视觉骨架。
  * 中央首页按钮保持品牌主入口，设置页自身显示 active 态。
  */
-function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }) {
+function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: () => void; onOpenEntry: () => void; aiStatus: string }) {
   const homeLabel = aiStatus === "ANALYZING"
     ? "进行中"
     : aiStatus === "ERROR"
@@ -487,6 +575,14 @@ function SettingsRoot({
   ledgerCount,
   budgetSummaryText,
   aiConfigSummary,
+}: {
+  onNavigate: (page: SettingsPageKey) => void;
+  customTagCount: number;
+  memoryCount: number;
+  currentLedgerName: string;
+  ledgerCount: number;
+  budgetSummaryText: string;
+  aiConfigSummary: string;
 }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -528,9 +624,20 @@ function AIConfigPage({
   onUpdateTemperature,
   onUpdateEnableThinking,
   onTestConnection,
+}: {
+  onBack: () => void;
+  aiConfig: SettingsAiConfig;
+  onUpdateProvider: MoniSettingsData["actions"]["updateProvider"];
+  onUpdateApiKey: MoniSettingsData["actions"]["updateApiKey"];
+  onUpdateBaseUrl: MoniSettingsData["actions"]["updateBaseUrl"];
+  onUpdateActiveModel: MoniSettingsData["actions"]["updateActiveModel"];
+  onUpdateMaxTokens: MoniSettingsData["actions"]["updateMaxTokens"];
+  onUpdateTemperature: MoniSettingsData["actions"]["updateTemperature"];
+  onUpdateEnableThinking: MoniSettingsData["actions"]["updateEnableThinking"];
+  onTestConnection: MoniSettingsData["actions"]["testConnection"];
 }) {
-  const [provider, setProvider] = useState(aiConfig?.provider || "deepseek");
-  const [keyDrafts, setKeyDrafts] = useState({
+  const [provider, setProvider] = useState<string>(aiConfig?.provider || "deepseek");
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({
     deepseek: "",
     moonshot: "",
     siliconflow: "",
@@ -540,8 +647,8 @@ function AIConfigPage({
   });
   const [thinking, setThinking] = useState(Boolean(aiConfig?.enableThinking));
   const [testing, setTesting] = useState(false);
-  const [lastTestResult, setLastTestResult] = useState(null);
-  const [selectedModels, setSelectedModels] = useState({
+  const [lastTestResult, setLastTestResult] = useState<"success" | "failed" | null>(null);
+  const [selectedModels, setSelectedModels] = useState<Record<string, string>>({
     deepseek: "deepseek-chat",
     moonshot: "kimi-k2.5",
     siliconflow: "deepseek-ai/DeepSeek-V3",
@@ -945,7 +1052,7 @@ function AIConfigPage({
   );
 }
 
-function SelfDescPage({ onBack, text, onChange }) {
+function SelfDescPage({ onBack, text, onChange }: { onBack: () => void; text: string; onChange: (value: string) => void }) {
   const [saved, setSaved] = useState(false);
 
   return (
@@ -1005,16 +1112,24 @@ function LedgerManagePage({
   onCreateLedger,
   onRenameLedger,
   onDeleteLedger,
+}: {
+  onBack: () => void;
+  ledgers: SettingsLedgerItem[];
+  activeId: string;
+  onSwitchLedger: MoniSettingsData["actions"]["switchLedger"];
+  onCreateLedger: MoniSettingsData["actions"]["createLedger"];
+  onRenameLedger: MoniSettingsData["actions"]["renameLedger"];
+  onDeleteLedger: MoniSettingsData["actions"]["deleteLedger"];
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [showRename, setShowRename] = useState(null);
+  const [showRename, setShowRename] = useState<SettingsLedgerItem | null>(null);
   const [renameTo, setRenameTo] = useState("");
-  const [showDelete, setShowDelete] = useState(null);
+  const [showDelete, setShowDelete] = useState<SettingsLedgerItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  const showToast = useCallback((message) => {
+  const showToast = useCallback((message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(""), 2200);
   }, []);
@@ -1214,7 +1329,6 @@ function LedgerManagePage({
 function TagManagePage({
   onBack,
   customTags,
-  onChangeTags,
   onCreateTag,
   onRenameTag,
   onUpdateTagDescription,
@@ -1223,6 +1337,17 @@ function TagManagePage({
   onChangeLedgerTransactions,
   classifyQueueDates,
   onEnqueueClassifyDates,
+}: {
+  onBack: () => void;
+  customTags: CustomTag[];
+  onCreateTag: MoniSettingsData["actions"]["createTag"];
+  onRenameTag: MoniSettingsData["actions"]["renameTag"];
+  onUpdateTagDescription: MoniSettingsData["actions"]["updateTagDescription"];
+  onDeleteTag: MoniSettingsData["actions"]["deleteTag"];
+  ledgerTransactions: SettingsLedgerTransaction[];
+  onChangeLedgerTransactions: React.Dispatch<React.SetStateAction<SettingsLedgerTransaction[]>>;
+  classifyQueueDates: string[];
+  onEnqueueClassifyDates: (dates: string[]) => { added: number; total: number };
 }) {
   // “其他”不是用户真的在这里维护的数据，只在存在自定义标签时展示为兜底行。
   // 这样当用户删光所有标签时，列表可以自然进入空态，不会残留一个系统占位项。
@@ -1231,23 +1356,23 @@ function TagManagePage({
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
   const [addDesc, setAddDesc] = useState("");
-  const [editTag, setEditTag] = useState(null);
-  const [editMode, setEditMode] = useState("rename");
+  const [editTag, setEditTag] = useState<CustomTag | null>(null);
+  const [editMode, setEditMode] = useState<"rename" | "desc">("rename");
   const [editDesc, setEditDesc] = useState("");
   const [renameTo, setRenameTo] = useState("");
-  const [deleteTag, setDeleteTag] = useState(null);
+  const [deleteTag, setDeleteTag] = useState<CustomTag | null>(null);
   // S32：新增标签后的渐进式二选一弹窗。
-  const [addFollowupDialog, setAddFollowupDialog] = useState(null);
+  const [addFollowupDialog, setAddFollowupDialog] = useState<AddFollowupDialogState | null>(null);
   // S32：删除标签后的范围确认弹窗。
-  const [deleteScopeDialog, setDeleteScopeDialog] = useState(null);
+  const [deleteScopeDialog, setDeleteScopeDialog] = useState<DeleteScopeDialogState | null>(null);
   // S32：修改描述后的范围确认弹窗。
-  const [descScopeDialog, setDescScopeDialog] = useState(null);
+  const [descScopeDialog, setDescScopeDialog] = useState<DescScopeDialogState | null>(null);
   // S32：涉及“包含锁定交易”时打开的底部锁定列表选择器。
-  const [lockedSheet, setLockedSheet] = useState(null);
-  const [selectedLockedIds, setSelectedLockedIds] = useState([]);
+  const [lockedSheet, setLockedSheet] = useState<LockedSheetState | null>(null);
+  const [selectedLockedIds, setSelectedLockedIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const showToast = (message) => {
+  const showToast = (message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(""), 2200);
   };
@@ -1258,12 +1383,12 @@ function TagManagePage({
    * - 同一天任务按日期去重入队；
    * - 所有触发最终统一反馈“已通知消费端尝试启动”。
    */
-  const triggerClassifyByDates = (dates, label) => {
+  const triggerClassifyByDates = (dates: string[], label: string) => {
     const result = onEnqueueClassifyDates(dates);
     showToast(`${label}：新增 ${result.added} 天任务，队列共 ${result.total} 天，已通知消费端尝试启动。`);
   };
 
-  const openLockedSheet = ({ mode, tagKey, candidates, title, desc }) => {
+  const openLockedSheet = ({ mode, tagKey, candidates, title, desc }: LockedSheetState) => {
     setLockedSheet({ mode, tagKey, candidates, title, desc });
     setSelectedLockedIds([]);
   };
@@ -1273,7 +1398,7 @@ function TagManagePage({
     setSelectedLockedIds([]);
   };
 
-  const toggleLockedSelected = (txId) => {
+  const toggleLockedSelected = (txId: string) => {
     setSelectedLockedIds((items) => (items.includes(txId) ? items.filter((id) => id !== txId) : [...items, txId]));
   };
 
@@ -1799,18 +1924,27 @@ function AIMemoryPage({
   onDeleteSnapshot,
   exampleLibrarySummary,
   onLearningComplete
+}: {
+  onBack: () => void;
+  memory: string[];
+  snapshots: SettingsSnapshotItem[];
+  onSaveMemory: (items: string[]) => void;
+  onRollbackSnapshot: MoniSettingsData["actions"]["rollbackMemorySnapshot"];
+  onDeleteSnapshot: MoniSettingsData["actions"]["deleteMemorySnapshot"];
+  exampleLibrarySummary: SettingsExampleLibrarySummary;
+  onLearningComplete: () => void;
 }) {
   // 编辑草稿和已保存记忆必须分离。
   // 这样点击条目编辑、回车新增条目、删除条目时都不会提前把草稿写回保存态。
-  const [draftMemory, setDraftMemory] = useState(memory);
-  const [editingIndex, setEditingIndex] = useState(null);
+  const [draftMemory, setDraftMemory] = useState<string[]>(memory);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showLearn, setShowLearn] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const [learning, setLearning] = useState(false);
   const [snapshotBusyId, setSnapshotBusyId] = useState("");
   const [toastMessage, setToastMessage] = useState("");
-  const inputRefs = useRef([]);
+  const inputRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
 
   useEffect(() => {
     if (editingIndex === null) {
@@ -1832,7 +1966,7 @@ function AIMemoryPage({
     }
   }, [editingIndex, draftMemory.length]);
 
-  const showToast = (message) => {
+  const showToast = (message: string) => {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(""), 2200);
   };
@@ -1843,11 +1977,11 @@ function AIMemoryPage({
     setEditingIndex(0);
   };
 
-  const updateDraftItem = (index, nextValue) => {
+  const updateDraftItem = (index: number, nextValue: string) => {
     setDraftMemory((items) => items.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
   };
 
-  const insertBlankAfter = (index) => {
+  const insertBlankAfter = (index: number) => {
     setDraftMemory((items) => {
       const nextItems = [...items];
       nextItems.splice(index + 1, 0, "");
@@ -1856,7 +1990,7 @@ function AIMemoryPage({
     setEditingIndex(index + 1);
   };
 
-  const removeDraftItem = (index) => {
+  const removeDraftItem = (index: number) => {
     setDraftMemory((items) => {
       const nextItems = items.filter((_, itemIndex) => itemIndex !== index);
       const normalizedItems = nextItems.length ? nextItems : [""];
@@ -2023,7 +2157,7 @@ function AIMemoryPage({
                   onClick={() => {
                     setSnapshotBusyId(snapshot.id);
                     void onRollbackSnapshot(snapshot.id)
-                      .then((ok) => {
+                  .then((ok: boolean) => {
                         showToast(ok ? "已回退到该版本" : "回退失败，请重试");
                       })
                       .finally(() => {
@@ -2040,7 +2174,7 @@ function AIMemoryPage({
                   onClick={() => {
                     setSnapshotBusyId(snapshot.id);
                     void onDeleteSnapshot(snapshot.id)
-                      .then((ok) => {
+                  .then((ok: boolean) => {
                         showToast(ok ? "历史版本已删除" : "删除失败（当前版本不可删除）");
                       })
                       .finally(() => {
@@ -2079,14 +2213,26 @@ function AIMemoryPage({
   );
 }
 
-function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onSaveBudget }) {
-  const [monthly, setMonthly] = useState(monthlyBudget || "");
-  const [catBudgets, setCatBudgets] = useState(categoryBudgets || {});
+function BudgetPage({
+  onBack,
+  customTags,
+  monthlyBudget,
+  categoryBudgets,
+  onSaveBudget,
+}: {
+  onBack: () => void;
+  customTags: CustomTag[];
+  monthlyBudget: string;
+  categoryBudgets: Record<string, string>;
+  onSaveBudget: (draft: BudgetDraft) => Promise<void>;
+}) {
+  const [monthly, setMonthly] = useState<string>(monthlyBudget || "");
+  const [catBudgets, setCatBudgets] = useState<Record<string, string>>(categoryBudgets || {});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const total = Object.values(catBudgets).reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
-  const over = monthly && total > parseFloat(monthly);
+  const total = Object.values(catBudgets).reduce<number>((sum, value) => sum + (Number.parseFloat(value) || 0), 0);
+  const over = Boolean(monthly) && total > (Number.parseFloat(monthly) || 0);
 
   useEffect(() => {
     setMonthly(monthlyBudget || "");
@@ -2201,6 +2347,12 @@ function LearningSettingsPage({
   onChangeLearningSettings,
   onSaveLearningSettings,
   exampleLibrarySummary
+}: {
+  onBack: () => void;
+  learningSettings: LearningSettingsDraft;
+  onChangeLearningSettings: React.Dispatch<React.SetStateAction<LearningSettingsDraft>>;
+  onSaveLearningSettings: (settings: LearningSettingsDraft) => Promise<void>;
+  exampleLibrarySummary: SettingsExampleLibrarySummary;
 }) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2279,7 +2431,15 @@ function LearningSettingsPage({
   );
 }
 
-function FullReclassPage({ onBack, onTriggerFullReclassification, aiStatus }) {
+function FullReclassPage({
+  onBack,
+  onTriggerFullReclassification,
+  aiStatus,
+}: {
+  onBack: () => void;
+  onTriggerFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
+  aiStatus: string;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -2353,7 +2513,7 @@ function FullReclassPage({ onBack, onTriggerFullReclassification, aiStatus }) {
   );
 }
 
-function AboutPage({ onBack }) {
+function AboutPage({ onBack }: { onBack: () => void }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="关于" onBack={onBack} />
@@ -2427,23 +2587,23 @@ export default function MoniSettings({
       testConnection,
     },
   } = useMoniSettingsData();
-  const [aiEngineStatus, setAiEngineStatus] = useState("IDLE");
-  const onChangeActiveLedgerId = useCallback((ledgerId) => {
+  const [aiEngineStatus, setAiEngineStatus] = useState<string>("IDLE");
+  const onChangeActiveLedgerId = useCallback((ledgerId: string) => {
     void switchLedger(ledgerId);
   }, [switchLedger]);
-  const [page, setPage] = useState("root");
+  const [page, setPage] = useState<SettingsPageKey>("root");
   const [selfDescription, setSelfDescription] = useState(
     "Demo 示例：我平时会把咖啡、奶茶、小零食分开记，也希望 AI 先按常见消费场景帮我分类。你可以把这里改成自己的真实习惯。",
   );
-  const [customTagsByLedger, setCustomTagsByLedger] = useState({});
-  const [memoryByLedger, setMemoryByLedger] = useState({});
-  const [snapshotsByLedger, setSnapshotsByLedger] = useState({});
-  const [learningSettingsByLedger, setLearningSettingsByLedger] = useState({});
-  const [exampleSummaryByLedger, setExampleSummaryByLedger] = useState({});
-  const [budgetByLedger, setBudgetByLedger] = useState({});
+  const [customTagsByLedger, setCustomTagsByLedger] = useState<Record<string, CustomTag[]>>({});
+  const [memoryByLedger, setMemoryByLedger] = useState<Record<string, string[]>>({});
+  const [snapshotsByLedger, setSnapshotsByLedger] = useState<Record<string, SettingsSnapshotItem[]>>({});
+  const [learningSettingsByLedger, setLearningSettingsByLedger] = useState<Record<string, LearningSettingsDraft>>({});
+  const [exampleSummaryByLedger, setExampleSummaryByLedger] = useState<Record<string, SettingsExampleLibrarySummary>>({});
+  const [budgetByLedger, setBudgetByLedger] = useState<Record<string, BudgetDraft>>({});
   // S32 原型态数据：交易与重分类队列均按账本隔离。
-  const [ledgerTransactionsByLedger, setLedgerTransactionsByLedger] = useState(INITIAL_LEDGER_TRANSACTIONS);
-  const [classifyQueueByLedger, setClassifyQueueByLedger] = useState(INITIAL_CLASSIFY_QUEUE_BY_LEDGER);
+  const [ledgerTransactionsByLedger, setLedgerTransactionsByLedger] = useState<Record<string, SettingsLedgerTransaction[]>>(INITIAL_LEDGER_TRANSACTIONS);
+  const [classifyQueueByLedger, setClassifyQueueByLedger] = useState<Record<string, string[]>>(INITIAL_CLASSIFY_QUEUE_BY_LEDGER);
   const currentLedger = useMemo(() => ledgers.find((item) => item.id === activeLedgerId) || ledgers[0], [ledgers, activeLedgerId]);
   const currentLedgerName = currentLedger?.name || "未设置账本";
   const currentCustomTags = customTagsByLedger[activeLedgerId] || [];
@@ -2562,7 +2722,7 @@ export default function MoniSettings({
 
   useEffect(() => {
     const processor = BatchProcessor.getInstance();
-    const unsubscribe = processor.on("status", ({ status }) => {
+    const unsubscribe = processor.on("status", ({ status }: { status: string }) => {
       setAiEngineStatus(status);
     });
     return () => {
@@ -2570,7 +2730,7 @@ export default function MoniSettings({
     };
   }, []);
 
-  const updateCurrentLedgerTransactions = (nextValue) => {
+  const updateCurrentLedgerTransactions = (nextValue: React.SetStateAction<SettingsLedgerTransaction[]>) => {
     setLedgerTransactionsByLedger((value) => {
       const currentItems = value[activeLedgerId] || [];
       const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
@@ -2578,7 +2738,7 @@ export default function MoniSettings({
     });
   };
 
-  const enqueueCurrentLedgerDates = (dates) => {
+  const enqueueCurrentLedgerDates = (dates: string[]) => {
     let result = { added: 0, total: 0 };
     setClassifyQueueByLedger((value) => {
       const currentQueue = value[activeLedgerId] || [];
@@ -2592,15 +2752,7 @@ export default function MoniSettings({
     return result;
   };
 
-  const updateCurrentTags = (nextValue) => {
-    setCustomTagsByLedger((value) => {
-      const currentItems = value[activeLedgerId] || [];
-      const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
-      return { ...value, [activeLedgerId]: nextItems };
-    });
-  };
-
-  const updateCurrentMemory = (nextValue) => {
+  const updateCurrentMemory = (nextValue: React.SetStateAction<string[]>) => {
     setMemoryByLedger((value) => {
       const currentItems = value[activeLedgerId] || [];
       const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
@@ -2608,15 +2760,15 @@ export default function MoniSettings({
     });
   };
 
-  const rollbackCurrentSnapshot = useCallback(async (snapshotId) => {
+  const rollbackCurrentSnapshot = useCallback(async (snapshotId: string) => {
     return rollbackMemorySnapshot(snapshotId);
   }, [rollbackMemorySnapshot]);
 
-  const deleteCurrentSnapshot = useCallback(async (snapshotId) => {
+  const deleteCurrentSnapshot = useCallback(async (snapshotId: string) => {
     return deleteMemorySnapshot(snapshotId);
   }, [deleteMemorySnapshot]);
 
-  const updateCurrentLearningSettings = (nextValue) => {
+  const updateCurrentLearningSettings = (nextValue: React.SetStateAction<LearningSettingsDraft>) => {
     setLearningSettingsByLedger((value) => {
       const currentItems = value[activeLedgerId] || INITIAL_LEARNING_SETTINGS;
       const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
@@ -2631,14 +2783,14 @@ export default function MoniSettings({
     });
   };
 
-  const updateCurrentBudget = ({ monthly, catBudgets }) => {
+  const updateCurrentBudget = ({ monthly, catBudgets }: BudgetDraft) => {
     setBudgetByLedger((value) => ({
       ...value,
       [activeLedgerId]: { monthly, catBudgets },
     }));
   };
 
-  const persistCurrentBudget = useCallback(async ({ monthly, catBudgets }) => {
+  const persistCurrentBudget = useCallback(async ({ monthly, catBudgets }: BudgetDraft) => {
     updateCurrentBudget({ monthly, catBudgets });
     const parsedMonthly = parseFloat(monthly);
     await updateMonthlyBudget(Number.isFinite(parsedMonthly) && parsedMonthly > 0 ? parsedMonthly : 0);
@@ -2656,7 +2808,7 @@ export default function MoniSettings({
     }
   }, [currentBudget, updateCategoryBudget, updateCurrentBudget, updateMonthlyBudget]);
 
-  const persistCurrentLearningSettings = useCallback(async (settings) => {
+  const persistCurrentLearningSettings = useCallback(async (settings: LearningSettingsDraft) => {
     updateCurrentLearningSettings(settings);
     await toggleAutoLearn(Boolean(settings.autoLearn));
     await updateLearningThreshold(settings.threshold);
@@ -2704,7 +2856,6 @@ export default function MoniSettings({
           <TagManagePage
             onBack={() => setPage("root")}
             customTags={currentCustomTags}
-            onChangeTags={updateCurrentTags}
             onCreateTag={createTag}
             onRenameTag={renameTag}
             onUpdateTagDescription={updateTagDescription}
@@ -2793,7 +2944,7 @@ export default function MoniSettings({
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-      <Decor seed={page === "root" ? 555 : 777} />
+      <Decor />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
       <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
     </div>

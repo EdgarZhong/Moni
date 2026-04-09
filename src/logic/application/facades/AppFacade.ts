@@ -1,5 +1,6 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
+import { classifyTrigger } from '@logic/application/ai/ClassifyTrigger';
 import { LearningSession } from '@logic/application/ai/LearningSession';
 import type { AIProgress, AIStatus } from '@logic/application/ai/types';
 import { ExampleStore } from '@logic/application/services/ExampleStore';
@@ -672,9 +673,9 @@ export class AppFacade {
       const prefs = await LedgerPreferencesManager.getInstance().load(currentLedgerId);
       if (prefs) {
         learningConfig = {
-          autoLearn: prefs.auto_learn ?? true,
-          learningThreshold: prefs.learning_threshold ?? 5,
-          compressionThreshold: prefs.compression_threshold ?? 30,
+          autoLearn: prefs.learning.autoLearn ?? true,
+          learningThreshold: prefs.learning.threshold ?? 5,
+          compressionThreshold: prefs.compression.threshold ?? 30,
         };
       }
     } catch { /* ignore */ }
@@ -863,28 +864,28 @@ export class AppFacade {
   public async createTag(name: string, desc: string): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await this.ledgerService.addCategory(ledgerId, name, desc);
+    await this.ledgerService.addCategory(name, desc);
     this.notify();
   }
 
   public async renameTag(oldKey: string, newKey: string): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await this.ledgerService.renameCategory(ledgerId, oldKey, newKey);
+    await this.ledgerService.renameCategory(oldKey, newKey);
     this.notify();
   }
 
   public async updateTagDescription(key: string, desc: string): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await this.ledgerService.updateCategoryDescription(ledgerId, key, desc);
+    await this.ledgerService.updateCategoryDescription(key, desc);
     this.notify();
   }
 
   public async deleteTag(key: string): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await this.ledgerService.removeCategory(ledgerId, key);
+    await this.ledgerService.deleteCategory(key);
     this.notify();
   }
 
@@ -893,7 +894,6 @@ export class AppFacade {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
     await MemoryManager.save(ledgerId, items);
-    await SnapshotManager.create(ledgerId, 'user_edit');
     this.notify();
   }
 
@@ -901,7 +901,8 @@ export class AppFacade {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return false;
     try {
-      await LearningSession.runImmediate(ledgerId);
+      const categories = this.ledgerService.getState().ledgerMemory?.defined_categories ?? {};
+      await LearningSession.run(ledgerId, categories);
       this.notify();
       return true;
     } catch {
@@ -933,27 +934,27 @@ export class AppFacade {
   public async updateLearningThreshold(value: number): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
-    prefs.learning_threshold = value;
-    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    await LedgerPreferencesManager.getInstance().update(ledgerId, {
+      learning: { threshold: value },
+    });
     this.notify();
   }
 
   public async toggleAutoLearn(enabled: boolean): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
-    prefs.auto_learn = enabled;
-    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    await LedgerPreferencesManager.getInstance().update(ledgerId, {
+      learning: { autoLearn: enabled },
+    });
     this.notify();
   }
 
   public async updateCompressionThreshold(value: number): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
-    prefs.compression_threshold = value;
-    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    await LedgerPreferencesManager.getInstance().update(ledgerId, {
+      compression: { threshold: value },
+    });
     this.notify();
   }
 
@@ -976,7 +977,18 @@ export class AppFacade {
   public async triggerFullReclassification(): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await this.batchProcessor.triggerFullReclassification(ledgerId);
+    const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
+    const dirtyDates = Array.from(
+      new Set(
+        Object.values(records)
+          .filter((record) => record.transactionStatus === 'SUCCESS' && !record.is_verified)
+          .map((record) => record.time.slice(0, 10))
+      )
+    ).sort();
+    if (dirtyDates.length > 0) {
+      await classifyTrigger.enqueueConfirmedDates(ledgerId, dirtyDates, 'full_reclassification');
+    }
+    await this.batchProcessor.run();
     this.notify();
   }
 
