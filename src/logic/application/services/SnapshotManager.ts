@@ -51,6 +51,15 @@ export interface SnapshotContent extends SnapshotMeta {
 export class SnapshotManager {
   private static readonly BASE_PATH = 'Moni/classify_memory';
   private static readonly MAX_SNAPSHOTS = 30;
+  private static readonly VALID_TRIGGERS: ReadonlyArray<SnapshotMeta['trigger']> = [
+    'ledger_init',
+    'ai_learn',
+    'ai_compress',
+    'user_edit',
+    'tag_delete',
+    'manual',
+    'migration'
+  ];
 
   /**
    * 获取账本快照目录路径（v6：Documents 目录）
@@ -133,14 +142,77 @@ export class SnapshotManager {
     }
 
     const candidate = raw as Partial<SnapshotIndex>;
+    const rawCurrentId =
+      typeof candidate.current_snapshot_id === 'string'
+        ? candidate.current_snapshot_id
+        : typeof (raw as { current_snapshot?: unknown }).current_snapshot === 'string'
+          ? (raw as { current_snapshot: string }).current_snapshot
+          : '';
+    const rawSnapshots =
+      Array.isArray(candidate.snapshots)
+        ? candidate.snapshots
+        : Array.isArray((raw as { history?: unknown }).history)
+          ? ((raw as { history: unknown[] }).history)
+          : [];
+    const snapshots = rawSnapshots
+      .map((item) => this.normalizeSnapshotMeta(item))
+      .filter((item): item is SnapshotMeta => item !== null);
+    const currentSnapshotId = rawCurrentId || snapshots[snapshots.length - 1]?.id || '';
     return {
-      current_snapshot_id: typeof candidate.current_snapshot_id === 'string' ? candidate.current_snapshot_id : '',
-      snapshots: Array.isArray(candidate.snapshots) ? candidate.snapshots : [],
+      current_snapshot_id: currentSnapshotId,
+      snapshots,
       last_learned_example_revision:
         typeof candidate.last_learned_example_revision === 'number' && candidate.last_learned_example_revision >= 0
           ? candidate.last_learned_example_revision
           : 0
     };
+  }
+
+  private static normalizeSnapshotMeta(raw: unknown): SnapshotMeta | null {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    const item = raw as Record<string, unknown>;
+    const id = typeof item.id === 'string'
+      ? item.id
+      : typeof item.snapshot_id === 'string'
+        ? item.snapshot_id
+        : '';
+    if (!id) {
+      return null;
+    }
+    const timestamp = this.normalizeSnapshotTimestamp(item.timestamp, item.created_at, id);
+    const triggerCandidate = typeof item.trigger === 'string' ? item.trigger : '';
+    const trigger = this.VALID_TRIGGERS.includes(triggerCandidate as SnapshotMeta['trigger'])
+      ? triggerCandidate as SnapshotMeta['trigger']
+      : 'manual';
+    const summary = typeof item.summary === 'string' && item.summary.trim().length > 0
+      ? item.summary
+      : '历史版本';
+    return {
+      id,
+      timestamp,
+      trigger,
+      summary
+    };
+  }
+
+  private static normalizeSnapshotTimestamp(timestamp: unknown, createdAt: unknown, snapshotId: string): string {
+    if (typeof timestamp === 'string' && timestamp.trim().length > 0) {
+      return timestamp;
+    }
+    if (typeof createdAt === 'string' && createdAt.trim().length > 0) {
+      return createdAt;
+    }
+    const parsed = snapshotId.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})-(\d{3})$/);
+    if (parsed) {
+      const [, y, m, d, hh, mm, ss, ms] = parsed;
+      const date = new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}.${ms}`);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+    return new Date().toISOString();
   }
 
   /**
@@ -264,8 +336,45 @@ export class SnapshotManager {
    */
   public static async list(ledgerName: string): Promise<SnapshotMeta[]> {
     const index = await this.loadIndex(ledgerName);
+    let snapshots = [...index.snapshots];
+
+    // 兼容历史数据：索引缺失时，从目录里的 .md 快照文件回填历史版本。
+    if (snapshots.length === 0) {
+      try {
+        const fs = FilesystemService.getInstance();
+        const entries = await fs.readdir({
+          path: this.getLedgerDir(ledgerName),
+          directory: AdapterDirectory.Documents
+        });
+        const fallbackSnapshots = entries
+          .map((entry) => entry.name)
+          .filter((name) => name.toLowerCase().endsWith('.md'))
+          .map((name) => {
+            const id = name.replace(/\.md$/i, '');
+            return {
+              id,
+              timestamp: this.normalizeSnapshotTimestamp(undefined, undefined, id),
+              trigger: 'manual' as const,
+              summary: '历史版本',
+            };
+          });
+        if (fallbackSnapshots.length > 0) {
+          snapshots = fallbackSnapshots
+            .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+          const repairedIndex: SnapshotIndex = {
+            current_snapshot_id: index.current_snapshot_id || snapshots[snapshots.length - 1].id,
+            snapshots,
+            last_learned_example_revision: index.last_learned_example_revision
+          };
+          await this.saveIndex(ledgerName, repairedIndex);
+        }
+      } catch {
+        // ignore fallback failures
+      }
+    }
+
     // 返回倒序（最新的在前）
-    return [...index.snapshots].reverse();
+    return [...snapshots].reverse();
   }
 
   /**

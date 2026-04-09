@@ -186,6 +186,7 @@ ${JSON.stringify(context.currentExamples, null, 2)}`;
         apiKey: llmConfig.apiKey,
         baseUrl: llmConfig.baseUrl,
         model: llmConfig.model,
+        temperature: llmConfig.temperature,
       });
 
       const response = await client.chat(

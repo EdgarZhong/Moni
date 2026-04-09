@@ -543,6 +543,8 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
       const cleanBaseUrl = finalBaseUrl.replace(/\/$/, '');
       const url = `${cleanBaseUrl}/chat/completions`;
 
+      const testTemperature = selectedProvider === 'moonshot' ? 1 : 0.1;
+
       // 发送一个简单的测试请求
       const response = await fetch(url, {
         method: 'POST',
@@ -554,7 +556,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
           model: finalModel || 'default',
           messages: [{ role: 'user', content: 'Hi' }],
           max_tokens: 5,
-          temperature: 0.1,
+          temperature: testTemperature,
         }),
       });
 

@@ -16,10 +16,10 @@
 - Playwright / MCP 浏览器验证链路已固定
 - 记账页（MoniEntry）已集成：导入账单、随手记、分类拖放、记一笔表单
 - 交易详情面板已集成：分类修改、锁定、备注、AI 判断理由展示、边缘滑动返回
+- 设置页已集成：MoniSettings 三页路由、全局配置（AI/自述/账本管理/关于）、账本级配置（标签/记忆/预算/学习/重分类）
 
 ## 当前剩余缺口
 
-- 预算设置页 UI 仍未完成
 - Android 真环境专项验收仍未完成
 - 真实 LLM 配置下的学习 / 收编回归仍未完成
 - 测试数据迁移策略与调试时钟策略仍未正式定稿
@@ -35,26 +35,24 @@
 | v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、ledger_prefs 已落地 |
 | 记账页集成 | Done | MoniEntry 页面、useMoniEntryData hook、AppFacade 记账读模型、导入/随手记/分类拖放/表单均已接通 |
 | 交易详情面板 | Done | TransactionDetailPanel：分类修改、锁定、备注、AI 理由、边缘滑动返回手势 |
-| 设置页集成 | In Progress | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由已接通 |
+| 设置页集成 | Done | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由、账本管理 CRUD、AI 记忆/快照、预算设置均已接通 |
 | 浏览器调试入口与逻辑测试 | In Progress | 已接入主要调试入口与 smoke test，后续仍可继续扩覆盖面 |
 | 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
 | 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
 | 测试数据迁移 / 调试时钟方案 | Ready | 需明确测试账本继续迁移还是引入 debug clock |
-| 默认账本语义收口 | Ready | 需确认默认账本初始名称与“可重命名”语义最终一致 |
+| 默认账本语义收口 | Ready | 需确认默认账本初始名称与"可重命名"语义最终一致 |
 
 ## 当前优先级
 
-1. 预算设置页 UI
-2. Android 真环境专项验收
-3. 真实 LLM 回归
-4. 测试数据迁移 / 调试时钟方案
-5. 默认账本语义收口
+1. Android 真环境专项验收
+2. 真实 LLM 回归
+3. 测试数据迁移 / 调试时钟方案
+4. 默认账本语义收口
 
 ## 当前阶段风险
 
 - 浏览器 F12 虚拟文件系统是高保真开发替身，但不等价于 Android 真机行为
-- 预算设置页缺失会阻塞首轮集成的完整产品闭环
 - 学习与收编虽然已有浏览器规格测试，但真实模型回写尚未做最终确认
 - 默认账本的旧语义若未完全收口，后续可能继续污染测试链路与产品判断
 
@@ -65,9 +63,16 @@
 - `defined_categories` 是账本标签主数据单一信源
 - 全局模型 / 提供方 / 主题 / 自述不进入 `ledger_prefs`
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
+- `MemoryManager`、`ExampleStore`、`SelfDescriptionManager` 均为纯静态类，无 getInstance() 单例
+
+## 已知陷阱
+
+- AppFacade 调用服务层时注意区分静态类与单例类：
+  - 静态类（直接用类名调用）：`MemoryManager`、`ExampleStore`、`SnapshotManager`、`SelfDescriptionManager`
+  - 单例类（需 `.getInstance()`）：`LedgerPreferencesManager`、`ConfigManager`、`LedgerManager`、`BudgetManager`
 
 ## 交接说明
 
-- 若继续推进功能，优先从“预算设置页 UI”开始
+- 若继续推进功能，优先从 Android 真环境验收开始
 - 若继续做验收，优先用浏览器调试入口和 Playwright 复跑现有 smoke test，再转入 Android 真环境
 - 旧的并行编排版 `CLAUDE.md` 已归档到 `.archive/CLAUDE_parallel_legacy_2026-04-09.md`

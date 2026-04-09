@@ -203,12 +203,18 @@ export class ConfigManager {
           console.warn(`[ConfigManager] Provider ${providerName} not configured or missing API Key.`);
       }
 
+      // Moonshot/Kimi 兼容口径：温度统一收口为 1，避免模型侧 400。
+      const resolvedTemperature =
+        providerName === 'moonshot'
+          ? 1
+          : config.globalParams.temperature;
+
       return {
           apiKey: provider?.apiKey || '',
           baseUrl: provider?.baseUrl || '',
           model: modelName || 'default',
           maxTokens: config.globalParams.maxTokens,
-          temperature: config.globalParams.temperature
+          temperature: resolvedTemperature
       };
   }
 

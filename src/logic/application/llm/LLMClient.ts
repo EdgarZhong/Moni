@@ -27,11 +27,32 @@ export class LLMClient {
     this.logger = new RawLogger();
   }
 
+  /**
+   * Moonshot/Kimi 部分模型要求 temperature 固定为 1。
+   * 为避免上游遗漏配置导致 400，这里做请求前兜底归一化。
+   */
+  private resolveTemperature(baseUrl: string, model: string): number {
+    const isMoonshotByBaseUrl = /api\.moonshot\.cn/i.test(baseUrl);
+    const isMoonshotByModel = /^(kimi-|moonshot-)/i.test(model);
+    if (isMoonshotByBaseUrl || isMoonshotByModel) {
+      return 1;
+    }
+    return this.config.temperature ?? 0.3;
+  }
+
+  private resolveTimeoutMs(baseUrl: string, model: string): number {
+    const isMoonshotByBaseUrl = /api\.moonshot\.cn/i.test(baseUrl);
+    const isMoonshotByModel = /^(kimi-|moonshot-)/i.test(model);
+    return (isMoonshotByBaseUrl || isMoonshotByModel) ? 120000 : 60000;
+  }
+
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     // 修复双斜杠问题：如果 baseUrl 以 / 结尾，去掉它
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
     const responseFormat = options.responseFormat ?? 'json_object';
+    const temperature = this.resolveTemperature(baseUrl, this.config.model);
+    const timeoutMs = this.resolveTimeoutMs(baseUrl, this.config.model);
     
     const payload = {
       model: this.config.model,
@@ -39,7 +60,7 @@ export class LLMClient {
       ...(responseFormat === 'json_object'
         ? { response_format: { type: 'json_object' } }
         : {}),
-      temperature: this.config.temperature || 0.3,
+      temperature,
       stream: false
     };
 
@@ -54,7 +75,7 @@ export class LLMClient {
           'Authorization': `Bearer ${this.config.apiKey}`
         },
         {
-          timeout: 60000, // 60s for LLM
+          timeout: timeoutMs,
           retries: 3
         }
       );
