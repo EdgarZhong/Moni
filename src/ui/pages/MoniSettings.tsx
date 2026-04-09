@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { C, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
@@ -521,7 +521,7 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: 
         background: C.white,
         borderTop: `1.5px solid ${C.border}`,
         paddingTop: 3,
-        paddingBottom: "max(env(safe-area-inset-bottom), 8px)",
+        paddingBottom: BOTTOM_NAV_PADDING_BOTTOM,
         display: "flex",
         justifyContent: "space-around",
         alignItems: "flex-end",
@@ -2969,7 +2969,8 @@ export default function MoniSettings({
         overflow: "hidden",
         position: "relative",
         fontFamily: "'Nunito', -apple-system, sans-serif",
-        height: PHONE_FRAME_HEIGHT,
+        height: PHONE_FRAME_HEIGHT_CSS,
+        maxHeight: PHONE_FRAME_HEIGHT,
         display: "flex",
         flexDirection: "column",
         paddingTop: "env(safe-area-inset-top)",

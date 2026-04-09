@@ -109,3 +109,16 @@ export const MANUAL_IDLE_LOCK_MS = 2 * 60 * 1000;
 
 /** 手机帧高度（用于 AI 控制条坐标计算） */
 export const PHONE_FRAME_HEIGHT = 860;
+
+/**
+ * 手机帧容器高度（屏幕自适配）
+ * - 小屏设备：跟随视口高度，避免底部导航被截断
+ * - 大屏/桌面：保持原 860px 设计上限
+ */
+export const PHONE_FRAME_HEIGHT_CSS = `min(100vh, ${PHONE_FRAME_HEIGHT}px)`;
+
+/**
+ * 底部导航安全区内边距
+ * 在 Android WebView 取不到 safe-area 时，至少保留 14px，避免贴底遮挡。
+ */
+export const BOTTOM_NAV_PADDING_BOTTOM = "max(env(safe-area-inset-bottom), 14px)";
