@@ -175,12 +175,13 @@ export function GearIcon() {
 }
 
 /** NoteIcon — 记账图标 */
-export function NoteIcon() {
+export function NoteIcon({ active }: { active?: boolean }) {
+  const strokeColor = active ? "#222" : "#8E8E8E";
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <rect x="4" y="3" width="16" height="18" rx="3" stroke="#8E8E8E" strokeWidth="1.6" />
-      <path d="M8 8h8M8 12h8M12 16h4" stroke="#8E8E8E" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M12 9v6M9 12h6" stroke="#8E8E8E" strokeWidth="1.4" strokeLinecap="round" opacity=".55" />
+      <rect x="4" y="3" width="16" height="18" rx="3" stroke={strokeColor} strokeWidth="1.6" />
+      <path d="M8 8h8M8 12h8M12 16h4" stroke={strokeColor} strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 9v6M9 12h6" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" opacity=".55" />
     </svg>
   );
 }
@@ -649,6 +650,8 @@ interface BottomNavProps {
   onSettings?: () => void;
   /** 点击记账按钮的回调 */
   onBookkeeping?: () => void;
+  /** 当前激活页面 */
+  activePage?: 'home' | 'entry';
 }
 
 /**
@@ -663,7 +666,8 @@ interface BottomNavProps {
  * - 控制条子元素不绑 onPointerMove（避免隐式捕获失效）
  * - 移除 onPointerLeave（防止误取消）
  */
-export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping }: BottomNavProps) {
+export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, activePage = 'home' }: BottomNavProps) {
+  const isEntryActive = activePage === 'entry';
   return (
     <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: "max(env(safe-area-inset-bottom), 8px)", display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
       {/* 左：设置 */}
@@ -677,8 +681,6 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
         style={{ position: "relative", textAlign: "center", cursor: "pointer", touchAction: "none" }}
         onPointerDown={onStartControl}
         onPointerMove={(event) => {
-          // 指针已被此 div 捕获，故 move 只在此 div 上触发
-          // 控制条打开时，用 clientY 计算命中哪个选项
           if (controlOpen) {
             onUpdateControlHit.move(event.clientY);
           }
@@ -686,24 +688,20 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
         onPointerUp={onEndControl}
         onPointerCancel={onCancelControl}
       >
-        {/* AI 控制条（长按弹出） */}
         {controlOpen && (
           <div
             ref={onUpdateControlHit.ref}
             style={{ position: "absolute", bottom: 62, left: "50%", transform: "translateX(-50%)", width: 56, height: 108, borderRadius: 28, overflow: "hidden", border: `2px solid ${C.dark}`, display: "flex", flexDirection: "column", boxShadow: "0 6px 20px rgba(0,0,0,.15)", zIndex: 30, background: C.white }}
           >
-            {/* 开启选项 */}
             <div style={{ flex: 1, background: controlHit === "开启" ? C.mint : C.white, color: controlHit === "开启" ? C.white : C.mint, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, borderBottom: `1px solid ${C.border}` }}>
               开启
             </div>
-            {/* 关闭选项 */}
             <div style={{ flex: 1, background: controlHit === "关闭" ? C.coral : C.white, color: controlHit === "关闭" ? C.white : C.coral, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
               关闭
             </div>
           </div>
         )}
 
-        {/* 品牌按钮主体 */}
         <div style={{ marginTop: -12 }}>
           <div
             className={aiOn || aiStop ? "ag" : ""}
@@ -719,8 +717,8 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
 
       {/* 右：记账 */}
       <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onBookkeeping}>
-        <NoteIcon />
-        <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>记账</div>
+        <NoteIcon active={isEntryActive} />
+        <div style={{ fontSize: 10, color: isEntryActive ? C.dark : C.muted, fontWeight: isEntryActive ? 700 : 400, marginTop: 2 }}>记账</div>
       </div>
     </div>
   );

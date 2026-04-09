@@ -60,7 +60,11 @@ interface ReasonItem {
   nc: string;
 }
 
-export default function MoniHome() {
+interface MoniHomeProps {
+  onNavigate?: (page: "home" | "entry") => void;
+}
+
+export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const {
     days: realDays,
     income: realIncome,
@@ -735,6 +739,7 @@ export default function MoniHome() {
         onEndControl={handleEndControl}
         onCancelControl={handleCancelControl}
         onUpdateControlHit={{ ref: controlRef, move: updateControlHit }}
+        onBookkeeping={onNavigate ? () => onNavigate("entry") : undefined}
       />
 
       {controlOpen && (

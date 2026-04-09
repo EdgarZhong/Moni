@@ -5,7 +5,11 @@ import { SnapshotManager } from '@logic/application/services/SnapshotManager';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
 import { LedgerService } from '@logic/application/services/LedgerService';
+import { ManualEntryManager } from '@logic/application/services/ManualEntryManager';
+import type { ManualEntryInput } from '@logic/application/services/ManualEntryManager';
 import type {
+  EntryPageReadModel,
+  EntryRecentReference,
   HomeAiEngineUiState,
   HomeBudgetCardReadModel,
   HomeDayGroupReadModel,
@@ -146,6 +150,7 @@ export class AppFacade {
   private readonly ledgerManager = LedgerManager.getInstance();
   private readonly budgetManager = BudgetManager.getInstance();
   private readonly batchProcessor = BatchProcessor.getInstance();
+  private readonly manualEntryManager = ManualEntryManager.getInstance();
   private readonly listeners = new Set<() => void>();
 
   private aiStatus: AIStatus = 'IDLE';
@@ -433,6 +438,87 @@ export class AppFacade {
           }
         : null,
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // 记账页
+  // ──────────────────────────────────────────────
+
+  public async getEntryPageReadModel(): Promise<EntryPageReadModel> {
+    const ledgerState = this.getLedgerState();
+    const currentLedgerId = ledgerState.currentLedgerId;
+    const currentLedger: LedgerOption = { id: currentLedgerId, name: currentLedgerId };
+
+    const records = ledgerState.ledgerMemory?.records ?? {};
+    const categoryMap = ledgerState.ledgerMemory?.defined_categories ?? {};
+    const categoryDefinitions: LedgerCategoryDefinition[] = Object.entries(categoryMap).map(
+      ([key, description]) => ({ key, label: key, description })
+    );
+
+    const [availableLedgers] = await Promise.all([
+      this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
+    ]);
+
+    const recentReferences = this.buildRecentReferences(records);
+
+    return {
+      currentLedger,
+      availableLedgers,
+      categoryDefinitions,
+      recentReferences,
+      isLoading: ledgerState.isLoading,
+    };
+  }
+
+  public async addManualEntry(input: ManualEntryInput): Promise<string> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) throw new Error('No active ledger');
+    const id = await this.manualEntryManager.addEntry(ledgerId, input);
+    this.notify();
+    return id;
+  }
+
+  public async deleteManualEntry(id: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) throw new Error('No active ledger');
+    await this.manualEntryManager.deleteEntry(ledgerId, id);
+    this.notify();
+  }
+
+  /**
+   * 构建记账页"最近流水参考区"。
+   * 规则（来自 Integration Spec §4.4）：
+   * - 取当前账本下日期最新的一天
+   * - 在该日内按时间倒序取前两条
+   * - 不过滤来源类型，不应用首页 data range
+   */
+  private buildRecentReferences(records: Record<string, FullTransactionRecord>): EntryRecentReference[] {
+    const sortedEntries = Object.entries(records)
+      .filter(([, r]) => r.transactionStatus === 'SUCCESS')
+      .sort(([, a], [, b]) => b.time.localeCompare(a.time));
+
+    if (sortedEntries.length === 0) return [];
+
+    const latestDateKey = sortedEntries[0][1].time.slice(0, 10);
+    const latestDayEntries = sortedEntries.filter(([, r]) => r.time.slice(0, 10) === latestDateKey);
+
+    return latestDayEntries.slice(0, 2).map(([txId, record]) => {
+      const normalizedProduct = record.product.trim();
+      const normalizedCounterparty = record.counterparty.trim();
+      const title = record.sourceType === 'manual'
+        ? (normalizedProduct || '来自随手记')
+        : (normalizedProduct && normalizedProduct !== '/' && normalizedProduct !== 'Unknown'
+          ? normalizedProduct
+          : (normalizedCounterparty || '未知'));
+
+      return {
+        id: txId,
+        title,
+        amount: record.amount,
+        category: record.user_category || record.ai_category || record.category || null,
+        direction: record.direction,
+      };
+    });
   }
 
   /**

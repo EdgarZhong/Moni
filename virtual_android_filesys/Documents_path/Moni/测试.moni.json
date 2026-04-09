@@ -1,6 +1,6 @@
 {
   "version": "1.1",
-  "last_sync": "2026-02-22 18:35:53",
+  "last_sync": "2026-04-09 11:31:57",
   "defined_categories": {
     "正餐": "日常正餐支出（早午晚），如快餐、正餐、工作餐",
     "零食": "零食、饮品、小吃等非正餐食品",
@@ -11081,6 +11081,46 @@
       "user_note": "",
       "is_verified": false,
       "updated_at": "2026-03-15T08:20:49.276Z"
+    },
+    "d4c25dc4f6d61923": {
+      "id": "d4c25dc4f6d61923",
+      "time": "2026-04-09 11:31:36",
+      "sourceType": "manual",
+      "category": "购物",
+      "rawClass": "",
+      "counterparty": "",
+      "product": "s",
+      "amount": 12,
+      "direction": "in",
+      "paymentMethod": "",
+      "transactionStatus": "SUCCESS",
+      "remark": "",
+      "ai_category": "",
+      "ai_reasoning": "",
+      "user_category": "购物",
+      "user_note": "a",
+      "is_verified": true,
+      "updated_at": "2026-04-09 11:31:36"
+    },
+    "721a6ca996e460f4": {
+      "id": "721a6ca996e460f4",
+      "time": "2026-04-09 11:31:57",
+      "sourceType": "manual",
+      "category": "交通",
+      "rawClass": "",
+      "counterparty": "",
+      "product": "12",
+      "amount": 12,
+      "direction": "out",
+      "paymentMethod": "",
+      "transactionStatus": "SUCCESS",
+      "remark": "",
+      "ai_category": "",
+      "ai_reasoning": "",
+      "user_category": "交通",
+      "user_note": "",
+      "is_verified": true,
+      "updated_at": "2026-04-09T03:38:04.111Z"
     }
   }
 }
