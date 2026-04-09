@@ -53,6 +53,8 @@ export interface HomeTransaction {
   reason?: string | null;
   /** 手记说明 */
   userNote?: string | null;
+  /** 交易备注 */
+  remark?: string | null;
   /** 收支方向 */
   direction?: "in" | "out";
   /** 是否已锁定/确认 */

@@ -182,6 +182,17 @@ export class Arbiter {
     this.onPatchGenerated({ id: txId, updates });
   }
 
+  public updateRemark(txId: string, remark: string) {
+    if (!this.onPatchGenerated) return;
+
+    const updates: Partial<FullTransactionRecord> = {
+      remark,
+      updated_at: new Date().toISOString()
+    };
+
+    this.onPatchGenerated({ id: txId, updates });
+  }
+
   private dispatchPersistence(txId: string, proposal: Proposal) {
     if (!this.onPatchGenerated) return;
 

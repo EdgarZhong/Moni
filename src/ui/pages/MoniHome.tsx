@@ -76,7 +76,8 @@ interface TransactionDetailPanelProps {
   availableCategories: string[];
   onClose: () => void;
   onUpdateCategory: (transactionId: string, category: string, reasoning?: string) => void;
-  onUpdateUserNote: (transactionId: string, note: string) => void;
+  onUpdateUserReasoning: (transactionId: string, note: string) => void;
+  onUpdateRemark: (transactionId: string, note: string) => void;
   onSetTransactionVerification: (transactionId: string, isVerified: boolean) => void;
 }
 
@@ -85,13 +86,14 @@ function TransactionDetailPanel({
   availableCategories,
   onClose,
   onUpdateCategory,
-  onUpdateUserNote,
+  onUpdateUserReasoning,
+  onUpdateRemark,
   onSetTransactionVerification,
 }: TransactionDetailPanelProps) {
   const EXIT_ANIMATION_MS = 220;
   const OPEN_GUARD_MS = 260;
   const [reasoningInput, setReasoningInput] = useState("");
-  const [noteInput, setNoteInput] = useState(detail.item.userNote ?? "");
+  const [noteInput, setNoteInput] = useState(detail.item.remark ?? "");
   const [selectedCategory, setSelectedCategory] = useState(getCategory(detail.item));
   const [isVerified, setIsVerified] = useState(Boolean(detail.item.isVerified));
   const [isClosing, setIsClosing] = useState(false);
@@ -101,7 +103,7 @@ function TransactionDetailPanel({
 
   useEffect(() => {
     setReasoningInput("");
-    setNoteInput(detail.item.userNote ?? "");
+    setNoteInput(detail.item.remark ?? "");
     setSelectedCategory(getCategory(detail.item));
     setIsVerified(Boolean(detail.item.isVerified));
     setIsClosing(false);
@@ -122,12 +124,16 @@ function TransactionDetailPanel({
 
   const handleUpdateCategory = useCallback((category: string) => {
     setSelectedCategory(category);
-    onUpdateCategory(String(detail.item.id), category, reasoningInput.trim() || undefined);
-  }, [detail.item.id, onUpdateCategory, reasoningInput]);
+    onUpdateCategory(String(detail.item.id), category);
+  }, [detail.item.id, onUpdateCategory]);
+
+  const handleSaveReasoning = useCallback(() => {
+    onUpdateUserReasoning(String(detail.item.id), reasoningInput.trim());
+  }, [detail.item.id, onUpdateUserReasoning, reasoningInput]);
 
   const handleSaveNote = useCallback(() => {
-    onUpdateUserNote(String(detail.item.id), noteInput.trim());
-  }, [detail.item.id, noteInput, onUpdateUserNote]);
+    onUpdateRemark(String(detail.item.id), noteInput.trim());
+  }, [detail.item.id, noteInput, onUpdateRemark]);
 
   const handleToggleVerified = useCallback(() => {
     const next = !isVerified;
@@ -243,6 +249,12 @@ function TransactionDetailPanel({
               placeholder="例如：这是下午茶不是正餐"
               style={{ width: "100%", borderRadius: 10, border: `1.5px solid ${C.border}`, padding: "10px 12px", fontSize: 12, color: C.dark, outline: "none", fontFamily: "inherit" }}
             />
+            <div
+              onClick={handleSaveReasoning}
+              style={{ marginTop: 8, display: "inline-block", padding: "7px 12px", borderRadius: 8, background: C.dark, color: C.bg, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              确定修正理由
+            </div>
           </div>
 
           <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
@@ -1138,7 +1150,8 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
           availableCategories={availableCategories}
           onClose={() => setDetailTxId(null)}
           onUpdateCategory={actions.updateCategory}
-          onUpdateUserNote={actions.updateUserNote}
+          onUpdateUserReasoning={actions.updateUserReasoning}
+          onUpdateRemark={actions.updateRemark}
           onSetTransactionVerification={actions.setTransactionVerification}
         />
       )}

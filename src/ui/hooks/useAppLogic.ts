@@ -57,7 +57,7 @@ export function useAppLogic() {
 
   const setUserNote = (id: string, userNote: string) => {
     // 将备注更新走专用通道，避免连带写入用户分类
-    appFacade.updateUserNote(id, userNote);
+    appFacade.updateTransactionRemark(id, userNote);
   };
 
   const setVerification = (id: string, isVerified: boolean) => {
