@@ -14,7 +14,6 @@ import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { parseFiles } from "@shared/utils/parser";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
-import { isNativePlatform, requestDirectoryHandle, scanForCSVFiles } from "@system/filesystem/fs-storage";
 
 // ──────────────────────────────────────────────
 // 子组件
@@ -717,36 +716,8 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImportClick = useCallback(async () => {
-    if (!isNativePlatform()) {
-      fileInputRef.current?.click();
-      return;
-    }
-
-    setImportNotice("正在扫描设备账单文件...");
-    try {
-      const dirHandle = await requestDirectoryHandle();
-      const files = await scanForCSVFiles(dirHandle);
-      if (files.length === 0) {
-        setImportNotice("未发现 CSV 账单文件，请确认文件已放入 Documents 目录");
-        setTimeout(() => setImportNotice(null), 3000);
-        return;
-      }
-
-      const parsed = await parseFiles(files);
-      if (parsed.length === 0) {
-        setImportNotice("未识别到有效的账单记录，请检查文件格式");
-        setTimeout(() => setImportNotice(null), 3000);
-        return;
-      }
-
-      await appFacade.importParsedData(parsed, dirHandle);
-      setImportNotice(`成功导入 ${parsed.length} 条记录`);
-      setTimeout(() => setImportNotice(null), 3000);
-    } catch (err) {
-      console.error("[MoniEntry] Native import failed:", err);
-      setImportNotice("导入失败，请检查存储权限后重试");
-      setTimeout(() => setImportNotice(null), 3000);
-    }
+    // 统一使用原生文件选择器 (Capacitor 会在 Android 上自动调起系统 Picker)
+    fileInputRef.current?.click();
   }, []);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -978,7 +949,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
           ref={fileInputRef}
           onChange={handleFileChange}
           style={{ display: "none" }}
-          accept=".csv"
+          accept=".csv,text/csv,application/vnd.ms-excel,*/*"
           multiple
         />
 
