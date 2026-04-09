@@ -48,6 +48,23 @@ export class BatchProcessor {
     return JSON.parse(data) as LedgerMemory;
   }
 
+  /**
+   * 判断当前账本是否仍存在“需要 AI 继续处理”的交易。
+   * 口径与 AppFacade.startAiProcessing 保持一致：
+   * - 仅关注成功的支出交易
+   * - 已锁定交易不再进入自动分类
+   * - 若最终分类(user/ai/category)为空或为 uncategorized，视为待处理
+   */
+  private hasPendingUnclassified(memory: LedgerMemory): boolean {
+    return Object.values(memory.records).some((record) => {
+      if (record.transactionStatus !== 'SUCCESS' || record.direction !== 'out' || record.is_verified) {
+        return false;
+      }
+      const finalCategory = record.user_category || record.ai_category || record.category;
+      return !finalCategory || finalCategory === 'uncategorized';
+    });
+  }
+
   public static getInstance(): BatchProcessor {
     if (!BatchProcessor.instance) {
       BatchProcessor.instance = new BatchProcessor();
@@ -181,6 +198,12 @@ export class BatchProcessor {
 
           // 读取该日交易
           const memory = await this.readLedgerMemory(ledgerName);
+          if (!this.hasPendingUnclassified(memory)) {
+            // 未分类已清零：清空遗留日期任务并立即结束本轮，避免 UI 持续“进行中”。
+            await classifyQueue.clear(ledgerName);
+            console.log(`[BatchProcessor] Auto-stopped: no pending unclassified records for ${ledgerName}`);
+            break;
+          }
           const txs = Object.values(memory.records) as FullTransactionRecord[];
           const dayTxs = txs.filter(tx => normalizeToDateKey(tx.time) === task.date);
 
