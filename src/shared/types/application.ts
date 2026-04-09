@@ -89,6 +89,7 @@ export interface HomeTransactionReadModel {
   aiCategory: string | null;
   reasoning: string | null;
   userNote: string | null;
+  remark: string | null;
   direction: 'in' | 'out';
   isVerified: boolean;
   sequence: number;

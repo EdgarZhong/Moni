@@ -480,9 +480,18 @@ export class LedgerService {
     // We don't need to manually setState here.
   }
 
-  public updateUserNote(id: string, userNote: string) {
-    // 仅更新用户备注，避免触发 user_category 写入
+  public updateUserReasoning(id: string, userNote: string) {
+    // 仅更新修正理由（user_note），避免触发 user_category 写入
     globalArbiter.updateUserNote(id, userNote);
+  }
+
+  public updateRemark(id: string, remark: string) {
+    globalArbiter.updateRemark(id, remark);
+  }
+
+  public updateUserNote(id: string, userNote: string) {
+    // 兼容旧调用：默认作为备注处理
+    globalArbiter.updateRemark(id, userNote);
   }
 
   public setVerification(id: string, isVerified: boolean) {

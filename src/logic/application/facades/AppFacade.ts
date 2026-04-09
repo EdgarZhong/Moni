@@ -146,6 +146,7 @@ function toHomeTransaction(txId: string, record: FullTransactionRecord, index: n
     aiCategory: record.ai_category || null,
     reasoning: record.ai_reasoning || null,
     userNote: record.user_note || null,
+    remark: record.remark && record.remark !== '/' ? record.remark : null,
     direction: record.direction,
     isVerified: record.is_verified,
     sequence: index,
@@ -388,8 +389,17 @@ export class AppFacade {
     this.ledgerService.updateCategory(id, category, reasoning);
   }
 
+  public updateUserReasoning(id: string, note: string): void {
+    this.ledgerService.updateUserReasoning(id, note);
+  }
+
+  public updateTransactionRemark(id: string, remark: string): void {
+    this.ledgerService.updateRemark(id, remark);
+  }
+
   public updateUserNote(id: string, note: string): void {
-    this.ledgerService.updateUserNote(id, note);
+    // 兼容旧调用：默认作为备注写入 remark，不再混用 user_note。
+    this.ledgerService.updateRemark(id, note);
   }
 
   public setTransactionVerification(id: string, isVerified: boolean): void {

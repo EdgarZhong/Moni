@@ -89,6 +89,7 @@ function toHomeTransaction(item: MoniHomeReadModel['dailyTransactionGroups'][num
     aiCat: item.aiCategory,
     reason: item.reasoning,
     userNote: item.userNote,
+    remark: item.remark,
     direction: item.direction,
     isVerified: item.isVerified,
     ih: item.sequence,
@@ -116,7 +117,8 @@ export interface MoniHomeData {
   actions: {
     switchLedger: (ledgerId: string) => Promise<boolean>;
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
-    updateUserNote: (transactionId: string, note: string) => void;
+    updateUserReasoning: (transactionId: string, note: string) => void;
+    updateRemark: (transactionId: string, note: string) => void;
     setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
@@ -207,8 +209,11 @@ export function useMoniHomeData(): MoniHomeData {
   const updateCategory = useCallback((transactionId: string, category: string, reasoning?: string) => {
     appFacade.updateTransactionCategory(transactionId, category, reasoning);
   }, []);
-  const updateUserNote = useCallback((transactionId: string, note: string) => {
-    appFacade.updateUserNote(transactionId, note);
+  const updateUserReasoning = useCallback((transactionId: string, note: string) => {
+    appFacade.updateUserReasoning(transactionId, note);
+  }, []);
+  const updateRemark = useCallback((transactionId: string, note: string) => {
+    appFacade.updateTransactionRemark(transactionId, note);
   }, []);
   const setTransactionVerification = useCallback((transactionId: string, isVerified: boolean) => {
     appFacade.setTransactionVerification(transactionId, isVerified);
@@ -236,7 +241,8 @@ export function useMoniHomeData(): MoniHomeData {
     () => ({
       switchLedger,
       updateCategory,
-      updateUserNote,
+      updateUserReasoning,
+      updateRemark,
       setTransactionVerification,
       startAiProcessing,
       stopAiProcessing,
@@ -251,9 +257,10 @@ export function useMoniHomeData(): MoniHomeData {
       stopAiProcessing,
       switchLedger,
       updateCategory,
+      updateRemark,
       updateHomeDateRange,
       updateTrendWindowOffset,
-      updateUserNote,
+      updateUserReasoning,
     ]
   );
 
