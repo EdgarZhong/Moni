@@ -165,3 +165,23 @@ export interface LedgerImportInput {
   parsedData: Transaction[];
   dirHandle: StorageDirHandle;
 }
+
+// ──────────────────────────────────────────────
+// 记账页读模型
+// ──────────────────────────────────────────────
+
+export interface EntryRecentReference {
+  id: string;
+  title: string;
+  amount: number;
+  category: string | null;
+  direction: 'in' | 'out';
+}
+
+export interface EntryPageReadModel {
+  currentLedger: LedgerOption;
+  availableLedgers: LedgerOption[];
+  categoryDefinitions: LedgerCategoryDefinition[];
+  recentReferences: EntryRecentReference[];
+  isLoading: boolean;
+}
