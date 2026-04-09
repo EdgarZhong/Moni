@@ -119,4 +119,31 @@ export class LLMClient {
       throw error;
     }
   }
+
+  /**
+   * 连接自检：用最小开销请求验证 baseUrl、apiKey 和模型是否可用。
+   */
+  async testConnection(): Promise<void> {
+    const baseUrl = this.config.baseUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/chat/completions`;
+    const temperature = this.resolveTemperature(baseUrl, this.config.model);
+
+    await NetworkClient.post<LLMResponse>(
+      url,
+      {
+        model: this.config.model,
+        messages: [{ role: 'user', content: 'ping' }],
+        temperature,
+        max_tokens: 8,
+        stream: false,
+      },
+      {
+        'Authorization': `Bearer ${this.config.apiKey}`
+      },
+      {
+        timeout: 15000,
+        retries: 0,
+      }
+    );
+  }
 }

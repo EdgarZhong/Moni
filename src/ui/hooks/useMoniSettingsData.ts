@@ -67,6 +67,8 @@ export interface MoniSettingsData {
     updateApiKey: (provider: string, key: string) => Promise<void>;
     updateBaseUrl: (url: string) => Promise<void>;
     updateActiveModel: (model: string) => Promise<void>;
+    updateMaxTokens: (value: number) => Promise<void>;
+    updateTemperature: (value: number) => Promise<void>;
     updateEnableThinking: (enabled: boolean) => Promise<void>;
     testConnection: () => Promise<boolean>;
     // Self description
@@ -161,6 +163,12 @@ export function useMoniSettingsData(): MoniSettingsData {
   }, []);
   const updateActiveModel = useCallback(async (model: string) => {
     await appFacade.updateActiveModel(model);
+  }, []);
+  const updateMaxTokens = useCallback(async (value: number) => {
+    await appFacade.updateMaxTokens(value);
+  }, []);
+  const updateTemperature = useCallback(async (value: number) => {
+    await appFacade.updateTemperature(value);
   }, []);
   const updateEnableThinking = useCallback(async (enabled: boolean) => {
     await appFacade.updateEnableThinking(enabled);
@@ -287,6 +295,8 @@ export function useMoniSettingsData(): MoniSettingsData {
       updateApiKey,
       updateBaseUrl,
       updateActiveModel,
+      updateMaxTokens,
+      updateTemperature,
       updateEnableThinking,
       testConnection,
       saveSelfDescription,

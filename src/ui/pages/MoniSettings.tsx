@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { C, CAT, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
+import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
 
 /**
  * 设置页原型以功能规格和 UI/UX 规格为准。
@@ -20,14 +21,14 @@ const PROVIDERS = [
     id: "moonshot",
     name: "Moonshot",
     hasBaseUrl: false,
-    baseUrl: "https://api.moonshot.ai/v1",
-    models: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking"],
+    baseUrl: "https://api.moonshot.cn/v1",
+    models: ["moonshot-v1-8k", "kimi-k2.5", "kimi-k2", "kimi-k2-thinking"],
   },
   {
     id: "siliconflow",
     name: "SiliconFlow",
     hasBaseUrl: false,
-    baseUrl: "https://api.siliconflow.com/v1",
+    baseUrl: "https://api.siliconflow.cn/v1",
     models: [
       "deepseek-ai/DeepSeek-V3",
       "deepseek-ai/DeepSeek-R1",
@@ -39,21 +40,21 @@ const PROVIDERS = [
     id: "modelscope",
     name: "ModelScope",
     hasBaseUrl: false,
-    baseUrl: "https://api-inference.modelscope.cn/v1/",
+    baseUrl: "https://api-inference.modelscope.cn/v1",
     models: ["deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-72B-Instruct", "Qwen/Qwen2.5-7B-Instruct"],
   },
   {
     id: "zhipu",
     name: "智谱 AI",
     hasBaseUrl: false,
-    baseUrl: "https://open.bigmodel.cn/api/paas/v4/",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     models: ["GLM-4.6", "GLM-4.5", "GLM-4.5-Air"],
   },
   {
     id: "custom",
     name: "自定义",
     hasBaseUrl: true,
-    baseUrl: "https://api.example.com/v1",
+    baseUrl: "https://api.openai.com/v1",
     models: [],
   },
 ];
@@ -68,52 +69,6 @@ const INITIAL_CUSTOM_TAGS = [
 ];
 
 const SYSTEM_FALLBACK_TAG = { key: "其他", desc: "所有未落入用户显式标签的兜底支出", isSystem: true };
-const AI_CONFIG_VERIFY_STORAGE_KEY = "moni.ai.config.verified-signatures.v1";
-
-function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || "").trim().replace(/\/+$/, "");
-}
-
-function simpleHash(text) {
-  let hash = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = (hash * 16777619) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}
-
-function buildAiConfigSignature({ provider, apiKey, baseUrl, model }) {
-  const normalized = [
-    provider || "",
-    normalizeBaseUrl(baseUrl),
-    model || "",
-    simpleHash(String(apiKey || "").trim()),
-  ].join("|");
-  return simpleHash(normalized);
-}
-
-function readVerifiedSignatures() {
-  try {
-    const raw = window.localStorage.getItem(AI_CONFIG_VERIFY_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeVerifiedSignatures(nextValue) {
-  try {
-    window.localStorage.setItem(AI_CONFIG_VERIFY_STORAGE_KEY, JSON.stringify(nextValue));
-  } catch {
-    // ignore storage errors in prototype mode
-  }
-}
-
 const MOCK_MEMORY = [
   "我是西工大学生，和女朋友一起生活，正餐只统计双人用餐",
   "单笔餐饮 > 70 元视为大餐/聚餐，归 大餐",
@@ -464,7 +419,12 @@ function BottomSheet({ visible, title, children, onClose }) {
  * 设置页底部导航与首页、记账页采用同一视觉骨架。
  * 中央首页按钮保持品牌主入口，设置页自身显示 active 态。
  */
-function SettingsBottomNav({ onOpenHome, onOpenEntry }) {
+function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }) {
+  const homeLabel = aiStatus === "ANALYZING"
+    ? "进行中"
+    : aiStatus === "ERROR"
+      ? "异常"
+      : "首页";
   return (
     <div
       style={{
@@ -498,7 +458,7 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry }) {
             style={{
               width: 52,
               height: 52,
-              background: C.dark,
+              background: aiStatus === "ANALYZING" ? C.mint : C.dark,
               borderRadius: 16,
               display: "flex",
               alignItems: "center",
@@ -508,7 +468,7 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry }) {
           >
             <NavIcon />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: C.dark }}>首页</div>
+          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: aiStatus === "ANALYZING" ? C.mint : C.dark }}>{homeLabel}</div>
         </div>
       </div>
       <div onClick={onOpenEntry} style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }}>
@@ -519,7 +479,15 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry }) {
   );
 }
 
-function SettingsRoot({ onNavigate, customTagCount, memoryCount, currentLedgerName, ledgerCount }) {
+function SettingsRoot({
+  onNavigate,
+  customTagCount,
+  memoryCount,
+  currentLedgerName,
+  ledgerCount,
+  budgetSummaryText,
+  aiConfigSummary,
+}) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* 设置首页顶栏也切到共享组件，确保三页切换时顶部结构稳定。 */}
@@ -531,7 +499,7 @@ function SettingsRoot({ onNavigate, customTagCount, memoryCount, currentLedgerNa
       </div>
       <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
         <SectionCard title="🌐 全局配置">
-          <SettingRow icon="🤖" label="AI 配置" desc="DeepSeek · deepseek-chat" onClick={() => onNavigate("aiConfig")} />
+          <SettingRow icon="🤖" label="AI 配置" desc={aiConfigSummary} onClick={() => onNavigate("aiConfig")} />
           <SettingRow icon="👤" label="自述" desc="让 AI 了解你的消费习惯" onClick={() => onNavigate("selfDesc")} />
           <SettingRow icon="📚" label="账本管理" value={`${ledgerCount} 个账本`} onClick={() => onNavigate("ledgerManage")} />
           <SettingRow icon="📤" label="数据导出" desc="导出账单数据" value="P2" />
@@ -540,7 +508,7 @@ function SettingsRoot({ onNavigate, customTagCount, memoryCount, currentLedgerNa
         <SectionCard title={`📒 账本：${currentLedgerName || "未选择账本"}`} subtitle="当前账本配置">
           <SettingRow icon="🏷️" label="标签管理" value={customTagCount ? `${customTagCount} 个` : "未设置"} onClick={() => onNavigate("tagManage")} />
           <SettingRow icon="🧠" label="AI 记忆" desc="查看 AI 学到的偏好" value={`${memoryCount} 条`} onClick={() => onNavigate("aiMemory")} />
-          <SettingRow icon="💰" label="预算设置" desc="月度与分类预算" value="¥3,000" onClick={() => onNavigate("budget")} />
+          <SettingRow icon="💰" label="预算设置" desc="月度与分类预算" value={budgetSummaryText} onClick={() => onNavigate("budget")} />
           <SettingRow icon="📐" label="学习设置" desc="阈值、自动学习、收编" onClick={() => onNavigate("learnSettings")} />
           <SettingRow icon="🔄" label="全量重新分类" desc="对全账本未锁定交易重新分类" onClick={() => onNavigate("fullReclass")} danger />
         </SectionCard>
@@ -549,16 +517,19 @@ function SettingsRoot({ onNavigate, customTagCount, memoryCount, currentLedgerNa
   );
 }
 
-function AIConfigPage({ onBack }) {
-  const [provider, setProvider] = useState("deepseek");
-  const [apiKeys, setApiKeys] = useState({
-    deepseek: "sk-deepseek-demo",
-    moonshot: "sk-moonshot-demo",
-    siliconflow: "sk-siliconflow-demo",
-    modelscope: "ms-modelscope-demo",
-    zhipu: "zhipu-demo-key",
-    custom: "",
-  });
+function AIConfigPage({
+  onBack,
+  aiConfig,
+  onUpdateProvider,
+  onUpdateApiKey,
+  onUpdateBaseUrl,
+  onUpdateActiveModel,
+  onUpdateMaxTokens,
+  onUpdateTemperature,
+  onUpdateEnableThinking,
+  onTestConnection,
+}) {
+  const [provider, setProvider] = useState(aiConfig?.provider || "deepseek");
   const [keyDrafts, setKeyDrafts] = useState({
     deepseek: "",
     moonshot: "",
@@ -567,9 +538,9 @@ function AIConfigPage({ onBack }) {
     zhipu: "",
     custom: "",
   });
-  const [thinking, setThinking] = useState(true);
+  const [thinking, setThinking] = useState(Boolean(aiConfig?.enableThinking));
   const [testing, setTesting] = useState(false);
-  const [verifiedSignatures, setVerifiedSignatures] = useState(() => readVerifiedSignatures());
+  const [lastTestResult, setLastTestResult] = useState(null);
   const [selectedModels, setSelectedModels] = useState({
     deepseek: "deepseek-chat",
     moonshot: "kimi-k2.5",
@@ -577,18 +548,56 @@ function AIConfigPage({ onBack }) {
     modelscope: "deepseek-ai/DeepSeek-R1",
     zhipu: "GLM-4.6",
   });
-  const [customBaseUrl, setCustomBaseUrl] = useState("https://api.example.com/v1");
-  const [customModels, setCustomModels] = useState(["custom-model-1", "custom-model-2", "custom-model-3"]);
+  const [customBaseUrl, setCustomBaseUrl] = useState(aiConfig?.baseUrl || "https://api.openai.com/v1");
+  const [customModels, setCustomModels] = useState([aiConfig?.activeModel || "custom-model-1", "custom-model-2", "custom-model-3"]);
   const [activeCustomIndex, setActiveCustomIndex] = useState(0);
+  const [maxTokensDraft, setMaxTokensDraft] = useState(String(aiConfig?.maxTokens ?? 2000));
+  const [temperatureDraft, setTemperatureDraft] = useState(String(aiConfig?.temperature ?? 0.3));
+
+  useEffect(() => {
+    if (aiConfig?.provider) {
+      setProvider(aiConfig.provider);
+    }
+    setThinking(Boolean(aiConfig?.enableThinking));
+    if (aiConfig?.provider === "custom") {
+      setCustomBaseUrl(aiConfig.baseUrl || "https://api.openai.com/v1");
+    }
+    if (aiConfig?.activeModel) {
+      setSelectedModels((prev) => ({ ...prev, [aiConfig.provider]: aiConfig.activeModel }));
+      if (aiConfig.provider === "custom") {
+        setCustomModels((prev) => {
+          const next = [...prev];
+          next[0] = aiConfig.activeModel;
+          return next;
+        });
+      }
+    }
+    setMaxTokensDraft(String(aiConfig?.maxTokens ?? 2000));
+    setTemperatureDraft(String(aiConfig?.temperature ?? 0.3));
+  }, [aiConfig]);
+
   const currentProvider = useMemo(() => PROVIDERS.find((item) => item.id === provider), [provider]);
-  const hasApiKey = Boolean(apiKeys[provider]);
+  const hasApiKey = provider === aiConfig?.provider ? Boolean(aiConfig?.hasApiKey) : false;
   const currentModel = provider === "custom" ? customModels[activeCustomIndex] : selectedModels[provider];
-  const currentBaseUrl = currentProvider?.hasBaseUrl ? customBaseUrl : currentProvider?.baseUrl || "";
-  const currentSignature = useMemo(
-    () => buildAiConfigSignature({ provider, apiKey: apiKeys[provider], baseUrl: currentBaseUrl, model: currentModel }),
-    [provider, apiKeys, currentBaseUrl, currentModel]
-  );
-  const isCurrentConfigVerified = hasApiKey && verifiedSignatures[provider] === currentSignature;
+
+  const statusText = testing
+    ? "● 测试中"
+    : lastTestResult === "success"
+      ? "● 生效中"
+      : lastTestResult === "failed"
+        ? "● 连接失败"
+        : hasApiKey
+          ? "● 待验证"
+          : "● 未配置";
+  const statusColor = testing
+    ? C.amber
+    : lastTestResult === "success"
+      ? C.greenText
+      : lastTestResult === "failed"
+        ? C.amber
+        : hasApiKey
+          ? C.amber
+          : C.muted;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -601,6 +610,8 @@ function AIConfigPage({ onBack }) {
                 key={item.id}
                 onClick={() => {
                   setProvider(item.id);
+                  setLastTestResult(null);
+                  void onUpdateProvider(item.id);
                 }}
                 style={{
                   padding: "8px 14px",
@@ -624,7 +635,11 @@ function AIConfigPage({ onBack }) {
           <input
             data-selectable={currentProvider?.hasBaseUrl ? "true" : undefined}
             readOnly={!currentProvider?.hasBaseUrl}
-            value={currentProvider?.hasBaseUrl ? customBaseUrl : currentProvider?.baseUrl || ""}
+            value={currentProvider?.hasBaseUrl
+              ? customBaseUrl
+              : provider === aiConfig?.provider
+                ? aiConfig?.baseUrl || currentProvider?.baseUrl || ""
+                : currentProvider?.baseUrl || ""}
             onChange={(event) => setCustomBaseUrl(event.target.value)}
             style={{
               width: "100%",
@@ -639,6 +654,19 @@ function AIConfigPage({ onBack }) {
               boxSizing: "border-box",
             }}
           />
+          {currentProvider?.hasBaseUrl ? (
+            <div style={{ marginBottom: 14 }}>
+              <Btn
+                small
+                variant="secondary"
+                onClick={() => {
+                  void onUpdateBaseUrl(customBaseUrl.trim());
+                }}
+              >
+                保存 URL
+              </Btn>
+            </div>
+          ) : null}
 
           <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 8 }}>API Key</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -666,8 +694,9 @@ function AIConfigPage({ onBack }) {
                 small
                 variant="secondary"
                 onClick={() => {
-                  setApiKeys((prev) => ({ ...prev, [provider]: "" }));
                   setKeyDrafts((prev) => ({ ...prev, [provider]: "" }));
+                  setLastTestResult(null);
+                  void onUpdateApiKey(provider, "");
                 }}
               >
                 清空
@@ -681,7 +710,10 @@ function AIConfigPage({ onBack }) {
                   if (!keyDrafts[provider]?.trim()) {
                     return;
                   }
-                  setApiKeys((prev) => ({ ...prev, [provider]: keyDrafts[provider].trim() }));
+                  const nextKey = keyDrafts[provider].trim();
+                  setLastTestResult(null);
+                  void onUpdateApiKey(provider, nextKey);
+                  setKeyDrafts((prev) => ({ ...prev, [provider]: "" }));
                 }}
               >
                 填入
@@ -697,17 +729,11 @@ function AIConfigPage({ onBack }) {
             <div
               style={{
                 fontSize: 11,
-                color: testing
-                  ? C.amber
-                  : isCurrentConfigVerified
-                    ? C.greenText
-                    : hasApiKey
-                      ? C.amber
-                      : C.muted,
+                color: statusColor,
                 fontWeight: 700
               }}
             >
-              {testing ? "● 测试中" : isCurrentConfigVerified ? "● 生效中" : hasApiKey ? "● 待验证" : "● 未配置"}
+              {statusText}
             </div>
           </div>
 
@@ -717,7 +743,11 @@ function AIConfigPage({ onBack }) {
               {currentProvider?.models.map((modelName) => (
                 <div
                   key={modelName}
-                  onClick={() => setSelectedModels((prev) => ({ ...prev, [provider]: modelName }))}
+                  onClick={() => {
+                    setSelectedModels((prev) => ({ ...prev, [provider]: modelName }));
+                    setLastTestResult(null);
+                    void onUpdateActiveModel(modelName);
+                  }}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 10,
@@ -739,7 +769,13 @@ function AIConfigPage({ onBack }) {
               {customModels.map((modelName, index) => (
                 <div key={`custom-model-slot-${index}`} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: index < customModels.length - 1 ? 10 : 0 }}>
                   <div
-                    onClick={() => setActiveCustomIndex(index)}
+                    onClick={() => {
+                      setActiveCustomIndex(index);
+                      setLastTestResult(null);
+                      if (customModels[index]?.trim()) {
+                        void onUpdateActiveModel(customModels[index].trim());
+                      }
+                    }}
                     style={{
                       width: 20,
                       height: 20,
@@ -757,6 +793,10 @@ function AIConfigPage({ onBack }) {
                       const nextModels = [...customModels];
                       nextModels[index] = event.target.value;
                       setCustomModels(nextModels);
+                      if (index === activeCustomIndex) {
+                        setLastTestResult(null);
+                        void onUpdateActiveModel(event.target.value.trim());
+                      }
                     }}
                     placeholder={`模型槽位 ${index + 1}`}
                     style={{
@@ -777,18 +817,82 @@ function AIConfigPage({ onBack }) {
           )}
 
           <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 14px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: C.sub }}>Max Tokens</span>
-              <span style={{ fontSize: 13, color: C.dark, fontFamily: "'Space Mono', monospace" }}>8192</span>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 8 }}>Max Tokens</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <input
+                data-selectable
+                type="number"
+                min={1}
+                step={1}
+                value={maxTokensDraft}
+                onChange={(event) => setMaxTokensDraft(event.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1.5px solid ${C.border}`,
+                  fontSize: 13,
+                  background: C.white,
+                  color: C.dark,
+                  outline: "none",
+                  fontFamily: "'Space Mono', monospace",
+                }}
+              />
+              <Btn
+                small
+                variant="secondary"
+                onClick={() => {
+                  const parsed = Number.parseInt(maxTokensDraft, 10);
+                  if (!Number.isFinite(parsed) || parsed <= 0) return;
+                  void onUpdateMaxTokens(parsed);
+                }}
+              >
+                保存
+              </Btn>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 12, color: C.sub }}>Temperature</span>
-              <span style={{ fontSize: 13, color: C.dark, fontFamily: "'Space Mono', monospace" }}>0.7</span>
+
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 8 }}>Temperature</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <input
+                data-selectable
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={temperatureDraft}
+                onChange={(event) => setTemperatureDraft(event.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1.5px solid ${C.border}`,
+                  fontSize: 13,
+                  background: C.white,
+                  color: C.dark,
+                  outline: "none",
+                  fontFamily: "'Space Mono', monospace",
+                }}
+              />
+              <Btn
+                small
+                variant="secondary"
+                onClick={() => {
+                  const parsed = Number.parseFloat(temperatureDraft);
+                  if (!Number.isFinite(parsed)) return;
+                  void onUpdateTemperature(parsed);
+                }}
+              >
+                保存
+              </Btn>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 12, color: C.sub }}>启用思考</span>
               <div
-                onClick={() => setThinking((value) => !value)}
+                onClick={() => {
+                  const next = !thinking;
+                  setThinking(next);
+                  void onUpdateEnableThinking(next);
+                }}
                 style={{ width: 44, height: 24, borderRadius: 12, background: thinking ? C.mint : C.border, position: "relative", cursor: "pointer" }}
               >
                 <div
@@ -810,26 +914,29 @@ function AIConfigPage({ onBack }) {
           <div style={{ marginTop: 14 }}>
             <Btn
               full
-              onClick={() => {
+              onClick={async () => {
+                if (!hasApiKey) {
+                  return;
+                }
                 setTesting(true);
-                window.setTimeout(() => {
-                  setTesting(false);
-                  setVerifiedSignatures((prev) => {
-                    const next = { ...prev, [provider]: currentSignature };
-                    writeVerifiedSignatures(next);
-                    return next;
-                  });
-                }, 1200);
+                const passed = await onTestConnection();
+                setTesting(false);
+                setLastTestResult(passed ? "success" : "failed");
               }}
-              disabled={testing}
+              disabled={testing || !hasApiKey}
             >
               {testing ? "测试中…" : "测试连接"}
             </Btn>
           </div>
 
-          {isCurrentConfigVerified ? (
+          {lastTestResult === "success" ? (
             <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, background: C.greenBg, border: `1.5px solid ${C.mint}30`, fontSize: 12, color: C.greenText, fontWeight: 600, textAlign: "center" }}>
               ✓ 连接成功，模型响应正常
+            </div>
+          ) : null}
+          {lastTestResult === "failed" ? (
+            <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, background: C.warmBg, border: `1.5px solid ${C.warmBd}`, fontSize: 12, color: C.amber, fontWeight: 600, textAlign: "center" }}>
+              ✕ 连接失败，请检查 Base URL / API Key / 模型
             </div>
           ) : null}
         </FormCard>
@@ -1972,10 +2079,12 @@ function AIMemoryPage({
   );
 }
 
-function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChangeBudget }) {
+function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onSaveBudget }) {
   const [monthly, setMonthly] = useState(monthlyBudget || "");
   const [catBudgets, setCatBudgets] = useState(categoryBudgets || {});
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const total = Object.values(catBudgets).reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
   const over = monthly && total > parseFloat(monthly);
 
@@ -1993,12 +2102,24 @@ function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChan
           footer={
             <Btn
               onClick={() => {
-                onChangeBudget({ monthly, catBudgets });
-                setSaved(true);
-                window.setTimeout(() => setSaved(false), 2000);
+                if (saving) return;
+                setSaveError("");
+                setSaving(true);
+                void onSaveBudget({ monthly, catBudgets })
+                  .then(() => {
+                    setSaved(true);
+                    window.setTimeout(() => setSaved(false), 2000);
+                  })
+                  .catch(() => {
+                    setSaveError("预算保存失败，请重试");
+                  })
+                  .finally(() => {
+                    setSaving(false);
+                  });
               }}
+              disabled={saving}
             >
-              保存预算
+              {saving ? "保存中…" : "保存预算"}
             </Btn>
           }
         >
@@ -2011,7 +2132,18 @@ function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChan
               value={monthly}
               onChange={(event) => setMonthly(event.target.value)}
               placeholder="0"
-              style={{ flex: 1, padding: "12px 14px", borderRadius: 12, border: `2px solid ${C.dark}`, fontSize: 22, fontWeight: 700, fontFamily: "'Space Mono', monospace", color: C.dark, outline: "none", background: C.white }}
+              style={{
+                flex: 1,
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: `2px solid ${C.dark}`,
+                fontSize: 22,
+                fontWeight: 800,
+                fontFamily: "'Space Mono', monospace",
+                color: "#111827",
+                outline: "none",
+                background: C.white
+              }}
             />
           </div>
 
@@ -2029,14 +2161,25 @@ function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChan
               <div key={tag.key} style={{ display: "flex", alignItems: "center", padding: "12px 0", borderBottom: index < array.length - 1 ? `0.5px solid ${C.line}` : "none", gap: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: C.dark, width: 48 }}>{tag.key}</div>
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontSize: 13, color: C.sub }}>¥</span>
+                  <span style={{ fontSize: 13, color: C.dark, fontWeight: 700 }}>¥</span>
                   <input
                     data-selectable
                     type="number"
                     value={catBudgets[tag.key] || ""}
                     onChange={(event) => setCatBudgets({ ...catBudgets, [tag.key]: event.target.value })}
                     placeholder="—"
-                    style={{ flex: 1, padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, outline: "none", fontFamily: "'Space Mono', monospace", background: "transparent" }}
+                    style={{
+                      flex: 1,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: `1px solid ${C.line}`,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#111827",
+                      outline: "none",
+                      fontFamily: "'Space Mono', monospace",
+                      background: C.white
+                    }}
                   />
                 </div>
               </div>
@@ -2044,6 +2187,7 @@ function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChan
           </div>
 
           <div style={{ fontSize: 11, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>留空表示不设预算上限。分类预算之和不应超过月度总预算。</div>
+          {saveError ? <div style={{ fontSize: 11, color: C.coral, marginTop: 8 }}>{saveError}</div> : null}
         </FormCard>
       </div>
       <Toast visible={saved} message="预算已保存" />
@@ -2051,8 +2195,16 @@ function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChan
   );
 }
 
-function LearningSettingsPage({ onBack, learningSettings, onChangeLearningSettings, exampleLibrarySummary }) {
+function LearningSettingsPage({
+  onBack,
+  learningSettings,
+  onChangeLearningSettings,
+  onSaveLearningSettings,
+  exampleLibrarySummary
+}) {
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -2063,11 +2215,24 @@ function LearningSettingsPage({ onBack, learningSettings, onChangeLearningSettin
           footer={
             <Btn
               onClick={() => {
-                setSaved(true);
-                window.setTimeout(() => setSaved(false), 2000);
+                if (saving) return;
+                setSaveError("");
+                setSaving(true);
+                void onSaveLearningSettings(learningSettings)
+                  .then(() => {
+                    setSaved(true);
+                    window.setTimeout(() => setSaved(false), 2000);
+                  })
+                  .catch(() => {
+                    setSaveError("学习设置保存失败，请重试");
+                  })
+                  .finally(() => {
+                    setSaving(false);
+                  });
               }}
+              disabled={saving}
             >
-              保存设置
+              {saving ? "保存中…" : "保存设置"}
             </Btn>
           }
         >
@@ -2106,6 +2271,7 @@ function LearningSettingsPage({ onBack, learningSettings, onChangeLearningSettin
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 10 }}>记忆条目超过此值后允许收编压缩</div>
             <input type="range" min={10} max={60} value={learningSettings.compThreshold} onChange={(event) => onChangeLearningSettings((value) => ({ ...value, compThreshold: parseInt(event.target.value, 10) }))} style={{ width: "100%", accentColor: C.amber }} />
           </div>
+          {saveError ? <div style={{ fontSize: 11, color: C.coral, marginTop: 10 }}>{saveError}</div> : null}
         </FormCard>
       </div>
       <Toast visible={saved} message="学习设置已保存" />
@@ -2113,9 +2279,11 @@ function LearningSettingsPage({ onBack, learningSettings, onChangeLearningSettin
   );
 }
 
-function FullReclassPage({ onBack }) {
+function FullReclassPage({ onBack, onTriggerFullReclassification, aiStatus }) {
   const [confirming, setConfirming] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const running = aiStatus === "ANALYZING";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -2143,7 +2311,7 @@ function FullReclassPage({ onBack }) {
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Btn variant={running ? "secondary" : "danger"} onClick={() => setConfirming(true)} disabled={running}>
+            <Btn variant={running ? "secondary" : "danger"} onClick={() => setConfirming(true)} disabled={running || submitting}>
               {running ? "重分类进行中…" : "开始全量重新分类"}
             </Btn>
           </div>
@@ -2161,8 +2329,18 @@ function FullReclassPage({ onBack }) {
             variant="danger"
             onClick={() => {
               setConfirming(false);
-              setRunning(true);
-              window.setTimeout(() => setRunning(false), 2500);
+              setSubmitting(true);
+              void onTriggerFullReclassification()
+                .then(() => {
+                  setToastMessage("重分类任务已入队，AI 正在处理中");
+                })
+                .catch(() => {
+                  setToastMessage("重分类触发失败，请稍后重试");
+                })
+                .finally(() => {
+                  setSubmitting(false);
+                  window.setTimeout(() => setToastMessage(""), 2200);
+                });
             }}
           >
             确认开始
@@ -2170,7 +2348,7 @@ function FullReclassPage({ onBack }) {
         </div>
       </Dialog>
 
-      <Toast visible={running} message="重分类任务已入队" />
+      <Toast visible={Boolean(toastMessage)} message={toastMessage} />
     </div>
   );
 }
@@ -2180,13 +2358,11 @@ function AboutPage({ onBack }) {
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="关于" onBack={onBack} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 32px" }}>
-        {/* 关于页 App Icon 改为仓库内 SVG 资源，视觉尺寸保持和原 72x72 图标容器一致。 */}
-        <img src="/assets/app-icon.svg" alt="Moni App Icon" style={{ width: 72, height: 72, marginBottom: 16 }} />
+        <img src="/icon.svg" alt="Moni App Icon" style={{ width: 72, height: 72, marginBottom: 16 }} />
         <div style={{ fontSize: 22, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif", marginBottom: 4 }}>Moni</div>
         <div style={{ fontSize: 12, color: C.sub, marginBottom: 20 }}>AI 原生个人财务助手</div>
         <div style={{ fontSize: 12, color: C.muted, textAlign: "center", lineHeight: 1.7 }}>越用越聪明的记账伙伴。<br />导入账单，浏览流水，顺手纠错，AI 自动学会。</div>
         <div style={{ marginTop: 28, fontSize: 11, color: C.muted }}>版本 0.1.0 · 构建于 2026-04</div>
-        <div style={{ marginTop: 6, fontSize: 11, color: C.muted }}>计算机设计大赛参赛作品</div>
         <div style={{ marginTop: 20, display: "flex", gap: 16 }}>
           {["反馈", "文档", "致谢"].map((text) => (
             <div key={text} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 12, color: C.sub, cursor: "pointer" }}>
@@ -2213,6 +2389,7 @@ export default function MoniSettings({
   const onOpenHome = () => onNavigate("home");
   const onOpenEntry = () => onNavigate("entry");
   const {
+    aiConfig,
     ledgers,
     activeLedgerId,
     tags,
@@ -2234,8 +2411,23 @@ export default function MoniSettings({
       deleteTag,
       rollbackMemorySnapshot,
       deleteMemorySnapshot,
+      updateMonthlyBudget,
+      updateCategoryBudget,
+      updateLearningThreshold,
+      toggleAutoLearn,
+      updateCompressionThreshold,
+      triggerFullReclassification,
+      updateProvider,
+      updateApiKey,
+      updateBaseUrl,
+      updateActiveModel,
+      updateMaxTokens,
+      updateTemperature,
+      updateEnableThinking,
+      testConnection,
     },
   } = useMoniSettingsData();
+  const [aiEngineStatus, setAiEngineStatus] = useState("IDLE");
   const onChangeActiveLedgerId = useCallback((ledgerId) => {
     void switchLedger(ledgerId);
   }, [switchLedger]);
@@ -2260,8 +2452,25 @@ export default function MoniSettings({
   const currentLearningSettings = learningSettingsByLedger[activeLedgerId] || INITIAL_LEARNING_SETTINGS;
   const currentExampleSummary = exampleSummaryByLedger[activeLedgerId] || INITIAL_EXAMPLE_LIBRARY_SUMMARY;
   const currentBudget = budgetByLedger[activeLedgerId] || { monthly: "", catBudgets: {} };
+  const budgetSummaryText = useMemo(() => {
+    const monthlyValue = Number.parseFloat(currentBudget.monthly || '');
+    if (!Number.isFinite(monthlyValue) || monthlyValue <= 0) {
+      return "未设置";
+    }
+    return `¥${monthlyValue.toLocaleString('zh-CN')}`;
+  }, [currentBudget.monthly]);
   const currentLedgerTransactions = ledgerTransactionsByLedger[activeLedgerId] || [];
   const currentClassifyQueueDates = classifyQueueByLedger[activeLedgerId] || [];
+  const aiProviderName = useMemo(
+    () => PROVIDERS.find((item) => item.id === aiConfig.provider)?.name || aiConfig.provider || "未配置",
+    [aiConfig.provider]
+  );
+  const aiConfigSummary = useMemo(() => {
+    if (!aiConfig.activeModel) {
+      return `${aiProviderName} · 未设置模型`;
+    }
+    return `${aiProviderName} · ${aiConfig.activeModel}`;
+  }, [aiConfig.activeModel, aiProviderName]);
 
   useEffect(() => {
     // 当外部传入的 active id 已失效时，自动兜底到现存首个账本，避免根页显示与管理页状态断裂。
@@ -2351,6 +2560,16 @@ export default function MoniSettings({
     });
   }, [activeLedgerId]);
 
+  useEffect(() => {
+    const processor = BatchProcessor.getInstance();
+    const unsubscribe = processor.on("status", ({ status }) => {
+      setAiEngineStatus(status);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const updateCurrentLedgerTransactions = (nextValue) => {
     setLedgerTransactionsByLedger((value) => {
       const currentItems = value[activeLedgerId] || [];
@@ -2419,10 +2638,53 @@ export default function MoniSettings({
     }));
   };
 
+  const persistCurrentBudget = useCallback(async ({ monthly, catBudgets }) => {
+    updateCurrentBudget({ monthly, catBudgets });
+    const parsedMonthly = parseFloat(monthly);
+    await updateMonthlyBudget(Number.isFinite(parsedMonthly) && parsedMonthly > 0 ? parsedMonthly : 0);
+
+    const previousBudgetKeys = Object.keys(currentBudget?.catBudgets || {});
+    const nextBudgetKeys = Object.keys(catBudgets || {});
+    const allCategoryKeys = Array.from(new Set([...previousBudgetKeys, ...nextBudgetKeys]));
+    for (const categoryKey of allCategoryKeys) {
+      const rawAmount = catBudgets?.[categoryKey];
+      const parsedAmount = parseFloat(rawAmount);
+      await updateCategoryBudget(
+        categoryKey,
+        Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0
+      );
+    }
+  }, [currentBudget, updateCategoryBudget, updateCurrentBudget, updateMonthlyBudget]);
+
+  const persistCurrentLearningSettings = useCallback(async (settings) => {
+    updateCurrentLearningSettings(settings);
+    await toggleAutoLearn(Boolean(settings.autoLearn));
+    await updateLearningThreshold(settings.threshold);
+    await updateCompressionThreshold(settings.compThreshold);
+  }, [
+    toggleAutoLearn,
+    updateLearningThreshold,
+    updateCompressionThreshold,
+    updateCurrentLearningSettings
+  ]);
+
   const renderPage = () => {
     switch (page) {
       case "aiConfig":
-        return <AIConfigPage onBack={() => setPage("root")} />;
+        return (
+          <AIConfigPage
+            onBack={() => setPage("root")}
+            aiConfig={aiConfig}
+            onUpdateProvider={updateProvider}
+            onUpdateApiKey={updateApiKey}
+            onUpdateBaseUrl={updateBaseUrl}
+            onUpdateActiveModel={updateActiveModel}
+            onUpdateMaxTokens={updateMaxTokens}
+            onUpdateTemperature={updateTemperature}
+            onUpdateEnableThinking={updateEnableThinking}
+            onTestConnection={testConnection}
+          />
+        );
       case "selfDesc":
         return <SelfDescPage onBack={() => setPage("root")} text={selfDescription} onChange={setSelfDescription} />;
       case "ledgerManage":
@@ -2473,7 +2735,7 @@ export default function MoniSettings({
             customTags={currentCustomTags}
             monthlyBudget={currentBudget.monthly}
             categoryBudgets={currentBudget.catBudgets}
-            onChangeBudget={updateCurrentBudget}
+            onSaveBudget={persistCurrentBudget}
           />
         );
       case "learnSettings":
@@ -2482,11 +2744,18 @@ export default function MoniSettings({
             onBack={() => setPage("root")}
             learningSettings={currentLearningSettings}
             onChangeLearningSettings={updateCurrentLearningSettings}
+            onSaveLearningSettings={persistCurrentLearningSettings}
             exampleLibrarySummary={currentExampleSummary}
           />
         );
       case "fullReclass":
-        return <FullReclassPage onBack={() => setPage("root")} />;
+        return (
+          <FullReclassPage
+            onBack={() => setPage("root")}
+            onTriggerFullReclassification={triggerFullReclassification}
+            aiStatus={aiEngineStatus}
+          />
+        );
       case "about":
         return <AboutPage onBack={() => setPage("root")} />;
       default:
@@ -2497,6 +2766,8 @@ export default function MoniSettings({
             memoryCount={currentMemory.length}
             currentLedgerName={currentLedgerName}
             ledgerCount={ledgers.length}
+            budgetSummaryText={budgetSummaryText}
+            aiConfigSummary={aiConfigSummary}
           />
         );
     }
@@ -2524,7 +2795,7 @@ export default function MoniSettings({
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <Decor seed={page === "root" ? 555 : 777} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
-      <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} />
+      <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
     </div>
   );
 }
