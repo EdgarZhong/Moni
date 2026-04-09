@@ -40,6 +40,7 @@ const PROVIDERS = [
     hasBaseUrl: false,
     baseUrl: "https://api.siliconflow.cn/v1",
     models: [
+      "deepseek-ai/DeepSeek-V3.2",
       "deepseek-ai/DeepSeek-V3",
       "deepseek-ai/DeepSeek-R1",
       "moonshotai/Kimi-K2-Instruct",
