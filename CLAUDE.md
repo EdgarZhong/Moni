@@ -35,8 +35,9 @@
 | v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、ledger_prefs 已落地 |
 | 记账页集成 | Done | MoniEntry 页面、useMoniEntryData hook、AppFacade 记账读模型、导入/随手记/分类拖放/表单均已接通 |
 | 交易详情面板 | Done | TransactionDetailPanel：分类修改、锁定、备注、AI 理由、边缘滑动返回手势 |
+| 设置页集成 | In Progress | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由已接通 |
 | 浏览器调试入口与逻辑测试 | In Progress | 已接入主要调试入口与 smoke test，后续仍可继续扩覆盖面 |
-| 预算设置页 UI | Ready | 当前最大功能缺口，逻辑层已具备，表现层未完成 |
+| 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
 | 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
 | 测试数据迁移 / 调试时钟方案 | Ready | 需明确测试账本继续迁移还是引入 debug clock |

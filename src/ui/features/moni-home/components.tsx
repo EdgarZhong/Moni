@@ -169,11 +169,13 @@ export function NavIcon() {
 }
 
 /** GearIcon — 齿轮图标（设置按钮） */
-export function GearIcon() {
+export function GearIcon({ active }: { active?: boolean }) {
+  const stroke = active ? C.dark : "#8E8E8E";
+  const strokeWidth = active ? 1.9 : 1.6;
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="3.2" stroke="#8E8E8E" strokeWidth="1.6" />
-      <path d="M12 2.5v2.2M12 19.3v2.2M4.92 4.92l1.56 1.56M17.52 17.52l1.56 1.56M2.5 12h2.2M19.3 12h2.2M4.92 19.08l1.56-1.56M17.52 6.48l1.56-1.56" stroke="#8E8E8E" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="3.2" stroke={stroke} strokeWidth={strokeWidth} />
+      <path d="M12 2.5v2.2M12 19.3v2.2M4.92 4.92l1.56 1.56M17.52 17.52l1.56 1.56M2.5 12h2.2M19.3 12h2.2M4.92 19.08l1.56-1.56M17.52 6.48l1.56-1.56" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" />
     </svg>
   );
 }
@@ -646,7 +648,7 @@ interface BottomNavProps {
   aiStop: boolean;
   controlOpen: boolean;
   controlHit: string | null;
-  onStartControl: () => void;
+  onStartControl: (clientY: number, pointerId: number) => void;
   onEndControl: () => void;
   onCancelControl: () => void;
   onUpdateControlHit: ControlUpdateRef;
@@ -655,7 +657,7 @@ interface BottomNavProps {
   /** 点击记账按钮的回调 */
   onBookkeeping?: () => void;
   /** 当前激活页面 */
-  activePage?: 'home' | 'entry';
+  activePage?: 'home' | 'entry' | 'settings';
 }
 
 /**
@@ -672,18 +674,19 @@ interface BottomNavProps {
  */
 export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, activePage = 'home' }: BottomNavProps) {
   const isEntryActive = activePage === 'entry';
+  const isSettingsActive = activePage === 'settings';
   return (
     <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: "max(env(safe-area-inset-bottom), 8px)", display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
       {/* 左：设置 */}
       <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
-        <GearIcon />
-        <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>设置</div>
+        <GearIcon active={isSettingsActive} />
+        <div style={{ fontSize: 10, color: isSettingsActive ? C.dark : C.muted, fontWeight: isSettingsActive ? 700 : 400, marginTop: 2 }}>设置</div>
       </div>
 
       {/* 中：品牌按钮 + AI 控制条 */}
       <div
         style={{ position: "relative", textAlign: "center", cursor: "pointer", touchAction: "none" }}
-        onPointerDown={onStartControl}
+        onPointerDown={(event) => onStartControl(event.clientY, event.pointerId)}
         onPointerMove={(event) => {
           if (controlOpen) {
             onUpdateControlHit.move(event.clientY);
