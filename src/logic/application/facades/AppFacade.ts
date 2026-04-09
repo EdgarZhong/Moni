@@ -652,8 +652,8 @@ export class AppFacade {
     }));
 
     const memoryItems = await MemoryManager.load(currentLedgerId).catch(() => []);
-    const currentSnapshotId = await SnapshotManager.getCurrentId(currentLedgerId).catch(() => '');
-    const snapshots = await SnapshotManager.list(currentLedgerId)
+    let currentSnapshotId = await SnapshotManager.getCurrentId(currentLedgerId).catch(() => '');
+    let snapshots = await SnapshotManager.list(currentLedgerId)
       .then((items) => items.map((item) => ({
         id: item.id,
         trigger: item.trigger,
@@ -662,11 +662,39 @@ export class AppFacade {
       })))
       .catch(() => []);
 
+    // 兼容老账本：若当前账本缺失快照索引，则自动补建一个迁移快照，
+    // 让“AI 记忆 > 历史版本”至少能展示当前版本。
+    if (snapshots.length === 0) {
+      try {
+        await MemoryManager.save(
+          currentLedgerId,
+          memoryItems,
+          'migration',
+          '历史快照补建'
+        );
+        currentSnapshotId = await SnapshotManager.getCurrentId(currentLedgerId).catch(() => '');
+        snapshots = await SnapshotManager.list(currentLedgerId)
+          .then((items) => items.map((item) => ({
+            id: item.id,
+            trigger: item.trigger,
+            summary: item.summary,
+            isCurrent: item.id === currentSnapshotId,
+          })))
+          .catch(() => []);
+      } catch {
+        // 补建失败不阻断设置页渲染
+      }
+    }
+
     let exampleLibrarySummary = { delta: 0, total: 0 };
     try {
       const stats = await ExampleStore.getStats(currentLedgerId);
       const lastRevision = await SnapshotManager.getLastLearnedExampleRevision(currentLedgerId);
-      exampleLibrarySummary = { delta: Math.max(0, stats.count - lastRevision), total: stats.count };
+      const delta = await ExampleStore.getLearningDelta(currentLedgerId, lastRevision);
+      const pendingDelta = delta.mode === 'full_reconcile'
+        ? (delta.allEntries?.length ?? 0)
+        : (delta.upserts.length + delta.deletions.length);
+      exampleLibrarySummary = { delta: pendingDelta, total: stats.count };
     } catch { /* ignore */ }
 
     let learningConfig = { autoLearn: true, learningThreshold: 5, compressionThreshold: 30 };
@@ -903,9 +931,15 @@ export class AppFacade {
     if (!ledgerId) return false;
     try {
       const categories = this.ledgerService.getState().ledgerMemory?.defined_categories ?? {};
-      await LearningSession.run(ledgerId, categories);
+      const beforeSnapshotId = await SnapshotManager.getCurrentId(ledgerId);
+      const result = await LearningSession.run(ledgerId, categories);
+      if (!result.success) {
+        return false;
+      }
+      const afterSnapshotId = await SnapshotManager.getCurrentId(ledgerId);
       this.notify();
-      return true;
+      // 返回“是否产生了新历史版本”，用于设置页给出准确反馈。
+      return Boolean(afterSnapshotId) && afterSnapshotId !== beforeSnapshotId;
     } catch {
       return false;
     }

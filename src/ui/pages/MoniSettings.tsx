@@ -1923,6 +1923,7 @@ function AIMemoryPage({
   memory,
   snapshots,
   onSaveMemory,
+  onTriggerLearning,
   onRollbackSnapshot,
   onDeleteSnapshot,
   exampleLibrarySummary,
@@ -1931,7 +1932,8 @@ function AIMemoryPage({
   onBack: () => void;
   memory: string[];
   snapshots: SettingsSnapshotItem[];
-  onSaveMemory: (items: string[]) => void;
+  onSaveMemory: (items: string[]) => Promise<void>;
+  onTriggerLearning: () => Promise<boolean>;
   onRollbackSnapshot: MoniSettingsData["actions"]["rollbackMemorySnapshot"];
   onDeleteSnapshot: MoniSettingsData["actions"]["deleteMemorySnapshot"];
   exampleLibrarySummary: SettingsExampleLibrarySummary;
@@ -2005,10 +2007,15 @@ function AIMemoryPage({
 
   const finishEditing = () => {
     const nextSavedMemory = draftMemory.map((item) => item.trim()).filter(Boolean);
-    onSaveMemory(nextSavedMemory);
-    setDraftMemory(nextSavedMemory);
-    setEditingIndex(null);
-    showToast("记忆已保存");
+    void onSaveMemory(nextSavedMemory)
+      .then(() => {
+        setDraftMemory(nextSavedMemory);
+        setEditingIndex(null);
+        showToast("记忆已保存");
+      })
+      .catch(() => {
+        showToast("保存失败，请重试");
+      });
   };
 
   const visibleItems = editingIndex !== null ? draftMemory : memory;
@@ -2130,11 +2137,21 @@ function AIMemoryPage({
             onClick={() => {
               setShowLearn(false);
               setLearning(true);
-              window.setTimeout(() => {
-                setLearning(false);
-                onLearningComplete();
-                showToast("学习完成，AI 已更新当前账本记忆。");
-              }, 1800);
+              void onTriggerLearning()
+                .then((ok) => {
+                  if (ok) {
+                    onLearningComplete();
+                    showToast("学习完成，AI 已更新当前账本记忆。");
+                    return;
+                  }
+                  showToast("学习未触发或失败，请检查学习条件与模型配置。");
+                })
+                .catch(() => {
+                  showToast("学习失败，请重试");
+                })
+                .finally(() => {
+                  setLearning(false);
+                });
             }}
           >
             开始学习
@@ -2572,6 +2589,8 @@ export default function MoniSettings({
       renameTag,
       updateTagDescription,
       deleteTag,
+        updateMemoryItems,
+        triggerImmediateLearning,
       rollbackMemorySnapshot,
       deleteMemorySnapshot,
       updateMonthlyBudget,
@@ -2763,6 +2782,15 @@ export default function MoniSettings({
     });
   };
 
+  const persistCurrentMemory = useCallback(async (items: string[]) => {
+    updateCurrentMemory(items);
+    await updateMemoryItems(items);
+  }, [updateMemoryItems, activeLedgerId]);
+
+  const triggerCurrentLearning = useCallback(async (): Promise<boolean> => {
+    return triggerImmediateLearning();
+  }, [triggerImmediateLearning]);
+
   const rollbackCurrentSnapshot = useCallback(async (snapshotId: string) => {
     return rollbackMemorySnapshot(snapshotId);
   }, [rollbackMemorySnapshot]);
@@ -2875,7 +2903,8 @@ export default function MoniSettings({
             onBack={() => setPage("root")}
             memory={currentMemory}
             snapshots={currentSnapshots}
-            onSaveMemory={updateCurrentMemory}
+            onSaveMemory={persistCurrentMemory}
+            onTriggerLearning={triggerCurrentLearning}
             onRollbackSnapshot={rollbackCurrentSnapshot}
             onDeleteSnapshot={deleteCurrentSnapshot}
             exampleLibrarySummary={currentExampleSummary}
