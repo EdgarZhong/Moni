@@ -609,15 +609,25 @@ export class AppFacade {
     const currentLedgerId = ledgerState.currentLedgerId;
 
     const config = await ConfigManager.getInstance().getConfig();
-    const currentProvider = Object.keys(config.providers)[0] ?? 'deepseek';
-    const providerConfig = config.providers[currentProvider];
+    const { provider: currentProvider, model: activeModel } = this.resolveActiveProviderAndModel(config);
+    const providerConfig = config.providers[currentProvider] ?? { apiKey: '', baseUrl: '' };
+    const candidateModels = config.candidateModels
+      .map((item) => {
+        const [provider, ...modelParts] = item.split('::');
+        return {
+          provider,
+          model: modelParts.join('::'),
+        };
+      })
+      .filter((item) => item.provider === currentProvider && item.model)
+      .map((item) => item.model);
 
     const aiConfig = {
       provider: currentProvider,
       hasApiKey: Boolean(providerConfig?.apiKey),
       baseUrl: providerConfig?.baseUrl ?? '',
-      candidateModels: config.candidateModels ?? [],
-      activeModel: config.candidateModels?.[0] ?? '',
+      candidateModels,
+      activeModel,
       maxTokens: config.globalParams?.maxTokens ?? 4096,
       temperature: config.globalParams?.temperature ?? 0.3,
       enableThinking: config.globalParams?.enableThinking ?? false,
@@ -714,6 +724,16 @@ export class AppFacade {
     if (!config.providers[provider]) {
       config.providers[provider] = { apiKey: '', baseUrl: '' };
     }
+    const currentModel = config.candidateModels
+      .map((item) => {
+        const [providerName, ...modelParts] = item.split('::');
+        return {
+          providerName,
+          model: modelParts.join('::'),
+        };
+      })
+      .find((item) => item.providerName === provider)?.model;
+    config.candidateModels = [`${provider}::${currentModel || 'default-model'}`];
     await cm.saveConfig(config);
     this.notify();
   }
@@ -732,7 +752,7 @@ export class AppFacade {
   public async updateBaseUrl(url: string): Promise<void> {
     const cm = ConfigManager.getInstance();
     const config = await cm.getConfig();
-    const provider = Object.keys(config.providers)[0] ?? 'custom';
+    const { provider } = this.resolveActiveProviderAndModel(config);
     if (!config.providers[provider]) {
       config.providers[provider] = { apiKey: '', baseUrl: '' };
     }
@@ -744,7 +764,25 @@ export class AppFacade {
   public async updateActiveModel(model: string): Promise<void> {
     const cm = ConfigManager.getInstance();
     const config = await cm.getConfig();
-    config.candidateModels = [model];
+    const { provider } = this.resolveActiveProviderAndModel(config);
+    config.candidateModels = [`${provider}::${model}`];
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateMaxTokens(value: number): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    config.globalParams.maxTokens = Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateTemperature(value: number): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    const normalized = Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : 0.3;
+    config.globalParams.temperature = normalized;
     await cm.saveConfig(config);
     this.notify();
   }
@@ -759,12 +797,35 @@ export class AppFacade {
 
   public async testConnection(): Promise<boolean> {
     try {
-      const client = LLMClient.getInstance();
+      const llmConfig = await ConfigManager.getInstance().getActiveModelConfig();
+      if (!llmConfig.apiKey || !llmConfig.baseUrl || !llmConfig.model) {
+        return false;
+      }
+      const client = new LLMClient({
+        apiKey: llmConfig.apiKey,
+        baseUrl: llmConfig.baseUrl,
+        model: llmConfig.model,
+        temperature: llmConfig.temperature,
+      });
       await client.testConnection();
       return true;
     } catch {
       return false;
     }
+  }
+
+  private resolveActiveProviderAndModel(config: Awaited<ReturnType<ConfigManager['getConfig']>>): { provider: string; model: string } {
+    const fallbackProvider = Object.keys(config.providers).find((name) => Boolean(config.providers[name]?.apiKey))
+      ?? Object.keys(config.providers)[0]
+      ?? 'deepseek';
+    const candidate = config.candidateModels[0] ?? '';
+    const [providerName, ...modelParts] = candidate.split('::');
+    const hasProviderPrefix = modelParts.length > 0;
+    const provider = hasProviderPrefix && config.providers[providerName]
+      ? providerName
+      : fallbackProvider;
+    const model = hasProviderPrefix ? (modelParts.join('::') || '') : candidate;
+    return { provider, model };
   }
 
   // Self description

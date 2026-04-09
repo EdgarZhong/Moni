@@ -566,4 +566,68 @@ export class BudgetManager implements BudgetStore, BudgetService {
       usageRatio: Math.min(summary.usageRatio, 1), // 进度条最大 100%
     };
   }
+
+  // ──────────────────────────────────────────────
+  // 兼容接口（供 AppFacade 旧调用路径使用）
+  // ──────────────────────────────────────────────
+
+  /**
+   * 兼容旧读模型结构：
+   * - monthly_total
+   * - category_budgets
+   */
+  public async load(ledgerId: string): Promise<{
+    monthly_total: number;
+    category_budgets: Record<string, number>;
+  } | null> {
+    const config = await this.loadBudgetConfig(ledgerId);
+    if (!config) {
+      return null;
+    }
+    const categoryBudgets: Record<string, number> = {};
+    if (config.categoryBudgets) {
+      for (const [key, entry] of Object.entries(config.categoryBudgets)) {
+        categoryBudgets[key] = entry.amount;
+      }
+    }
+    return {
+      monthly_total: config.monthly?.amount ?? 0,
+      category_budgets: categoryBudgets,
+    };
+  }
+
+  /**
+   * 兼容旧写接口：
+   * amount <= 0 视为清空月预算。
+   */
+  public async setMonthlyTotal(ledgerId: string, amount: number): Promise<void> {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await this.saveMonthlyBudget(ledgerId, null);
+      return;
+    }
+    await this.saveMonthlyBudget(ledgerId, {
+      amount,
+      currency: 'CNY',
+    });
+  }
+
+  /**
+   * 兼容旧写接口：
+   * amount <= 0 视为清空该分类预算。
+   */
+  public async setCategoryBudget(ledgerId: string, categoryKey: string, amount: number): Promise<void> {
+    const existing = await this.loadBudgetConfig(ledgerId);
+    const config: BudgetConfig = existing ?? this.createEmptyConfig();
+    const nextBudgets = { ...(config.categoryBudgets ?? {}) };
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      delete nextBudgets[categoryKey];
+    } else {
+      nextBudgets[categoryKey] = { amount };
+    }
+
+    config.categoryBudgets = Object.keys(nextBudgets).length > 0 ? nextBudgets : null;
+    config.updatedAt = new Date().toISOString();
+    await this.saveBudgetConfig(ledgerId, config);
+  }
 }
