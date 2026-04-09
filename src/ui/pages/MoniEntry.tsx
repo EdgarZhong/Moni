@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { C, CAT, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { parseFiles } from "@shared/utils/parser";
@@ -625,7 +625,7 @@ function EntryBottomNav({ onOpenHome, onOpenSettings }: { onOpenHome: () => void
     <div
       style={{
         background: C.white, borderTop: `1.5px solid ${C.border}`,
-        paddingTop: 3, paddingBottom: "max(env(safe-area-inset-bottom), 8px)",
+        paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM,
         display: "flex", justifyContent: "space-around", alignItems: "flex-end",
         flexShrink: 0, zIndex: 20,
       }}
@@ -914,7 +914,8 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Nunito',-apple-system,sans-serif",
-        height: PHONE_FRAME_HEIGHT,
+        height: PHONE_FRAME_HEIGHT_CSS,
+        maxHeight: PHONE_FRAME_HEIGHT,
         paddingTop: "env(safe-area-inset-top)",
       }}
     >

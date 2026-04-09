@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { C, CAT, OVERVIEW_COLORS } from "./config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, OVERVIEW_COLORS } from "./config";
 import { getCategory, seededShapes, type OverviewItem } from "./helpers";
 
 // ──────────────────────────────────────────────
@@ -678,7 +678,7 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
   const isEntryActive = activePage === 'entry';
   const isSettingsActive = activePage === 'settings';
   return (
-    <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: "max(env(safe-area-inset-bottom), 8px)", display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
+    <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM, display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
       {/* 左：设置 */}
       <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
         <GearIcon active={isSettingsActive} />
