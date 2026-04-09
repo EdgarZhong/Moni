@@ -2301,6 +2301,9 @@ function BudgetPage({
               placeholder="0"
               style={{
                 flex: 1,
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
                 padding: "12px 14px",
                 borderRadius: 12,
                 border: `2px solid ${C.dark}`,
@@ -2337,6 +2340,9 @@ function BudgetPage({
                     placeholder="—"
                     style={{
                       flex: 1,
+                      minWidth: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
                       padding: "6px 8px",
                       borderRadius: 8,
                       border: `1px solid ${C.line}`,
