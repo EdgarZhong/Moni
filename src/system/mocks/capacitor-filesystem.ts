@@ -100,8 +100,12 @@ export const Filesystem = {
 
   readFile: async (options: { path: string, directory?: string, encoding?: Encoding }): Promise<ReadFileResult> => {
     // console.log('[MockFS] readFile:', options.path);
-    const { path: relPath, directory } = options;
-    const { data } = await apiCall('read', { path: relPath, directory });
+    const { path: relPath, directory, encoding } = options;
+    const payload: Record<string, unknown> = { path: relPath, directory };
+    if (encoding) {
+      payload.encoding = encoding;
+    }
+    const { data } = await apiCall('read', payload);
     return {
       data: data
     };

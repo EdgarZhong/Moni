@@ -86,11 +86,18 @@ export class CapacitorFilesystemAdapter implements IFilesystemAdapter {
 
   async readFile(options: ReadFileOptions): Promise<string> {
     try {
-      const result = await Filesystem.readFile({
+      const payload: {
+        path: string;
+        directory: Directory;
+        encoding?: Encoding;
+      } = {
         path: options.path,
-        directory: this.mapDirectory(options.directory),
-        encoding: this.mapEncoding(options.encoding)
-      });
+        directory: this.mapDirectory(options.directory)
+      };
+      if (options.encoding) {
+        payload.encoding = this.mapEncoding(options.encoding);
+      }
+      const result = await Filesystem.readFile(payload);
       return result.data as string;
     } catch (e) {
       throw new Error(`[${this.name}] Failed to read file ${options.path}: ${e}`);

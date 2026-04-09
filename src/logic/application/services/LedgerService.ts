@@ -465,6 +465,18 @@ export class LedgerService {
     };
   }
 
+  /**
+   * 从账本内存重建 rawTransactions 视图，确保导入后不会丢失历史交易。
+   */
+  private buildRawTransactionsFromMemory(memory: LedgerMemory): Transaction[] {
+    return Object.values(memory.records)
+      .map((record) => ({
+        ...record,
+        originalDate: parse(record.time, 'yyyy-MM-dd HH:mm:ss', new Date())
+      }))
+      .sort((a, b) => b.originalDate.getTime() - a.originalDate.getTime());
+  }
+
   // --- Public Actions ---
 
   public updateCategory(id: string, newCategory: string, newReasoning?: string) {
@@ -668,10 +680,7 @@ export class LedgerService {
   public async ingestParsedData(parsedData: Transaction[], dirHandle: StorageDirHandle) {
     this.setState({ isLoading: true });
     try {
-        // 1. Set Raw Data
-        this.setState({ rawTransactions: parsedData });
-
-        // 2. Metadata System
+        // 1. Metadata System
         // Try to get existing file, or create if not exists
         let memoryHandle = await getMemoryFileHandle(dirHandle, false);
         let currentMemory: LedgerMemory = DEFAULT_MEMORY;
@@ -702,11 +711,13 @@ export class LedgerService {
             // Hydrate Arbiter with new memory
             this.hydrateArbiter(newMemory);
 
-            const computed = this.recomputeTransactions(parsedData, newMemory);
+            const rawTransactions = this.buildRawTransactionsFromMemory(newMemory);
+            const computed = this.recomputeTransactions(rawTransactions, newMemory);
             const tabs = this.computeTabs(newMemory);
             const range = this.computeDateRange(computed);
 
             this.setState({
+                rawTransactions,
                 ledgerMemory: newMemory,
                 computedTransactions: computed,
                 TABS: tabs,
@@ -752,7 +763,6 @@ export class LedgerService {
   public async ingestRawData(parsedData: Transaction[]) {
     this.setState({ isLoading: true });
     try {
-        this.setState({ rawTransactions: parsedData });
         const currentMemory = this.state.ledgerMemory || DEFAULT_MEMORY;
         let newMemory = currentMemory;
         this.transactionCache.clear();
@@ -766,11 +776,13 @@ export class LedgerService {
         }
         
         this.hydrateArbiter(newMemory);
-        const computed = this.recomputeTransactions(parsedData, newMemory);
+        const rawTransactions = this.buildRawTransactionsFromMemory(newMemory);
+        const computed = this.recomputeTransactions(rawTransactions, newMemory);
         const tabs = this.computeTabs(newMemory);
         const range = this.computeDateRange(computed);
         
         this.setState({
+            rawTransactions,
             ledgerMemory: newMemory,
             computedTransactions: computed,
             TABS: tabs,

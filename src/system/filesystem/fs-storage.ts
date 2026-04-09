@@ -227,6 +227,33 @@ export const writeMemoryFile = async (
 };
 
 // Helper for recursive native scanning
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i += 1) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function decodeNativeFilePayload(content: string): Uint8Array {
+  const normalized = content.replace(/\s+/g, '');
+  const isLikelyBase64 =
+    normalized.length > 0 &&
+    normalized.length % 4 === 0 &&
+    /^[A-Za-z0-9+/=]+$/.test(normalized);
+
+  if (isLikelyBase64) {
+    try {
+      return base64ToUint8Array(normalized);
+    } catch {
+      // Fall through to text encoding path.
+    }
+  }
+
+  return new TextEncoder().encode(content);
+}
+
 async function scanNativeDir(path: string, fileList: File[]): Promise<File[]> {
   try {
     const fs = FilesystemService.getInstance();
@@ -243,12 +270,13 @@ async function scanNativeDir(path: string, fileList: File[]): Promise<File[]> {
           // 读取文件内容
           const text = await fs.readFile({
             path: fullPath,
-            directory: AdapterDirectory.Documents,
-            encoding: AdapterEncoding.UTF8
+            directory: AdapterDirectory.Documents
           });
 
-          // 构造 File 对象
-          const fileObj = new File([text], file.name, {
+          // Native 真机通常返回 base64；浏览器 mock 返回明文文本。这里做兼容解码。
+          const contentBytes = decodeNativeFilePayload(text);
+          const normalizedBytes = new Uint8Array(contentBytes);
+          const fileObj = new File([normalizedBytes], file.name, {
             type: 'text/csv',
             lastModified: file.mtime
           });
