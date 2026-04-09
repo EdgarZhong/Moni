@@ -421,21 +421,22 @@ export class AppFacade {
         const candidateDates = Array.from(
           new Set(
             outgoingRecords
-              .filter((record) =>
-                !record.is_verified &&
-                (!record.category || record.category === 'uncategorized' || !record.ai_category)
-              )
+              .filter((record) => {
+                const finalCategory = record.user_category || record.ai_category || record.category;
+                return !record.is_verified && (!finalCategory || finalCategory === 'uncategorized');
+              })
               .map((record) => toDateKey(record.time))
           )
         ).sort();
 
-        if (candidateDates.length === 0 && outgoingRecords.length > 0) {
-          const latestDate = toDateKey(outgoingRecords[0].time);
-          await classifyQueue.enqueue({ ledger: currentLedgerId, date: latestDate });
-        } else {
-          for (const date of candidateDates) {
-            await classifyQueue.enqueue({ ledger: currentLedgerId, date });
-          }
+        if (candidateDates.length === 0) {
+          // 没有待分类交易时不再启动引擎，避免“未分类为 0 仍显示运行中”。
+          this.batchProcessor.stop();
+          return;
+        }
+
+        for (const date of candidateDates) {
+          await classifyQueue.enqueue({ ledger: currentLedgerId, date });
         }
       }
     }
