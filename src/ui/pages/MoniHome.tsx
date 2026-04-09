@@ -62,7 +62,7 @@ interface ReasonItem {
 }
 
 interface MoniHomeProps {
-  onNavigate?: (page: "home" | "entry") => void;
+  onNavigate?: (page: "home" | "entry" | "settings") => void;
 }
 
 interface DetailContext {
@@ -325,6 +325,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
 
   const [controlOpen, setControlOpen] = useState(false);
   const [controlHit, setControlHit] = useState<string | null>(null);
+  const [optimisticStopping, setOptimisticStopping] = useState(false);
 
   const [stickyRail, setStickyRail] = useState(false);
   const [scrollStage, setScrollStage] = useState<"初始" | "过渡" | "完全">("初始");
@@ -346,8 +347,8 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const pendingDropRef = useRef<{ txId: string; category: string } | null>(null);
 
   const primaryHint = hintCards[0] ?? null;
-  const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
-  const aiStop = aiEngineUiState.status === "draining";
+  const aiStop = aiEngineUiState.status === "draining" || optimisticStopping;
+  const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining" || optimisticStopping;
   const aiCurrentDate = aiEngineUiState.activeDate;
   const clampDateString = useCallback((value: string, min: string, max: string) => {
     if (value < min) return min;
@@ -398,6 +399,12 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       setCustomEnd(nextEnd < nextStart ? nextStart : nextEnd);
     }
   }, [clampDateString, customEnd, customStart, rangeBounds.max, rangeBounds.min]);
+
+  useEffect(() => {
+    if (aiEngineUiState.status !== "running") {
+      setOptimisticStopping(false);
+    }
+  }, [aiEngineUiState.status]);
 
   useEffect(() => {
     if (!rangeBounds.min || !rangeBounds.max) {
@@ -782,12 +789,14 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     stopHold();
     if (!controlOpen) return;
     if (controlHit === "开启") {
+      setOptimisticStopping(false);
       void actions.startAiProcessing().catch((error) => {
         console.error("[MoniHome] Failed to start AI processing:", error);
       });
       void triggerImpact("medium");
     }
     if (controlHit === "关闭" && aiOn) {
+      setOptimisticStopping(true);
       actions.stopAiProcessing();
       void triggerImpact("medium");
     }
@@ -1003,6 +1012,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         onCancelControl={handleCancelControl}
         onUpdateControlHit={{ ref: controlRef, move: updateControlHit }}
         onBookkeeping={onNavigate ? () => onNavigate("entry") : undefined}
+        onSettings={onNavigate ? () => onNavigate("settings") : undefined}
       />
 
       {controlOpen && (

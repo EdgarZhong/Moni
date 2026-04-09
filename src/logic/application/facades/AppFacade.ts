@@ -1,12 +1,19 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
+import { LearningSession } from '@logic/application/ai/LearningSession';
 import type { AIProgress, AIStatus } from '@logic/application/ai/types';
+import { ExampleStore } from '@logic/application/services/ExampleStore';
+import { LedgerPreferencesManager } from '@logic/application/services/LedgerPreferencesManager';
+import { MemoryManager } from '@logic/application/services/MemoryManager';
+import { SelfDescriptionManager } from '@system/config/SelfDescriptionManager';
 import { SnapshotManager } from '@logic/application/services/SnapshotManager';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
 import { LedgerService } from '@logic/application/services/LedgerService';
 import { ManualEntryManager } from '@logic/application/services/ManualEntryManager';
 import type { ManualEntryInput } from '@logic/application/services/ManualEntryManager';
+import { ConfigManager } from '@system/config/ConfigManager';
+import { LLMClient } from '@logic/application/llm/LLMClient';
 import type {
   EntryPageReadModel,
   EntryRecentReference,
@@ -21,6 +28,7 @@ import type {
   LedgerFacadeState,
   LedgerOption,
   MoniHomeReadModel,
+  SettingsPageReadModel,
 } from '@shared/types';
 import type { FullTransactionRecord } from '@shared/types/metadata';
 
@@ -400,6 +408,36 @@ export class AppFacade {
   }
 
   public async startAiProcessing(): Promise<void> {
+    const currentLedgerId = this.ledgerManager.getActiveLedgerName();
+    if (currentLedgerId) {
+      const pendingCount = await classifyQueue.size(currentLedgerId).catch(() => 0);
+      if (pendingCount === 0) {
+        const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
+        const outgoingRecords = Object.values(records).filter((record) =>
+          record.transactionStatus === 'SUCCESS' && record.direction === 'out'
+        );
+
+        const candidateDates = Array.from(
+          new Set(
+            outgoingRecords
+              .filter((record) =>
+                !record.is_verified &&
+                (!record.category || record.category === 'uncategorized' || !record.ai_category)
+              )
+              .map((record) => toDateKey(record.time))
+          )
+        ).sort();
+
+        if (candidateDates.length === 0 && outgoingRecords.length > 0) {
+          const latestDate = toDateKey(outgoingRecords[0].time);
+          await classifyQueue.enqueue({ ledger: currentLedgerId, date: latestDate });
+        } else {
+          for (const date of candidateDates) {
+            await classifyQueue.enqueue({ ledger: currentLedgerId, date });
+          }
+        }
+      }
+    }
     await this.batchProcessor.run();
   }
 
@@ -560,6 +598,287 @@ export class AppFacade {
     } catch {
       return null;
     }
+  }
+
+  // ──────────────────────────────────────────────
+  // 设置页
+  // ──────────────────────────────────────────────
+
+  public async getSettingsPageReadModel(): Promise<SettingsPageReadModel> {
+    const ledgerState = this.getLedgerState();
+    const currentLedgerId = ledgerState.currentLedgerId;
+
+    const config = await ConfigManager.getInstance().getConfig();
+    const currentProvider = Object.keys(config.providers)[0] ?? 'deepseek';
+    const providerConfig = config.providers[currentProvider];
+
+    const aiConfig = {
+      provider: currentProvider,
+      hasApiKey: Boolean(providerConfig?.apiKey),
+      baseUrl: providerConfig?.baseUrl ?? '',
+      candidateModels: config.candidateModels ?? [],
+      activeModel: config.candidateModels?.[0] ?? '',
+      maxTokens: config.globalParams?.maxTokens ?? 4096,
+      temperature: config.globalParams?.temperature ?? 0.3,
+      enableThinking: config.globalParams?.enableThinking ?? false,
+    };
+
+    const selfDescription = await SelfDescriptionManager.getInstance().load() ?? '';
+
+    const ledgerOptions = await this.listLedgerOptions({ syncWithFiles: false }).catch(() => []);
+    const ledgers = ledgerOptions.map((l) => ({
+      id: l.id,
+      name: l.name,
+      isDefault: l.id === '日常开销',
+    }));
+
+    const categoryMap = ledgerState.ledgerMemory?.defined_categories ?? {};
+    const tags = Object.entries(categoryMap).map(([key, description]) => ({
+      key,
+      description,
+      isSystem: key === '其他',
+    }));
+
+    const memoryItems = await MemoryManager.getInstance().load(currentLedgerId).catch(() => []);
+
+    let exampleLibrarySummary = { delta: 0, total: 0 };
+    try {
+      const store = ExampleStore.getInstance();
+      const total = await store.count(currentLedgerId);
+      const lastRevision = await SnapshotManager.getLastLearnedExampleRevision(currentLedgerId);
+      exampleLibrarySummary = { delta: Math.max(0, total - lastRevision), total };
+    } catch { /* ignore */ }
+
+    let learningConfig = { autoLearn: true, learningThreshold: 5, compressionThreshold: 30 };
+    try {
+      const prefs = await LedgerPreferencesManager.getInstance().load(currentLedgerId);
+      if (prefs) {
+        learningConfig = {
+          autoLearn: prefs.auto_learn ?? true,
+          learningThreshold: prefs.learning_threshold ?? 5,
+          compressionThreshold: prefs.compression_threshold ?? 30,
+        };
+      }
+    } catch { /* ignore */ }
+
+    let budgetConfig = { monthlyTotal: 0, categoryBudgets: {} as Record<string, number> };
+    try {
+      const budget = await this.budgetManager.load(currentLedgerId);
+      if (budget) {
+        budgetConfig = {
+          monthlyTotal: budget.monthly_total ?? 0,
+          categoryBudgets: budget.category_budgets ?? {},
+        };
+      }
+    } catch { /* ignore */ }
+
+    const records = ledgerState.ledgerMemory?.records ?? {};
+    const ledgerTransactions = Object.entries(records)
+      .filter(([, r]) => r.transactionStatus === 'SUCCESS')
+      .map(([id, r]) => ({
+        id,
+        date: r.time.slice(0, 10),
+        title: r.product?.trim() || r.counterparty?.trim() || '未知',
+        amount: r.amount,
+        category: r.user_category || r.ai_category || r.category || '其他',
+        isVerified: r.is_verified ?? false,
+      }));
+
+    return {
+      aiConfig,
+      selfDescription,
+      ledgers,
+      activeLedgerId: currentLedgerId,
+      tags,
+      memoryItems,
+      exampleLibrarySummary,
+      learningConfig,
+      budgetConfig,
+      ledgerTransactions,
+    };
+  }
+
+  // AI Config
+  public async updateProvider(provider: string): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    if (!config.providers[provider]) {
+      config.providers[provider] = { apiKey: '', baseUrl: '' };
+    }
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateApiKey(provider: string, key: string): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    if (!config.providers[provider]) {
+      config.providers[provider] = { apiKey: '', baseUrl: '' };
+    }
+    config.providers[provider].apiKey = key;
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateBaseUrl(url: string): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    const provider = Object.keys(config.providers)[0] ?? 'custom';
+    if (!config.providers[provider]) {
+      config.providers[provider] = { apiKey: '', baseUrl: '' };
+    }
+    config.providers[provider].baseUrl = url;
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateActiveModel(model: string): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    config.candidateModels = [model];
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async updateEnableThinking(enabled: boolean): Promise<void> {
+    const cm = ConfigManager.getInstance();
+    const config = await cm.getConfig();
+    config.globalParams.enableThinking = enabled;
+    await cm.saveConfig(config);
+    this.notify();
+  }
+
+  public async testConnection(): Promise<boolean> {
+    try {
+      const client = LLMClient.getInstance();
+      await client.testConnection();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Self description
+  public async saveSelfDescription(text: string): Promise<void> {
+    await SelfDescriptionManager.getInstance().save(text);
+    this.notify();
+  }
+
+  // Ledger management
+  public async createLedger(name: string): Promise<void> {
+    await this.ledgerManager.createLedger(name);
+    this.notify();
+  }
+
+  public async renameLedger(id: string, newName: string): Promise<void> {
+    await this.ledgerManager.renameLedger(id, newName);
+    this.notify();
+  }
+
+  public async deleteLedger(id: string): Promise<void> {
+    await this.ledgerManager.deleteLedger(id);
+    this.notify();
+  }
+
+  // Tag management
+  public async createTag(name: string, desc: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.ledgerService.addCategory(ledgerId, name, desc);
+    this.notify();
+  }
+
+  public async renameTag(oldKey: string, newKey: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.ledgerService.renameCategory(ledgerId, oldKey, newKey);
+    this.notify();
+  }
+
+  public async updateTagDescription(key: string, desc: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.ledgerService.updateCategoryDescription(ledgerId, key, desc);
+    this.notify();
+  }
+
+  public async deleteTag(key: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.ledgerService.removeCategory(ledgerId, key);
+    this.notify();
+  }
+
+  // AI Memory
+  public async updateMemoryItems(items: string[]): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await MemoryManager.getInstance().save(ledgerId, items);
+    await SnapshotManager.create(ledgerId, 'user_edit');
+    this.notify();
+  }
+
+  public async triggerImmediateLearning(): Promise<boolean> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return false;
+    try {
+      await LearningSession.runImmediate(ledgerId);
+      this.notify();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Learning settings
+  public async updateLearningThreshold(value: number): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
+    prefs.learning_threshold = value;
+    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    this.notify();
+  }
+
+  public async toggleAutoLearn(enabled: boolean): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
+    prefs.auto_learn = enabled;
+    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    this.notify();
+  }
+
+  public async updateCompressionThreshold(value: number): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    const prefs = await LedgerPreferencesManager.getInstance().load(ledgerId) ?? {};
+    prefs.compression_threshold = value;
+    await LedgerPreferencesManager.getInstance().save(ledgerId, prefs);
+    this.notify();
+  }
+
+  // Budget
+  public async updateMonthlyBudget(amount: number): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.budgetManager.setMonthlyTotal(ledgerId, amount);
+    this.notify();
+  }
+
+  public async updateCategoryBudget(tag: string, amount: number): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.budgetManager.setCategoryBudget(ledgerId, tag, amount);
+    this.notify();
+  }
+
+  // Reclassification
+  public async triggerFullReclassification(): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return;
+    await this.batchProcessor.triggerFullReclassification(ledgerId);
+    this.notify();
   }
 
   private notify(): void {

@@ -185,3 +185,80 @@ export interface EntryPageReadModel {
   recentReferences: EntryRecentReference[];
   isLoading: boolean;
 }
+
+// ──────────────────────────────────────────────
+// 设置页读模型
+// ──────────────────────────────────────────────
+
+export interface SettingsAiConfig {
+  provider: string;
+  hasApiKey: boolean;
+  baseUrl: string;
+  candidateModels: string[];
+  activeModel: string;
+  maxTokens: number;
+  temperature: number;
+  enableThinking: boolean;
+}
+
+export interface SettingsLedgerItem {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface SettingsTagItem {
+  key: string;
+  description: string;
+  isSystem: boolean;
+}
+
+export interface SettingsMemoryItem {
+  index: number;
+  content: string;
+}
+
+export interface SettingsSnapshotItem {
+  id: string;
+  trigger: string;
+  summary: string;
+  isCurrent: boolean;
+}
+
+export interface SettingsExampleLibrarySummary {
+  delta: number;
+  total: number;
+}
+
+export interface SettingsLearningConfig {
+  autoLearn: boolean;
+  learningThreshold: number;
+  compressionThreshold: number;
+}
+
+export interface SettingsBudgetConfig {
+  monthlyTotal: number;
+  categoryBudgets: Record<string, number>;
+}
+
+export interface SettingsLedgerTransaction {
+  id: string;
+  date: string;
+  title: string;
+  amount: number;
+  category: string;
+  isVerified: boolean;
+}
+
+export interface SettingsPageReadModel {
+  aiConfig: SettingsAiConfig;
+  selfDescription: string;
+  ledgers: SettingsLedgerItem[];
+  activeLedgerId: string;
+  tags: SettingsTagItem[];
+  memoryItems: string[];
+  exampleLibrarySummary: SettingsExampleLibrarySummary;
+  learningConfig: SettingsLearningConfig;
+  budgetConfig: SettingsBudgetConfig;
+  ledgerTransactions: SettingsLedgerTransaction[];
+}

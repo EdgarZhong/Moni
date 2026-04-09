@@ -619,7 +619,7 @@ function SuccessToast({ visible, entry }: { visible: boolean; entry: SuccessToas
   );
 }
 
-function EntryBottomNav({ onOpenHome }: { onOpenHome: () => void }) {
+function EntryBottomNav({ onOpenHome, onOpenSettings }: { onOpenHome: () => void; onOpenSettings: () => void }) {
   return (
     <div
       style={{
@@ -629,7 +629,7 @@ function EntryBottomNav({ onOpenHome }: { onOpenHome: () => void }) {
         flexShrink: 0, zIndex: 20,
       }}
     >
-      <div style={{ textAlign: "center", padding: "4px 16px" }}>
+      <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onOpenSettings}>
         <GearIcon />
         <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>设置</div>
       </div>
@@ -662,7 +662,7 @@ function EntryBottomNav({ onOpenHome }: { onOpenHome: () => void }) {
 type Phase = "idle" | "selecting" | "dragging" | "form";
 
 interface MoniEntryProps {
-  onNavigate: (page: "home" | "entry") => void;
+  onNavigate: (page: "home" | "entry" | "settings") => void;
 }
 
 export default function MoniEntry({ onNavigate }: MoniEntryProps) {
@@ -988,7 +988,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         <div style={{ height: 88 }} />
       </div>
 
-      <EntryBottomNav onOpenHome={() => onNavigate("home")} />
+      <EntryBottomNav onOpenHome={() => onNavigate("home")} onOpenSettings={() => onNavigate("settings")} />
 
       <CategoryOverlay
         visible={phase === "selecting" || phase === "dragging"}
