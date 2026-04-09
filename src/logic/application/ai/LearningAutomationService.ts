@@ -35,6 +35,17 @@ export interface AutoLearningEvaluationResult extends AutoLearningStatus {
 }
 
 /**
+ * 自动学习事件。
+ * 用于 UI 在“真实触发”时做轻量提示（例如弹窗/Toast）。
+ */
+export interface AutoLearningEvent {
+  ledgerName: string;
+  phase: 'triggered' | 'completed' | 'failed';
+  summary?: string;
+  error?: string;
+}
+
+/**
  * LearningAutomationService - 自动学习协调层
  *
  * 职责：
@@ -50,6 +61,27 @@ export class LearningAutomationService {
    * 这里用最小并发保护避免重复起多个学习会话。
    */
   private static readonly inFlightLedgers = new Set<string>();
+  private static readonly listeners = new Set<(event: AutoLearningEvent) => void>();
+
+  /**
+   * 订阅自动学习事件。
+   */
+  public static subscribe(listener: (event: AutoLearningEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private static emit(event: AutoLearningEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.warn('[LearningAutomationService] listener failed:', error);
+      }
+    }
+  }
 
   /**
    * 计算当前账本的自动学习状态。
@@ -132,13 +164,38 @@ export class LearningAutomationService {
 
     this.inFlightLedgers.add(ledgerName);
     try {
+      this.emit({
+        ledgerName,
+        phase: 'triggered',
+      });
+
       const result: LearningResult = await LearningSession.run(ledgerName, categories);
+      this.emit({
+        ledgerName,
+        phase: result.success ? 'completed' : 'failed',
+        summary: result.summary,
+        error: result.error,
+      });
       return {
         ...status,
         attempted: true,
         success: result.success,
         summary: result.summary,
         error: result.error,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit({
+        ledgerName,
+        phase: 'failed',
+        error: message,
+      });
+      return {
+        ...status,
+        attempted: true,
+        success: false,
+        summary: '自动学习执行失败',
+        error: message,
       };
     } finally {
       this.inFlightLedgers.delete(ledgerName);
