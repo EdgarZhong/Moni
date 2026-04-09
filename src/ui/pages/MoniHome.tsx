@@ -97,6 +97,7 @@ function TransactionDetailPanel({
   const [selectedCategory, setSelectedCategory] = useState(getCategory(detail.item));
   const [isVerified, setIsVerified] = useState(Boolean(detail.item.isVerified));
   const [isClosing, setIsClosing] = useState(false);
+  const initialCategoryRef = useRef(getCategory(detail.item));
   const touchStartRef = useRef<{ x: number; y: number; at: number } | null>(null);
   const openedAtRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -104,7 +105,9 @@ function TransactionDetailPanel({
   useEffect(() => {
     setReasoningInput("");
     setNoteInput(detail.item.remark ?? "");
-    setSelectedCategory(getCategory(detail.item));
+    const initialCategory = getCategory(detail.item);
+    initialCategoryRef.current = initialCategory;
+    setSelectedCategory(initialCategory);
     setIsVerified(Boolean(detail.item.isVerified));
     setIsClosing(false);
     openedAtRef.current = Date.now();
@@ -116,16 +119,19 @@ function TransactionDetailPanel({
     if (source === "backdrop" && Date.now() - openedAtRef.current < OPEN_GUARD_MS) {
       return;
     }
+    if (selectedCategory && selectedCategory !== initialCategoryRef.current) {
+      onUpdateCategory(String(detail.item.id), selectedCategory);
+      initialCategoryRef.current = selectedCategory;
+    }
     setIsClosing(true);
     window.setTimeout(() => {
       onClose();
     }, EXIT_ANIMATION_MS);
-  }, [isClosing, onClose]);
+  }, [detail.item.id, isClosing, onClose, onUpdateCategory, selectedCategory]);
 
   const handleUpdateCategory = useCallback((category: string) => {
     setSelectedCategory(category);
-    onUpdateCategory(String(detail.item.id), category);
-  }, [detail.item.id, onUpdateCategory]);
+  }, []);
 
   const handleSaveReasoning = useCallback(() => {
     onUpdateUserReasoning(String(detail.item.id), reasoningInput.trim());

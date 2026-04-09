@@ -1,6 +1,8 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
 import { classifyTrigger } from '@logic/application/ai/ClassifyTrigger';
+import { CompressionSession } from '@logic/application/ai/CompressionSession';
+import { LearningAutomationService, type AutoLearningEvent } from '@logic/application/ai/LearningAutomationService';
 import { LearningSession } from '@logic/application/ai/LearningSession';
 import type { AIProgress, AIStatus } from '@logic/application/ai/types';
 import { ExampleStore } from '@logic/application/services/ExampleStore';
@@ -190,6 +192,10 @@ export class AppFacade {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  public subscribeAutoLearningEvents(listener: (event: AutoLearningEvent) => void): () => void {
+    return LearningAutomationService.subscribe(listener);
   }
 
   public getLedgerState(): LedgerFacadeState {
@@ -1000,7 +1006,36 @@ export class AppFacade {
     await LedgerPreferencesManager.getInstance().update(ledgerId, {
       compression: { threshold: value },
     });
+    // 收编阈值更新后，按新阈值立即评估一次自动收编，避免用户感知为“设置不生效”。
+    void this.evaluateCompressionAfterThresholdUpdate(ledgerId);
     this.notify();
+  }
+
+  /**
+   * 保存收编阈值后执行一次后台评估：
+   * - 达阈值则尝试触发收编
+   * - 未达阈值则静默跳过
+   * 这层不抛错，避免阻塞设置页保存动作。
+   */
+  private async evaluateCompressionAfterThresholdUpdate(ledgerId: string): Promise<void> {
+    try {
+      const prefs = await LedgerPreferencesManager.getInstance().getCompressionPreferences(ledgerId);
+      const currentMemory = await MemoryManager.load(ledgerId);
+      if (!CompressionSession.shouldTrigger(currentMemory.length, prefs.threshold)) {
+        return;
+      }
+
+      const categories = this.ledgerService.getState().ledgerMemory?.defined_categories ?? {};
+      const result = await CompressionSession.run(ledgerId, categories);
+      if (!result.success) {
+        console.warn('[AppFacade] Auto compression after threshold update failed:', result.error);
+        return;
+      }
+
+      this.notify();
+    } catch (error) {
+      console.warn('[AppFacade] Failed to evaluate compression after threshold update:', error);
+    }
   }
 
   // Budget
