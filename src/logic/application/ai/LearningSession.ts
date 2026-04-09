@@ -257,7 +257,8 @@ ${JSON.stringify(payload, null, 2)}
       const client = new LLMClient({
         apiKey: llmConfig.apiKey,
         baseUrl: llmConfig.baseUrl,
-        model: llmConfig.model
+        model: llmConfig.model,
+        temperature: llmConfig.temperature
       });
 
       const messages = [

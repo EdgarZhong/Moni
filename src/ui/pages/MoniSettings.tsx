@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, CAT, PHONE_FRAME_HEIGHT } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
+import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 
 /**
  * 设置页原型以功能规格和 UI/UX 规格为准。
@@ -57,11 +58,6 @@ const PROVIDERS = [
   },
 ];
 
-const MOCK_LEDGERS = [
-  { id: "daily", name: "日常开销", isDefault: true },
-  { id: "travel", name: "旅行基金", isDefault: false },
-];
-
 const INITIAL_CUSTOM_TAGS = [
   { key: "正餐", desc: "日常正餐支出（早午晚），仅限双人用餐，不含大餐和零食" },
   { key: "零食", desc: "零食、饮品、小吃等非正餐食品" },
@@ -72,6 +68,51 @@ const INITIAL_CUSTOM_TAGS = [
 ];
 
 const SYSTEM_FALLBACK_TAG = { key: "其他", desc: "所有未落入用户显式标签的兜底支出", isSystem: true };
+const AI_CONFIG_VERIFY_STORAGE_KEY = "moni.ai.config.verified-signatures.v1";
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || "").trim().replace(/\/+$/, "");
+}
+
+function simpleHash(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function buildAiConfigSignature({ provider, apiKey, baseUrl, model }) {
+  const normalized = [
+    provider || "",
+    normalizeBaseUrl(baseUrl),
+    model || "",
+    simpleHash(String(apiKey || "").trim()),
+  ].join("|");
+  return simpleHash(normalized);
+}
+
+function readVerifiedSignatures() {
+  try {
+    const raw = window.localStorage.getItem(AI_CONFIG_VERIFY_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeVerifiedSignatures(nextValue) {
+  try {
+    window.localStorage.setItem(AI_CONFIG_VERIFY_STORAGE_KEY, JSON.stringify(nextValue));
+  } catch {
+    // ignore storage errors in prototype mode
+  }
+}
 
 const MOCK_MEMORY = [
   "我是西工大学生，和女朋友一起生活，正餐只统计双人用餐",
@@ -139,12 +180,6 @@ const INITIAL_LEARNING_SETTINGS = {
   threshold: 5,
   compThreshold: 30,
 };
-
-const MOCK_SNAPSHOTS = [
-  { id: "2026-04-08_14-30-00-000", trigger: "ai_learn", summary: "学习：新增 3 条偏好规则", isCurrent: true },
-  { id: "2026-04-07_09-15-00-000", trigger: "user_edit", summary: "用户手动编辑", isCurrent: false },
-  { id: "2026-04-05_20-00-00-000", trigger: "ai_learn", summary: "学习：修改金额阈值判定", isCurrent: false },
-];
 
 /**
  * 返回箭头、右箭头等细节图标仍放在页面内定义，
@@ -419,7 +454,7 @@ function BottomSheet({ visible, title, children, onClose }) {
       >
         <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border, margin: "0 auto 12px" }} />
         {title ? <div style={{ fontSize: 16, fontWeight: 700, color: C.dark, marginBottom: 14 }}>{title}</div> : null}
-        <div style={{ overflowY: "auto", maxHeight: "55vh" }}>{children}</div>
+        <div className="scrollbar-hide" style={{ overflowY: "auto", maxHeight: "55vh" }}>{children}</div>
       </div>
     </div>
   );
@@ -494,7 +529,7 @@ function SettingsRoot({ onNavigate, customTagCount, memoryCount, currentLedgerNa
           <div style={{ fontSize: 14, fontWeight: 700, color: C.dark }}>设置</div>
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
         <SectionCard title="🌐 全局配置">
           <SettingRow icon="🤖" label="AI 配置" desc="DeepSeek · deepseek-chat" onClick={() => onNavigate("aiConfig")} />
           <SettingRow icon="👤" label="自述" desc="让 AI 了解你的消费习惯" onClick={() => onNavigate("selfDesc")} />
@@ -534,7 +569,7 @@ function AIConfigPage({ onBack }) {
   });
   const [thinking, setThinking] = useState(true);
   const [testing, setTesting] = useState(false);
-  const [testOk, setTestOk] = useState(false);
+  const [verifiedSignatures, setVerifiedSignatures] = useState(() => readVerifiedSignatures());
   const [selectedModels, setSelectedModels] = useState({
     deepseek: "deepseek-chat",
     moonshot: "kimi-k2.5",
@@ -548,11 +583,17 @@ function AIConfigPage({ onBack }) {
   const currentProvider = useMemo(() => PROVIDERS.find((item) => item.id === provider), [provider]);
   const hasApiKey = Boolean(apiKeys[provider]);
   const currentModel = provider === "custom" ? customModels[activeCustomIndex] : selectedModels[provider];
+  const currentBaseUrl = currentProvider?.hasBaseUrl ? customBaseUrl : currentProvider?.baseUrl || "";
+  const currentSignature = useMemo(
+    () => buildAiConfigSignature({ provider, apiKey: apiKeys[provider], baseUrl: currentBaseUrl, model: currentModel }),
+    [provider, apiKeys, currentBaseUrl, currentModel]
+  );
+  const isCurrentConfigVerified = hasApiKey && verifiedSignatures[provider] === currentSignature;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="AI 配置" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="提供方">
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {PROVIDERS.map((item) => (
@@ -560,7 +601,6 @@ function AIConfigPage({ onBack }) {
                 key={item.id}
                 onClick={() => {
                   setProvider(item.id);
-                  setTestOk(false);
                 }}
                 style={{
                   padding: "8px 14px",
@@ -654,7 +694,21 @@ function AIConfigPage({ onBack }) {
               <div style={{ fontSize: 12, color: C.sub, marginBottom: 3 }}>当前模型</div>
               <div style={{ fontSize: 13, color: C.dark, fontWeight: 700, fontFamily: "'Space Mono', monospace" }}>{currentModel || "未设置"}</div>
             </div>
-            <div style={{ fontSize: 11, color: C.greenText, fontWeight: 700 }}>● 生效中</div>
+            <div
+              style={{
+                fontSize: 11,
+                color: testing
+                  ? C.amber
+                  : isCurrentConfigVerified
+                    ? C.greenText
+                    : hasApiKey
+                      ? C.amber
+                      : C.muted,
+                fontWeight: 700
+              }}
+            >
+              {testing ? "● 测试中" : isCurrentConfigVerified ? "● 生效中" : hasApiKey ? "● 待验证" : "● 未配置"}
+            </div>
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 8 }}>模型</div>
@@ -758,10 +812,13 @@ function AIConfigPage({ onBack }) {
               full
               onClick={() => {
                 setTesting(true);
-                setTestOk(false);
                 window.setTimeout(() => {
                   setTesting(false);
-                  setTestOk(true);
+                  setVerifiedSignatures((prev) => {
+                    const next = { ...prev, [provider]: currentSignature };
+                    writeVerifiedSignatures(next);
+                    return next;
+                  });
                 }, 1200);
               }}
               disabled={testing}
@@ -770,7 +827,7 @@ function AIConfigPage({ onBack }) {
             </Btn>
           </div>
 
-          {testOk ? (
+          {isCurrentConfigVerified ? (
             <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, background: C.greenBg, border: `1.5px solid ${C.mint}30`, fontSize: 12, color: C.greenText, fontWeight: 600, textAlign: "center" }}>
               ✓ 连接成功，模型响应正常
             </div>
@@ -787,7 +844,7 @@ function SelfDescPage({ onBack, text, onChange }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="自述" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard
           title="自述"
           footer={
@@ -833,28 +890,47 @@ function SelfDescPage({ onBack, text, onChange }) {
   );
 }
 
-function LedgerManagePage({ onBack, ledgers, activeId, onChangeLedgers, onChangeActiveLedger }) {
+function LedgerManagePage({
+  onBack,
+  ledgers,
+  activeId,
+  onSwitchLedger,
+  onCreateLedger,
+  onRenameLedger,
+  onDeleteLedger,
+}) {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [showRename, setShowRename] = useState(null);
   const [renameTo, setRenameTo] = useState("");
   const [showDelete, setShowDelete] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = useCallback((message) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(""), 2200);
+  }, []);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="账本管理" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="账本列表">
           {ledgers.map((ledger, index) => (
             <div
               key={ledger.id}
-              onClick={() => onChangeActiveLedger(ledger.id)}
+              onClick={() => {
+                if (busy) return;
+                void onSwitchLedger(ledger.id);
+              }}
               style={{ display: "flex", alignItems: "center", padding: "12px 0", borderBottom: index < ledgers.length - 1 ? `0.5px solid ${C.line}` : "none", gap: 12, cursor: "pointer" }}
             >
               <div
                 onClick={(event) => {
                   event.stopPropagation();
-                  onChangeActiveLedger(ledger.id);
+                  if (busy) return;
+                  void onSwitchLedger(ledger.id);
                 }}
                 style={{
                   width: 20,
@@ -925,14 +1001,22 @@ function LedgerManagePage({ onBack, ledgers, activeId, onChangeLedgers, onChange
               if (!newName.trim()) {
                 return;
               }
-              const createdLedger = { id: Date.now().toString(), name: newName.trim(), isDefault: false };
-              onChangeLedgers((items) => [...items, createdLedger]);
-              // 新建账本后立刻切换为当前账本，方便用户回到设置首页时看到联动变化。
-              onChangeActiveLedger(createdLedger.id);
-              setNewName("");
-              setShowCreate(false);
+              setBusy(true);
+              void onCreateLedger(newName.trim())
+                .then((created) => {
+                  if (!created) {
+                    showToast("创建失败：名称重复或包含非法字符（仅支持中文/英文/数字/下划线）");
+                    return;
+                  }
+                  setNewName("");
+                  setShowCreate(false);
+                  showToast("账本已创建");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || busy}
           >
             创建
           </Btn>
@@ -957,10 +1041,21 @@ function LedgerManagePage({ onBack, ledgers, activeId, onChangeLedgers, onChange
               if (!showRename || !renameTo.trim()) {
                 return;
               }
-              onChangeLedgers((items) => items.map((item) => (item.id === showRename.id ? { ...item, name: renameTo.trim() } : item)));
-              setShowRename(null);
+              setBusy(true);
+              void onRenameLedger(showRename.id, renameTo.trim())
+                .then((renamed) => {
+                  if (!renamed) {
+                    showToast("改名失败：名称重复或包含非法字符");
+                    return;
+                  }
+                  setShowRename(null);
+                  showToast("账本已重命名");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
-            disabled={!renameTo.trim()}
+            disabled={!renameTo.trim() || busy}
           >
             确定
           </Btn>
@@ -984,23 +1079,27 @@ function LedgerManagePage({ onBack, ledgers, activeId, onChangeLedgers, onChange
               if (!showDelete) {
                 return;
               }
-              onChangeLedgers((items) => {
-                const remaining = items.filter((item) => item.id !== showDelete.id);
-                if (showDelete.id === activeId) {
-                  const fallback = remaining.find((item) => item.isDefault) || remaining[0];
-                  if (fallback) {
-                    onChangeActiveLedger(fallback.id);
+              setBusy(true);
+              void onDeleteLedger(showDelete.id)
+                .then((deleted) => {
+                  if (!deleted) {
+                    showToast("删除失败：默认账本不可删除或账本不存在");
+                    return;
                   }
-                }
-                return remaining;
-              });
-              setShowDelete(null);
+                  setShowDelete(null);
+                  showToast("账本已删除");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
+            disabled={busy}
           >
             确认删除
           </Btn>
         </div>
       </Dialog>
+      <Toast visible={Boolean(toastMessage)} message={toastMessage} />
     </div>
   );
 }
@@ -1009,6 +1108,10 @@ function TagManagePage({
   onBack,
   customTags,
   onChangeTags,
+  onCreateTag,
+  onRenameTag,
+  onUpdateTagDescription,
+  onDeleteTag,
   ledgerTransactions,
   onChangeLedgerTransactions,
   classifyQueueDates,
@@ -1035,6 +1138,7 @@ function TagManagePage({
   // S32：涉及“包含锁定交易”时打开的底部锁定列表选择器。
   const [lockedSheet, setLockedSheet] = useState(null);
   const [selectedLockedIds, setSelectedLockedIds] = useState([]);
+  const [busy, setBusy] = useState(false);
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -1094,7 +1198,7 @@ function TagManagePage({
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="标签管理" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="标签列表">
           {displayTags.length ? (
             displayTags.map((tag, index) => (
@@ -1178,14 +1282,23 @@ function TagManagePage({
                 return;
               }
               const nextName = addName.trim();
-              onChangeTags((items) => [...items, { key: nextName, desc: addDesc.trim() }]);
-              setAddName("");
-              setAddDesc("");
-              setShowAdd(false);
-              // S32：新增标签后必须进入“暂时跳过 / 现在启动分类”的渐进式分支。
-              setAddFollowupDialog({ tagKey: nextName });
+              setBusy(true);
+              void onCreateTag(nextName, addDesc.trim())
+                .then(() => {
+                  setAddName("");
+                  setAddDesc("");
+                  setShowAdd(false);
+                  // S32：新增标签后必须进入“暂时跳过 / 现在启动分类”的渐进式分支。
+                  setAddFollowupDialog({ tagKey: nextName });
+                })
+                .catch(() => {
+                  showToast("新增失败：标签名可能重复，请重试");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
-            disabled={!addName.trim() || !addDesc.trim()}
+            disabled={!addName.trim() || !addDesc.trim() || busy}
           >
             新增
           </Btn>
@@ -1307,22 +1420,40 @@ function TagManagePage({
                   return;
                 }
                 const nextName = renameTo.trim();
-                onChangeTags((items) => items.map((item) => (item.key === editTag.key ? { ...item, key: nextName } : item)));
-                setEditTag(null);
-                setEditMode("rename");
-                showToast(`标签已改名为「${nextName}」`);
+                setBusy(true);
+                void onRenameTag(editTag.key, nextName)
+                  .then(() => {
+                    setEditTag(null);
+                    setEditMode("rename");
+                    showToast(`标签已改名为「${nextName}」`);
+                  })
+                  .catch(() => {
+                    showToast("改名失败：名称重复或非法");
+                  })
+                  .finally(() => {
+                    setBusy(false);
+                  });
                 return;
               }
               if (!editDesc.trim()) {
                 return;
               }
-              onChangeTags((items) => items.map((item) => (item.key === editTag.key ? { ...item, desc: editDesc.trim() } : item)));
-              setEditTag(null);
-              setEditMode("rename");
-              // S32：描述变更后不直接结束，必须进入范围确认。
-              setDescScopeDialog({ tagKey: editTag.key });
+              setBusy(true);
+              void onUpdateTagDescription(editTag.key, editDesc.trim())
+                .then(() => {
+                  setEditTag(null);
+                  setEditMode("rename");
+                  // S32：描述变更后不直接结束，必须进入范围确认。
+                  setDescScopeDialog({ tagKey: editTag.key });
+                })
+                .catch(() => {
+                  showToast("更新描述失败，请重试");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
-            disabled={editMode === "rename" ? !renameTo.trim() : !editDesc.trim()}
+            disabled={(editMode === "rename" ? !renameTo.trim() : !editDesc.trim()) || busy}
           >
             保存
           </Btn>
@@ -1349,15 +1480,25 @@ function TagManagePage({
               const affectedDates = uniqueSortedDates(affectedTransactions.map((tx) => tx.date));
               const nextTransactions = ledgerTransactions.map((tx) => (tx.category === deleteTag.key ? { ...tx, category: "未分类", isVerified: false } : tx));
               onChangeLedgerTransactions(nextTransactions);
-              onChangeTags((items) => items.filter((item) => item.key !== deleteTag.key));
-              setDeleteTag(null);
-              // S32：删除完成后直接进入范围确认弹窗。
-              setDeleteScopeDialog({
-                tagKey: deleteTag.key,
-                affectedDates,
-                affectedCount: affectedTransactions.length,
-              });
+              setBusy(true);
+              void onDeleteTag(deleteTag.key)
+                .then(() => {
+                  setDeleteTag(null);
+                  // S32：删除完成后直接进入范围确认弹窗。
+                  setDeleteScopeDialog({
+                    tagKey: deleteTag.key,
+                    affectedDates,
+                    affectedCount: affectedTransactions.length,
+                  });
+                })
+                .catch(() => {
+                  showToast("删除失败：默认标签不可删或标签不存在");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
+            disabled={busy}
           >
             确认删除
           </Btn>
@@ -1542,7 +1683,16 @@ function TagManagePage({
   );
 }
 
-function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onLearningComplete }) {
+function AIMemoryPage({
+  onBack,
+  memory,
+  snapshots,
+  onSaveMemory,
+  onRollbackSnapshot,
+  onDeleteSnapshot,
+  exampleLibrarySummary,
+  onLearningComplete
+}) {
   // 编辑草稿和已保存记忆必须分离。
   // 这样点击条目编辑、回车新增条目、删除条目时都不会提前把草稿写回保存态。
   const [draftMemory, setDraftMemory] = useState(memory);
@@ -1551,6 +1701,7 @@ function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onL
   const [showLearn, setShowLearn] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const [learning, setLearning] = useState(false);
+  const [snapshotBusyId, setSnapshotBusyId] = useState("");
   const [toastMessage, setToastMessage] = useState("");
   const inputRefs = useRef([]);
 
@@ -1621,7 +1772,7 @@ function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onL
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="AI 记忆" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="记忆概况">
           <div style={{ display: "flex", gap: 8 }}>
             <div
@@ -1748,8 +1899,8 @@ function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onL
       </Dialog>
 
       <BottomSheet visible={showHistory} title="记忆历史版本" onClose={() => setShowHistory(false)}>
-        {MOCK_SNAPSHOTS.map((snapshot, index) => (
-          <div key={snapshot.id} style={{ display: "flex", alignItems: "center", padding: "12px 0", borderBottom: index < MOCK_SNAPSHOTS.length - 1 ? `0.5px solid ${C.line}` : "none", gap: 10 }}>
+        {snapshots.map((snapshot, index) => (
+          <div key={snapshot.id} style={{ display: "flex", alignItems: "center", padding: "12px 0", borderBottom: index < snapshots.length - 1 ? `0.5px solid ${C.line}` : "none", gap: 10 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "'Space Mono', monospace", color: C.dark }}>{snapshot.id.slice(0, 10)}</span>
@@ -1759,12 +1910,47 @@ function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onL
             </div>
             {!snapshot.isCurrent ? (
               <div style={{ display: "flex", gap: 6 }}>
-                <Btn small variant="secondary">回退</Btn>
-                <Btn small variant="danger">删除</Btn>
+                <Btn
+                  small
+                  variant="secondary"
+                  onClick={() => {
+                    setSnapshotBusyId(snapshot.id);
+                    void onRollbackSnapshot(snapshot.id)
+                      .then((ok) => {
+                        showToast(ok ? "已回退到该版本" : "回退失败，请重试");
+                      })
+                      .finally(() => {
+                        setSnapshotBusyId("");
+                      });
+                  }}
+                  disabled={snapshotBusyId === snapshot.id}
+                >
+                  {snapshotBusyId === snapshot.id ? "处理中…" : "回退"}
+                </Btn>
+                <Btn
+                  small
+                  variant="danger"
+                  onClick={() => {
+                    setSnapshotBusyId(snapshot.id);
+                    void onDeleteSnapshot(snapshot.id)
+                      .then((ok) => {
+                        showToast(ok ? "历史版本已删除" : "删除失败（当前版本不可删除）");
+                      })
+                      .finally(() => {
+                        setSnapshotBusyId("");
+                      });
+                  }}
+                  disabled={snapshotBusyId === snapshot.id}
+                >
+                  {snapshotBusyId === snapshot.id ? "处理中…" : "删除"}
+                </Btn>
               </div>
             ) : null}
           </div>
         ))}
+        {!snapshots.length ? (
+          <div style={{ padding: "10px 0", fontSize: 12, color: C.sub }}>暂无历史版本</div>
+        ) : null}
       </BottomSheet>
 
       <BottomSheet visible={showExamples} title="实例库" onClose={() => setShowExamples(false)}>
@@ -1786,22 +1972,28 @@ function AIMemoryPage({ onBack, memory, onSaveMemory, exampleLibrarySummary, onL
   );
 }
 
-function BudgetPage({ onBack, customTags }) {
-  const [monthly, setMonthly] = useState("3000");
-  const [catBudgets, setCatBudgets] = useState({ 正餐: "800", 交通: "300", 娱乐: "200" });
+function BudgetPage({ onBack, customTags, monthlyBudget, categoryBudgets, onChangeBudget }) {
+  const [monthly, setMonthly] = useState(monthlyBudget || "");
+  const [catBudgets, setCatBudgets] = useState(categoryBudgets || {});
   const [saved, setSaved] = useState(false);
   const total = Object.values(catBudgets).reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
   const over = monthly && total > parseFloat(monthly);
 
+  useEffect(() => {
+    setMonthly(monthlyBudget || "");
+    setCatBudgets(categoryBudgets || {});
+  }, [monthlyBudget, categoryBudgets]);
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="预算设置" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard
           title="月度预算"
           footer={
             <Btn
               onClick={() => {
+                onChangeBudget({ monthly, catBudgets });
                 setSaved(true);
                 window.setTimeout(() => setSaved(false), 2000);
               }}
@@ -1865,7 +2057,7 @@ function LearningSettingsPage({ onBack, learningSettings, onChangeLearningSettin
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="学习设置" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard
           title="学习参数"
           footer={
@@ -1928,7 +2120,7 @@ function FullReclassPage({ onBack }) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <SubPageHeader title="全量重新分类" onBack={onBack} />
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+      <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="重分类说明">
           <div style={{ padding: "14px", borderRadius: 12, background: C.warmBg, border: `1.5px solid ${C.warmBd}`, marginBottom: 18, lineHeight: 1.6 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 6 }}>什么是全量重分类？</div>
@@ -2020,23 +2212,54 @@ export default function MoniSettings({
 }) {
   const onOpenHome = () => onNavigate("home");
   const onOpenEntry = () => onNavigate("entry");
-  const [ledgers, setLedgers] = useState(MOCK_LEDGERS);
-  const [activeLedgerId, setActiveLedgerId] = useState("daily");
-  const onChangeLedgers = setLedgers;
-  const onChangeActiveLedgerId = setActiveLedgerId;
+  const {
+    ledgers,
+    activeLedgerId,
+    tags,
+    memoryItems,
+    snapshots,
+    exampleLibrarySummary: currentExampleSummaryFromReadModel,
+    learningConfig,
+    monthlyBudget,
+    categoryBudgets,
+    ledgerTransactions,
+    actions: {
+      createLedger,
+      switchLedger,
+      renameLedger,
+      deleteLedger,
+      createTag,
+      renameTag,
+      updateTagDescription,
+      deleteTag,
+      rollbackMemorySnapshot,
+      deleteMemorySnapshot,
+    },
+  } = useMoniSettingsData();
+  const onChangeActiveLedgerId = useCallback((ledgerId) => {
+    void switchLedger(ledgerId);
+  }, [switchLedger]);
   const [page, setPage] = useState("root");
   const [selfDescription, setSelfDescription] = useState(
     "Demo 示例：我平时会把咖啡、奶茶、小零食分开记，也希望 AI 先按常见消费场景帮我分类。你可以把这里改成自己的真实习惯。",
   );
-  const [customTags, setCustomTags] = useState(INITIAL_CUSTOM_TAGS);
-  const [memory, setMemory] = useState(MOCK_MEMORY);
-  const [learningSettings, setLearningSettings] = useState(INITIAL_LEARNING_SETTINGS);
-  const [exampleLibrarySummary, setExampleLibrarySummary] = useState(INITIAL_EXAMPLE_LIBRARY_SUMMARY);
+  const [customTagsByLedger, setCustomTagsByLedger] = useState({});
+  const [memoryByLedger, setMemoryByLedger] = useState({});
+  const [snapshotsByLedger, setSnapshotsByLedger] = useState({});
+  const [learningSettingsByLedger, setLearningSettingsByLedger] = useState({});
+  const [exampleSummaryByLedger, setExampleSummaryByLedger] = useState({});
+  const [budgetByLedger, setBudgetByLedger] = useState({});
   // S32 原型态数据：交易与重分类队列均按账本隔离。
   const [ledgerTransactionsByLedger, setLedgerTransactionsByLedger] = useState(INITIAL_LEDGER_TRANSACTIONS);
   const [classifyQueueByLedger, setClassifyQueueByLedger] = useState(INITIAL_CLASSIFY_QUEUE_BY_LEDGER);
   const currentLedger = useMemo(() => ledgers.find((item) => item.id === activeLedgerId) || ledgers[0], [ledgers, activeLedgerId]);
   const currentLedgerName = currentLedger?.name || "未设置账本";
+  const currentCustomTags = customTagsByLedger[activeLedgerId] || [];
+  const currentMemory = memoryByLedger[activeLedgerId] || [];
+  const currentSnapshots = snapshotsByLedger[activeLedgerId] || [];
+  const currentLearningSettings = learningSettingsByLedger[activeLedgerId] || INITIAL_LEARNING_SETTINGS;
+  const currentExampleSummary = exampleSummaryByLedger[activeLedgerId] || INITIAL_EXAMPLE_LIBRARY_SUMMARY;
+  const currentBudget = budgetByLedger[activeLedgerId] || { monthly: "", catBudgets: {} };
   const currentLedgerTransactions = ledgerTransactionsByLedger[activeLedgerId] || [];
   const currentClassifyQueueDates = classifyQueueByLedger[activeLedgerId] || [];
 
@@ -2052,7 +2275,68 @@ export default function MoniSettings({
   }, [ledgers, activeLedgerId, onChangeActiveLedgerId]);
 
   useEffect(() => {
+    if (!activeLedgerId) {
+      return;
+    }
+
+    // 用设置读模型的当前账本数据回填本地分桶状态，确保“上方账本切换”能驱动下方账本级设置联动。
+    setCustomTagsByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: tags.filter((tag) => !tag.isSystem).map((tag) => ({ key: tag.key, desc: tag.description })),
+    }));
+    setMemoryByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: memoryItems,
+    }));
+    setSnapshotsByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: snapshots,
+    }));
+    setLearningSettingsByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: {
+        autoLearn: learningConfig.autoLearn,
+        threshold: learningConfig.learningThreshold,
+        compThreshold: learningConfig.compressionThreshold,
+      },
+    }));
+    setExampleSummaryByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: {
+        delta: currentExampleSummaryFromReadModel.delta,
+        total: currentExampleSummaryFromReadModel.total,
+      },
+    }));
+    setBudgetByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: {
+        monthly: monthlyBudget ? String(monthlyBudget) : "",
+        catBudgets: Object.fromEntries(
+          Object.entries(categoryBudgets || {}).map(([key, amount]) => [key, String(amount ?? "")])
+        ),
+      },
+    }));
+    setLedgerTransactionsByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: ledgerTransactions || [],
+    }));
+  }, [
+    activeLedgerId,
+    tags,
+    memoryItems,
+    snapshots,
+    learningConfig,
+    currentExampleSummaryFromReadModel,
+    monthlyBudget,
+    categoryBudgets,
+    ledgerTransactions,
+  ]);
+
+  useEffect(() => {
     // 新账本首次进入时，补齐 S32 所需的账本级容器，避免读取空引用。
+    if (!activeLedgerId) {
+      return;
+    }
     setLedgerTransactionsByLedger((value) => {
       if (value[activeLedgerId]) {
         return value;
@@ -2089,6 +2373,52 @@ export default function MoniSettings({
     return result;
   };
 
+  const updateCurrentTags = (nextValue) => {
+    setCustomTagsByLedger((value) => {
+      const currentItems = value[activeLedgerId] || [];
+      const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
+      return { ...value, [activeLedgerId]: nextItems };
+    });
+  };
+
+  const updateCurrentMemory = (nextValue) => {
+    setMemoryByLedger((value) => {
+      const currentItems = value[activeLedgerId] || [];
+      const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
+      return { ...value, [activeLedgerId]: nextItems };
+    });
+  };
+
+  const rollbackCurrentSnapshot = useCallback(async (snapshotId) => {
+    return rollbackMemorySnapshot(snapshotId);
+  }, [rollbackMemorySnapshot]);
+
+  const deleteCurrentSnapshot = useCallback(async (snapshotId) => {
+    return deleteMemorySnapshot(snapshotId);
+  }, [deleteMemorySnapshot]);
+
+  const updateCurrentLearningSettings = (nextValue) => {
+    setLearningSettingsByLedger((value) => {
+      const currentItems = value[activeLedgerId] || INITIAL_LEARNING_SETTINGS;
+      const nextItems = typeof nextValue === "function" ? nextValue(currentItems) : nextValue;
+      return { ...value, [activeLedgerId]: nextItems };
+    });
+  };
+
+  const clearCurrentExampleDelta = () => {
+    setExampleSummaryByLedger((value) => {
+      const currentItems = value[activeLedgerId] || INITIAL_EXAMPLE_LIBRARY_SUMMARY;
+      return { ...value, [activeLedgerId]: { ...currentItems, delta: 0 } };
+    });
+  };
+
+  const updateCurrentBudget = ({ monthly, catBudgets }) => {
+    setBudgetByLedger((value) => ({
+      ...value,
+      [activeLedgerId]: { monthly, catBudgets },
+    }));
+  };
+
   const renderPage = () => {
     switch (page) {
       case "aiConfig":
@@ -2096,13 +2426,27 @@ export default function MoniSettings({
       case "selfDesc":
         return <SelfDescPage onBack={() => setPage("root")} text={selfDescription} onChange={setSelfDescription} />;
       case "ledgerManage":
-        return <LedgerManagePage onBack={() => setPage("root")} ledgers={ledgers} activeId={activeLedgerId} onChangeLedgers={onChangeLedgers} onChangeActiveLedger={onChangeActiveLedgerId} />;
+        return (
+          <LedgerManagePage
+            onBack={() => setPage("root")}
+            ledgers={ledgers}
+            activeId={activeLedgerId}
+            onSwitchLedger={switchLedger}
+            onCreateLedger={createLedger}
+            onRenameLedger={renameLedger}
+            onDeleteLedger={deleteLedger}
+          />
+        );
       case "tagManage":
         return (
           <TagManagePage
             onBack={() => setPage("root")}
-            customTags={customTags}
-            onChangeTags={setCustomTags}
+            customTags={currentCustomTags}
+            onChangeTags={updateCurrentTags}
+            onCreateTag={createTag}
+            onRenameTag={renameTag}
+            onUpdateTagDescription={updateTagDescription}
+            onDeleteTag={deleteTag}
             ledgerTransactions={currentLedgerTransactions}
             onChangeLedgerTransactions={updateCurrentLedgerTransactions}
             classifyQueueDates={currentClassifyQueueDates}
@@ -2113,22 +2457,48 @@ export default function MoniSettings({
         return (
           <AIMemoryPage
             onBack={() => setPage("root")}
-            memory={memory}
-            onSaveMemory={setMemory}
-            exampleLibrarySummary={exampleLibrarySummary}
-            onLearningComplete={() => setExampleLibrarySummary((value) => ({ ...value, delta: 0 }))}
+            memory={currentMemory}
+            snapshots={currentSnapshots}
+            onSaveMemory={updateCurrentMemory}
+            onRollbackSnapshot={rollbackCurrentSnapshot}
+            onDeleteSnapshot={deleteCurrentSnapshot}
+            exampleLibrarySummary={currentExampleSummary}
+            onLearningComplete={clearCurrentExampleDelta}
           />
         );
       case "budget":
-        return <BudgetPage onBack={() => setPage("root")} customTags={customTags} />;
+        return (
+          <BudgetPage
+            onBack={() => setPage("root")}
+            customTags={currentCustomTags}
+            monthlyBudget={currentBudget.monthly}
+            categoryBudgets={currentBudget.catBudgets}
+            onChangeBudget={updateCurrentBudget}
+          />
+        );
       case "learnSettings":
-        return <LearningSettingsPage onBack={() => setPage("root")} learningSettings={learningSettings} onChangeLearningSettings={setLearningSettings} exampleLibrarySummary={exampleLibrarySummary} />;
+        return (
+          <LearningSettingsPage
+            onBack={() => setPage("root")}
+            learningSettings={currentLearningSettings}
+            onChangeLearningSettings={updateCurrentLearningSettings}
+            exampleLibrarySummary={currentExampleSummary}
+          />
+        );
       case "fullReclass":
         return <FullReclassPage onBack={() => setPage("root")} />;
       case "about":
         return <AboutPage onBack={() => setPage("root")} />;
       default:
-        return <SettingsRoot onNavigate={setPage} customTagCount={customTags.length} memoryCount={memory.length} currentLedgerName={currentLedgerName} ledgerCount={ledgers.length} />;
+        return (
+          <SettingsRoot
+            onNavigate={setPage}
+            customTagCount={currentCustomTags.length}
+            memoryCount={currentMemory.length}
+            currentLedgerName={currentLedgerName}
+            ledgerCount={ledgers.length}
+          />
+        );
     }
   };
 

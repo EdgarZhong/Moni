@@ -5,6 +5,7 @@ import type {
   SettingsExampleLibrarySummary,
   SettingsLearningConfig,
   SettingsLedgerItem,
+  SettingsSnapshotItem,
   SettingsLedgerTransaction,
   SettingsTagItem,
 } from '@shared/types';
@@ -48,6 +49,7 @@ export interface MoniSettingsData {
   tags: SettingsTagItem[];
   // AI Memory
   memoryItems: string[];
+  snapshots: SettingsSnapshotItem[];
   exampleLibrarySummary: SettingsExampleLibrarySummary;
   // Learning settings
   learningConfig: SettingsLearningConfig;
@@ -70,10 +72,10 @@ export interface MoniSettingsData {
     // Self description
     saveSelfDescription: (text: string) => Promise<void>;
     // Ledger management
-    createLedger: (name: string) => Promise<void>;
+    createLedger: (name: string) => Promise<boolean>;
     switchLedger: (id: string) => Promise<boolean>;
-    renameLedger: (id: string, newName: string) => Promise<void>;
-    deleteLedger: (id: string) => Promise<void>;
+    renameLedger: (id: string, newName: string) => Promise<boolean>;
+    deleteLedger: (id: string) => Promise<boolean>;
     // Tag management
     createTag: (name: string, desc: string) => Promise<void>;
     renameTag: (oldKey: string, newKey: string) => Promise<void>;
@@ -82,6 +84,8 @@ export interface MoniSettingsData {
     // AI Memory
     updateMemoryItems: (items: string[]) => Promise<void>;
     triggerImmediateLearning: () => Promise<boolean>;
+    rollbackMemorySnapshot: (snapshotId: string) => Promise<boolean>;
+    deleteMemorySnapshot: (snapshotId: string) => Promise<boolean>;
     // Learning settings
     updateLearningThreshold: (value: number) => Promise<void>;
     toggleAutoLearn: (enabled: boolean) => Promise<void>;
@@ -103,6 +107,7 @@ export function useMoniSettingsData(): MoniSettingsData {
   const [activeLedgerId, setActiveLedgerId] = useState('');
   const [tags, setTags] = useState<SettingsTagItem[]>([]);
   const [memoryItems, setMemoryItems] = useState<string[]>([]);
+  const [snapshots, setSnapshots] = useState<SettingsSnapshotItem[]>([]);
   const [exampleLibrarySummary, setExampleLibrarySummary] = useState<SettingsExampleLibrarySummary>(EMPTY_EXAMPLE_SUMMARY);
   const [learningConfig, setLearningConfig] = useState<SettingsLearningConfig>(EMPTY_LEARNING);
   const [monthlyBudget, setMonthlyBudget] = useState(0);
@@ -121,6 +126,7 @@ export function useMoniSettingsData(): MoniSettingsData {
       setActiveLedgerId(model.activeLedgerId);
       setTags(model.tags);
       setMemoryItems(model.memoryItems);
+      setSnapshots(model.snapshots);
       setExampleLibrarySummary(model.exampleLibrarySummary);
       setLearningConfig(model.learningConfig);
       setMonthlyBudget(model.budgetConfig.monthlyTotal);
@@ -169,32 +175,52 @@ export function useMoniSettingsData(): MoniSettingsData {
   }, []);
 
   // Ledger management
-  const createLedger = useCallback(async (name: string) => {
-    await appFacade.createLedger(name);
-  }, []);
+  const createLedger = useCallback(async (name: string): Promise<boolean> => {
+    const created = await appFacade.createLedger(name);
+    if (created) {
+      await load();
+    }
+    return created;
+  }, [load]);
   const switchLedger = useCallback(async (id: string) => {
-    return appFacade.switchLedger(id);
-  }, []);
-  const renameLedger = useCallback(async (id: string, newName: string) => {
-    await appFacade.renameLedger(id, newName);
-  }, []);
-  const deleteLedger = useCallback(async (id: string) => {
-    await appFacade.deleteLedger(id);
-  }, []);
+    const switched = await appFacade.switchLedger(id);
+    if (switched) {
+      await load();
+    }
+    return switched;
+  }, [load]);
+  const renameLedger = useCallback(async (id: string, newName: string): Promise<boolean> => {
+    const renamed = await appFacade.renameLedger(id, newName);
+    if (renamed) {
+      await load();
+    }
+    return renamed;
+  }, [load]);
+  const deleteLedger = useCallback(async (id: string): Promise<boolean> => {
+    const deleted = await appFacade.deleteLedger(id);
+    if (deleted) {
+      await load();
+    }
+    return deleted;
+  }, [load]);
 
   // Tag management
   const createTag = useCallback(async (name: string, desc: string) => {
     await appFacade.createTag(name, desc);
-  }, []);
+    await load();
+  }, [load]);
   const renameTag = useCallback(async (oldKey: string, newKey: string) => {
     await appFacade.renameTag(oldKey, newKey);
-  }, []);
+    await load();
+  }, [load]);
   const updateTagDescription = useCallback(async (key: string, desc: string) => {
     await appFacade.updateTagDescription(key, desc);
-  }, []);
+    await load();
+  }, [load]);
   const deleteTag = useCallback(async (key: string) => {
     await appFacade.deleteTag(key);
-  }, []);
+    await load();
+  }, [load]);
 
   // AI Memory
   const updateMemoryItems = useCallback(async (items: string[]) => {
@@ -203,6 +229,20 @@ export function useMoniSettingsData(): MoniSettingsData {
   const triggerImmediateLearning = useCallback(async (): Promise<boolean> => {
     return appFacade.triggerImmediateLearning();
   }, []);
+  const rollbackMemorySnapshot = useCallback(async (snapshotId: string): Promise<boolean> => {
+    const rolled = await appFacade.rollbackMemorySnapshot(snapshotId);
+    if (rolled) {
+      await load();
+    }
+    return rolled;
+  }, [load]);
+  const deleteMemorySnapshot = useCallback(async (snapshotId: string): Promise<boolean> => {
+    const deleted = await appFacade.deleteMemorySnapshot(snapshotId);
+    if (deleted) {
+      await load();
+    }
+    return deleted;
+  }, [load]);
 
   // Learning settings
   const updateLearningThreshold = useCallback(async (value: number) => {
@@ -235,6 +275,7 @@ export function useMoniSettingsData(): MoniSettingsData {
     activeLedgerId,
     tags,
     memoryItems,
+    snapshots,
     exampleLibrarySummary,
     learningConfig,
     monthlyBudget,
@@ -259,6 +300,8 @@ export function useMoniSettingsData(): MoniSettingsData {
       deleteTag,
       updateMemoryItems,
       triggerImmediateLearning,
+      rollbackMemorySnapshot,
+      deleteMemorySnapshot,
       updateLearningThreshold,
       toggleAutoLearn,
       updateCompressionThreshold,

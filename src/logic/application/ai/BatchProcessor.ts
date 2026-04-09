@@ -143,7 +143,12 @@ export class BatchProcessor {
           return { success: true, processedCount: 0, errors: [] };
         }
 
-        const client = new LLMClient({ apiKey, baseUrl, model });
+        const client = new LLMClient({
+          apiKey,
+          baseUrl,
+          model,
+          temperature: llmConfig.temperature
+        });
 
         /**
          * 循环消费：逐日处理队列中所有任务，直到队列清空或用户主动停止。

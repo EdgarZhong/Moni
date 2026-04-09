@@ -61,16 +61,19 @@ export class FetchClient {
     let lastError: Error | null = null;
 
     while (attempt <= retries) {
+      let didTimeout = false;
+      let id: ReturnType<typeof setTimeout> | null = null;
       try {
         const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), timeout);
+        id = setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, timeout);
 
         const response = await fetch(transformedUrl, {
           ...fetchInit,
           signal: controller.signal
         });
-
-        clearTimeout(id);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -91,13 +94,16 @@ export class FetchClient {
         }
 
       } catch (err: unknown) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        const errObj = err instanceof Error ? err : new Error(String(err));
+        const rawError = err instanceof Error ? err : new Error(String(err));
+        const errObj = rawError.name === 'AbortError' && didTimeout
+          ? new Error(`Request timeout after ${timeout}ms`)
+          : rawError;
+        lastError = errObj;
         
         // 如果是 AbortError (超时)，则视为可重试
         // 如果是 5xx 错误，也可重试
         // 4xx 错误通常不重试
-        const isTimeout = errObj.name === 'AbortError';
+        const isTimeout = rawError.name === 'AbortError';
         const isNetworkError = err instanceof TypeError; // fetch network error
         const isRetryableHttp = errObj.message.startsWith('HTTP_RETRYABLE');
         
@@ -111,6 +117,10 @@ export class FetchClient {
         } else {
           // 其他错误直接抛出
           throw err;
+        }
+      } finally {
+        if (id) {
+          clearTimeout(id);
         }
       }
     }

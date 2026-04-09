@@ -623,7 +623,7 @@ export class AppFacade {
       enableThinking: config.globalParams?.enableThinking ?? false,
     };
 
-    const selfDescription = await SelfDescriptionManager.getInstance().load() ?? '';
+    const selfDescription = await SelfDescriptionManager.load().catch(() => '') ?? '';
 
     const ledgerOptions = await this.listLedgerOptions({ syncWithFiles: false }).catch(() => []);
     const ledgers = ledgerOptions.map((l) => ({
@@ -639,14 +639,22 @@ export class AppFacade {
       isSystem: key === '其他',
     }));
 
-    const memoryItems = await MemoryManager.getInstance().load(currentLedgerId).catch(() => []);
+    const memoryItems = await MemoryManager.load(currentLedgerId).catch(() => []);
+    const currentSnapshotId = await SnapshotManager.getCurrentId(currentLedgerId).catch(() => '');
+    const snapshots = await SnapshotManager.list(currentLedgerId)
+      .then((items) => items.map((item) => ({
+        id: item.id,
+        trigger: item.trigger,
+        summary: item.summary,
+        isCurrent: item.id === currentSnapshotId,
+      })))
+      .catch(() => []);
 
     let exampleLibrarySummary = { delta: 0, total: 0 };
     try {
-      const store = ExampleStore.getInstance();
-      const total = await store.count(currentLedgerId);
+      const stats = await ExampleStore.getStats(currentLedgerId);
       const lastRevision = await SnapshotManager.getLastLearnedExampleRevision(currentLedgerId);
-      exampleLibrarySummary = { delta: Math.max(0, total - lastRevision), total };
+      exampleLibrarySummary = { delta: Math.max(0, stats.count - lastRevision), total: stats.count };
     } catch { /* ignore */ }
 
     let learningConfig = { autoLearn: true, learningThreshold: 5, compressionThreshold: 30 };
@@ -691,6 +699,7 @@ export class AppFacade {
       activeLedgerId: currentLedgerId,
       tags,
       memoryItems,
+      snapshots,
       exampleLibrarySummary,
       learningConfig,
       budgetConfig,
@@ -760,24 +769,33 @@ export class AppFacade {
 
   // Self description
   public async saveSelfDescription(text: string): Promise<void> {
-    await SelfDescriptionManager.getInstance().save(text);
+    await SelfDescriptionManager.save(text);
     this.notify();
   }
 
   // Ledger management
-  public async createLedger(name: string): Promise<void> {
-    await this.ledgerManager.createLedger(name);
-    this.notify();
+  public async createLedger(name: string): Promise<boolean> {
+    const created = await this.ledgerManager.createLedger(name);
+    if (created) {
+      this.notify();
+    }
+    return created;
   }
 
-  public async renameLedger(id: string, newName: string): Promise<void> {
-    await this.ledgerManager.renameLedger(id, newName);
-    this.notify();
+  public async renameLedger(id: string, newName: string): Promise<boolean> {
+    const renamed = await this.ledgerManager.renameLedger(id, newName);
+    if (renamed) {
+      this.notify();
+    }
+    return renamed;
   }
 
-  public async deleteLedger(id: string): Promise<void> {
-    await this.ledgerManager.deleteLedger(id);
-    this.notify();
+  public async deleteLedger(id: string): Promise<boolean> {
+    const deleted = await this.ledgerManager.deleteLedger(id);
+    if (deleted) {
+      this.notify();
+    }
+    return deleted;
   }
 
   // Tag management
@@ -813,7 +831,7 @@ export class AppFacade {
   public async updateMemoryItems(items: string[]): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    await MemoryManager.getInstance().save(ledgerId, items);
+    await MemoryManager.save(ledgerId, items);
     await SnapshotManager.create(ledgerId, 'user_edit');
     this.notify();
   }
@@ -828,6 +846,26 @@ export class AppFacade {
     } catch {
       return false;
     }
+  }
+
+  public async rollbackMemorySnapshot(snapshotId: string): Promise<boolean> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return false;
+    const rolled = await MemoryManager.rollbackToSnapshot(ledgerId, snapshotId);
+    if (rolled) {
+      this.notify();
+    }
+    return rolled;
+  }
+
+  public async deleteMemorySnapshot(snapshotId: string): Promise<boolean> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) return false;
+    const deleted = await SnapshotManager.delete(ledgerId, snapshotId);
+    if (deleted) {
+      this.notify();
+    }
+    return deleted;
   }
 
   // Learning settings

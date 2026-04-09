@@ -257,6 +257,7 @@ export interface SettingsPageReadModel {
   activeLedgerId: string;
   tags: SettingsTagItem[];
   memoryItems: string[];
+  snapshots: SettingsSnapshotItem[];
   exampleLibrarySummary: SettingsExampleLibrarySummary;
   learningConfig: SettingsLearningConfig;
   budgetConfig: SettingsBudgetConfig;
