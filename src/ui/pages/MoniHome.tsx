@@ -32,6 +32,7 @@ import {
 } from "@ui/features/moni-home/components";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
+import { useKeyboard } from "@ui/hooks/useKeyboard";
 
 interface DragLock {
   bodyOverflow: string;
@@ -894,6 +895,8 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     onPointerCancel: () => { trendSwipeRef.current = null; },
   };
 
+  const { isKeyboardVisible } = useKeyboard();
+
   return (
     <div style={{ width: "100%", maxWidth: 390, margin: "0 auto", background: C.bg, borderRadius: 24, border: `2.5px solid ${C.dark}`, overflow: "hidden", position: "relative", fontFamily: "'Nunito',-apple-system,sans-serif", height: PHONE_FRAME_HEIGHT_CSS, maxHeight: PHONE_FRAME_HEIGHT, display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top)" }}>
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -1107,18 +1110,20 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         </div>
       </div>
 
-      <BottomNav
-        aiOn={aiOn}
-        aiStop={aiStop}
-        controlOpen={controlOpen}
-        controlHit={controlHit}
-        onStartControl={handleStartControl}
-        onEndControl={handleEndControl}
-        onCancelControl={handleCancelControl}
-        onUpdateControlHit={{ ref: controlRef, move: updateControlHit }}
-        onBookkeeping={onNavigate ? () => onNavigate("entry") : undefined}
-        onSettings={onNavigate ? () => onNavigate("settings") : undefined}
-      />
+      {!isKeyboardVisible && (
+        <BottomNav
+          aiOn={aiOn}
+          aiStop={aiStop}
+          controlOpen={controlOpen}
+          controlHit={controlHit}
+          onStartControl={handleStartControl}
+          onEndControl={handleEndControl}
+          onCancelControl={handleCancelControl}
+          onUpdateControlHit={{ ref: controlRef, move: updateControlHit }}
+          onBookkeeping={onNavigate ? () => onNavigate("entry") : undefined}
+          onSettings={onNavigate ? () => onNavigate("settings") : undefined}
+        />
+      )}
 
       {controlOpen && (
         <div
