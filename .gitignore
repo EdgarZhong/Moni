@@ -44,3 +44,6 @@ secure_config.json
 
 # Archive
 .archive/
+
+# Native projects
+android/
