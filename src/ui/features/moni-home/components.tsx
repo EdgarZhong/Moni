@@ -860,7 +860,10 @@ function formatBoundaryDate(value: string): string {
 function addDays(value: string, days: number): string {
   const date = new Date(`${value}T00:00:00`);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function diffDays(start: string, end: string): number {
@@ -895,14 +898,18 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
   const [draftStartDay, setDraftStartDay] = useState(() => diffDays(minDate, customStart));
   const [draftEndDay, setDraftEndDay] = useState(() => diffDays(minDate, customEnd));
 
+  // 用 ref 跟踪最新草稿值，避免拖拽闭包读到过时状态
+  const draftRef = useRef({ start: draftStartDay, end: draftEndDay });
+  draftRef.current = { start: draftStartDay, end: draftEndDay };
+
   const draftStartValue = addDays(minDate, draftStartDay);
   const draftEndValue = addDays(minDate, draftEndDay);
   const startPercent = (draftStartDay / totalDays) * 100;
   const endPercent = (draftEndDay / totalDays) * 100;
 
-  // 面板打开时同步外部传入的起止日期到草稿值
+  // 面板打开时同步外部传入的起止日期到草稿值（拖拽中跳过，避免回写冲突）
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || dragThumb) return;
     setDraftStartDay(Math.max(0, Math.min(totalDays, diffDays(minDate, customStart))));
     setDraftEndDay(Math.max(0, Math.min(totalDays, diffDays(minDate, customEnd))));
   }, [visible, customStart, customEnd, minDate, totalDays]);
@@ -912,8 +919,8 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
     if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
   }, []);
 
-  // 用 rAF 批量同步草稿值到父组件，避免过于频繁的状态更新
-  const syncDraftValues = (nextStart: number, nextEnd: number) => {
+  // 同步草稿值到父组件
+  const syncToParent = (nextStart: number, nextEnd: number) => {
     if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
     frameRef.current = requestAnimationFrame(() => {
       onCustomStartChange(addDays(minDate, nextStart));
@@ -926,27 +933,25 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
     const clampedEnd = Math.min(totalDays, Math.max(nextEnd, clampedStart));
     setDraftStartDay(clampedStart);
     setDraftEndDay(clampedEnd);
-    syncDraftValues(clampedStart, clampedEnd);
-  };
-
-  const updateThumbFromClientX = (clientX: number) => {
-    const rect = railRef.current?.getBoundingClientRect();
-    if (!rect || !dragThumb) return;
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const nextDay = Math.round(ratio * totalDays);
-    if (dragThumb === "start") {
-      updateDraftRange(nextDay, draftEndDay);
-    } else {
-      updateDraftRange(draftStartDay, nextDay);
-    }
+    syncToParent(clampedStart, clampedEnd);
   };
 
   // 全局监听 pointermove/pointerup，支持跨元素拖拽
+  // 通过 draftRef 读取最新草稿值，避免闭包捕获过时的 state
   useEffect(() => {
     if (!dragThumb) return undefined;
     const handlePointerMove = (event: PointerEvent) => {
       event.preventDefault();
-      updateThumbFromClientX(event.clientX);
+      const rect = railRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      const nextDay = Math.round(ratio * totalDays);
+      const { start: curStart, end: curEnd } = draftRef.current;
+      if (dragThumb === "start") {
+        updateDraftRange(nextDay, curEnd);
+      } else {
+        updateDraftRange(curStart, nextDay);
+      }
     };
     const handlePointerUp = () => setDragThumb(null);
     window.addEventListener("pointermove", handlePointerMove, { passive: false });
@@ -957,7 +962,7 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [dragThumb, draftEndDay, draftStartDay, totalDays]);
+  }, [dragThumb, totalDays, minDate]);
 
   if (!visible) return null;
 
