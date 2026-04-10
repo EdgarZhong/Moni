@@ -11,36 +11,6 @@
       "fileName": "测试.moni.json",
       "createdAt": "2026-02-22T10:35:46.776Z",
       "lastOpenedAt": "2026-04-09T13:57:30.264Z"
-    },
-    {
-      "name": "账本",
-      "fileName": "账本.moni.json",
-      "createdAt": "2026-04-09T12:33:22.629Z",
-      "lastOpenedAt": "2026-04-09T13:29:13.354Z"
-    },
-    {
-      "name": "12",
-      "fileName": "12.moni.json",
-      "createdAt": "2026-04-09T12:33:44.553Z",
-      "lastOpenedAt": "2026-04-09T12:54:52.027Z"
-    },
-    {
-      "name": "创建",
-      "fileName": "创建.moni.json",
-      "createdAt": "2026-04-09T12:35:45.198Z",
-      "lastOpenedAt": "2026-04-09T13:00:45.263Z"
-    },
-    {
-      "name": "1",
-      "fileName": "1.moni.json",
-      "createdAt": "2026-04-09T12:38:00.053Z",
-      "lastOpenedAt": "2026-04-09T13:01:39.553Z"
-    },
-    {
-      "name": "中文",
-      "fileName": "中文.moni.json",
-      "createdAt": "2026-04-09T12:38:44.165Z",
-      "lastOpenedAt": "2026-04-09T12:55:07.436Z"
     }
   ],
   "activeLedger": "测试"

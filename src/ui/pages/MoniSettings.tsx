@@ -2793,7 +2793,7 @@ export default function MoniSettings({
   const persistCurrentMemory = useCallback(async (items: string[]) => {
     updateCurrentMemory(items);
     await updateMemoryItems(items);
-  }, [updateMemoryItems, activeLedgerId]);
+  }, [updateMemoryItems, activeLedgerId, updateCurrentMemory]);
 
   const triggerCurrentLearning = useCallback(async (): Promise<boolean> => {
     return triggerImmediateLearning();
