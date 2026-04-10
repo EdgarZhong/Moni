@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { BOTTOM_NAV_PADDING_BOTTOM, C, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
+import { useKeyboard } from "@ui/hooks/useKeyboard";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
 import type {
   MoniSettingsData,
@@ -2963,6 +2964,8 @@ export default function MoniSettings({
     }
   };
 
+  const { isKeyboardVisible } = useKeyboard();
+
   return (
     <div
       style={{
@@ -2998,7 +3001,9 @@ export default function MoniSettings({
       `}</style>
       <Decor />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
-      <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
+      {!isKeyboardVisible && (
+        <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
+      )}
     </div>
   );
 }

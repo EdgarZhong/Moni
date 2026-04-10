@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
+import { useKeyboard } from "@ui/hooks/useKeyboard";
 import { parseFiles } from "@shared/utils/parser";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
@@ -871,6 +872,8 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
     [actions, resetDragState],
   );
 
+  const { isKeyboardVisible } = useKeyboard();
+
   return (
     <div
       style={{
@@ -990,7 +993,9 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         <div style={{ height: 88 }} />
       </div>
 
-      <EntryBottomNav onOpenHome={() => onNavigate("home")} onOpenSettings={() => onNavigate("settings")} />
+      {!isKeyboardVisible && (
+        <EntryBottomNav onOpenHome={() => onNavigate("home")} onOpenSettings={() => onNavigate("settings")} />
+      )}
 
       <CategoryOverlay
         visible={phase === "selecting" || phase === "dragging"}
