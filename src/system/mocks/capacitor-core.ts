@@ -2,7 +2,7 @@
 export const Capacitor = {
   isNativePlatform: () => true,
   getPlatform: () => 'web',
-  isPluginAvailable: (name: string) => ['Filesystem', 'Haptics'].includes(name),
+  isPluginAvailable: (name: string) => ['Filesystem', 'Haptics', 'Keyboard'].includes(name),
   pluginMethodNoop: () => {}
 };
 // Mock WebPlugin (空实现)

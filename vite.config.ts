@@ -22,6 +22,14 @@ export default defineConfig({
       {
         find: '@capacitor/core',
         replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-core.ts')
+      },
+      {
+        find: '@capacitor/keyboard',
+        replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-keyboard.ts')
+      },
+      {
+        find: '@capacitor/haptics',
+        replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-haptics.ts')
       }
       ] : [])
     ]
