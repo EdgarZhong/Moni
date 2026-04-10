@@ -55,6 +55,17 @@ let isNativeOverride: boolean | null = null;
 
 export const isNativePlatform = () => isNativeOverride ?? Capacitor.isNativePlatform();
 
+/**
+ * 账本主数据目录选择策略：
+ * - 真机 Capacitor（android/ios）：走私有沙箱 Data，避免外部 Documents 的权限/EACCES 问题
+ * - 浏览器开发态（含 mock）：继续走 Documents，保持现有调试与夹具行为
+ */
+function getLedgerStorageDirectory(): AdapterDirectory {
+  const platform = typeof Capacitor.getPlatform === 'function' ? Capacitor.getPlatform() : 'web';
+  const isRealNative = Capacitor.isNativePlatform() && platform !== 'web';
+  return isRealNative ? AdapterDirectory.Data : AdapterDirectory.Documents;
+}
+
 // Test Helpers
 export const _setNativePlatform = (val: boolean) => { isNativeOverride = val; };
 /** @deprecated 请使用 FilesystemService.setAdapter() 进行测试注入 */
@@ -79,12 +90,13 @@ export const getAutoDirectoryHandle = async (): Promise<StorageDirHandle> => {
       }
     }
 
-    // 开发态 mock / Capacitor native 统一使用 Documents/Moni 作为自动账本目录
+    // 真机走 Data，浏览器开发态继续走 Documents（见 getLedgerStorageDirectory）
     const ledgerDir = 'Moni';
+    const ledgerDirectory = getLedgerStorageDirectory();
     try {
       await fs.mkdir({
         path: ledgerDir,
-        directory: AdapterDirectory.Documents,
+        directory: ledgerDirectory,
         recursive: true
       });
     } catch (e) {
@@ -148,7 +160,7 @@ export const getMemoryFileHandle = async (
       const fs = FilesystemService.getInstance();
       await fs.stat({
         path: filePath,
-        directory: AdapterDirectory.Documents
+        directory: getLedgerStorageDirectory()
       });
 
       return {
@@ -184,7 +196,7 @@ export const readMemoryFile = async (fileHandle: StorageHandle): Promise<LedgerM
       const fs = FilesystemService.getInstance();
       const text = await fs.readFile({
         path: nativeHandle.path,
-        directory: AdapterDirectory.Documents,
+        directory: getLedgerStorageDirectory(),
         encoding: AdapterEncoding.UTF8
       });
       return JSON.parse(text) as LedgerMemory;
@@ -215,7 +227,7 @@ export const writeMemoryFile = async (
     await fs.writeFile({
       path: nativeHandle.path,
       data: JSON.stringify(data, null, 2),
-      directory: AdapterDirectory.Documents,
+      directory: getLedgerStorageDirectory(),
       encoding: AdapterEncoding.UTF8
     });
   } else {
@@ -473,7 +485,7 @@ export const getLedgerFileHandle = async (
       const fs = FilesystemService.getInstance();
       await fs.stat({
         path: filePath,
-        directory: AdapterDirectory.Documents
+        directory: getLedgerStorageDirectory()
       });
 
       return {
@@ -522,7 +534,7 @@ export const deleteLedgerFile = async (
       const fs = FilesystemService.getInstance();
       await fs.deleteFile({
         path: filePath,
-        directory: AdapterDirectory.Documents
+        directory: getLedgerStorageDirectory()
       });
     } catch (e) {
       console.error('Failed to delete ledger file (Native):', e);
@@ -554,7 +566,7 @@ export const scanForLedgerFiles = async (
       const fs = FilesystemService.getInstance();
       const files = await fs.readdir({
         path: nativeDir.path || '',
-        directory: AdapterDirectory.Documents
+        directory: getLedgerStorageDirectory()
       });
 
       for (const file of files) {

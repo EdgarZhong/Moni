@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BOTTOM_NAV_PADDING_BOTTOM, C, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { useKeyboard } from "@ui/hooks/useKeyboard";
@@ -2969,8 +2969,7 @@ export default function MoniSettings({
   return (
     <div
       style={{
-        width: "100%",
-        maxWidth: 390,
+        width: PHONE_FRAME_WIDTH_CSS,
         margin: "0 auto",
         background: C.bg,
         borderRadius: 24,
@@ -2979,7 +2978,6 @@ export default function MoniSettings({
         position: "relative",
         fontFamily: "'Nunito', -apple-system, sans-serif",
         height: PHONE_FRAME_HEIGHT_CSS,
-        maxHeight: PHONE_FRAME_HEIGHT,
         display: "flex",
         flexDirection: "column",
         paddingTop: "env(safe-area-inset-top)",
