@@ -107,15 +107,15 @@ export const MANUAL_RESUME_MS = 5 * 60 * 1000;
  */
 export const MANUAL_IDLE_LOCK_MS = 2 * 60 * 1000;
 
-/** 手机帧高度（用于 AI 控制条坐标计算） */
-export const PHONE_FRAME_HEIGHT = 860;
-
 /**
  * 手机帧容器高度（屏幕自适配）
- * - 小屏设备：跟随视口高度，避免底部导航被截断
- * - 大屏/桌面：保持原 860px 设计上限
+ * - 使用 dVH 跟随可视视口高度，旋转/地址栏收起时可实时自适应
  */
-export const PHONE_FRAME_HEIGHT_CSS = `min(100vh, ${PHONE_FRAME_HEIGHT}px)`;
+export const PHONE_FRAME_HEIGHT_CSS = "100dvh";
+
+
+/** 手机帧容器宽度（屏幕自适配） */
+export const PHONE_FRAME_WIDTH_CSS = "100vw";
 
 /**
  * 底部导航安全区内边距

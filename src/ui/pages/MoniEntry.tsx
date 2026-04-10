@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, PHONE_FRAME_HEIGHT, PHONE_FRAME_HEIGHT_CSS } from "@ui/features/moni-home/config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { useKeyboard } from "@ui/hooks/useKeyboard";
@@ -419,7 +419,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
         animation: "fadeIn .2s ease",
       }}
     >
-      <div style={{ width: "100%", maxWidth: 390, margin: "0 auto", padding: "0 12px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", margin: "0 auto", padding: "0 12px", boxSizing: "border-box" }}>
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
@@ -877,8 +877,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   return (
     <div
       style={{
-        width: "100%",
-        maxWidth: 390,
+        width: PHONE_FRAME_WIDTH_CSS,
         margin: "0 auto",
         background: C.bg,
         borderRadius: 24,
@@ -889,7 +888,6 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         flexDirection: "column",
         fontFamily: "'Nunito',-apple-system,sans-serif",
         height: PHONE_FRAME_HEIGHT_CSS,
-        maxHeight: PHONE_FRAME_HEIGHT,
         paddingTop: "env(safe-area-inset-top)",
       }}
     >

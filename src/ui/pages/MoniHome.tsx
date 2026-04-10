@@ -10,8 +10,8 @@ import {
   C,
   MANUAL_IDLE_LOCK_MS,
   MANUAL_RESUME_MS,
-  PHONE_FRAME_HEIGHT,
   PHONE_FRAME_HEIGHT_CSS,
+  PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
 import { buildOverview, getCategory, getRange, isInRange } from "@ui/features/moni-home/helpers";
 import {
@@ -188,7 +188,6 @@ function TransactionDetailPanel({
           top: 0,
           right: 0,
           width: "100%",
-          maxWidth: 390,
           height: "100%",
           background: C.bg,
           borderLeft: `2px solid ${C.dark}`,
@@ -898,7 +897,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const { isKeyboardVisible } = useKeyboard();
 
   return (
-    <div style={{ width: "100%", maxWidth: 390, margin: "0 auto", background: C.bg, borderRadius: 24, border: `2.5px solid ${C.dark}`, overflow: "hidden", position: "relative", fontFamily: "'Nunito',-apple-system,sans-serif", height: PHONE_FRAME_HEIGHT_CSS, maxHeight: PHONE_FRAME_HEIGHT, display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top)" }}>
+    <div style={{ width: PHONE_FRAME_WIDTH_CSS, margin: "0 auto", background: C.bg, borderRadius: 24, border: `2.5px solid ${C.dark}`, overflow: "hidden", position: "relative", fontFamily: "'Nunito',-apple-system,sans-serif", height: PHONE_FRAME_HEIGHT_CSS, display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top)" }}>
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes rb {
