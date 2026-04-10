@@ -1216,7 +1216,7 @@ function LedgerManagePage({
           value={newName}
           onChange={(event) => setNewName(event.target.value)}
           placeholder="输入账本名称"
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box" }}
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box", color: C.dark }}
         />
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="secondary" onClick={() => setShowCreate(false)}>
@@ -1256,7 +1256,7 @@ function LedgerManagePage({
           autoFocus
           value={renameTo}
           onChange={(event) => setRenameTo(event.target.value)}
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box" }}
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box", color: C.dark }}
         />
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="secondary" onClick={() => setShowRename(null)}>
@@ -1499,14 +1499,14 @@ function TagManagePage({
           value={addName}
           onChange={(event) => setAddName(event.target.value)}
           placeholder="标签名称"
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 10, boxSizing: "border-box" }}
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 14, outline: "none", marginBottom: 10, boxSizing: "border-box", color: C.dark }}
         />
         <textarea
           data-selectable
           value={addDesc}
           onChange={(event) => setAddDesc(event.target.value)}
           placeholder="标签描述（必填）"
-          style={{ width: "100%", minHeight: 80, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", marginBottom: 14, boxSizing: "border-box" }}
+          style={{ width: "100%", minHeight: 80, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", marginBottom: 14, boxSizing: "border-box", color: C.dark }}
         />
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="secondary" onClick={() => setShowAdd(false)}>
@@ -1616,7 +1616,7 @@ function TagManagePage({
                 autoFocus
                 value={renameTo}
                 onChange={(event) => setRenameTo(event.target.value)}
-                style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.blue}55`, fontSize: 14, outline: "none", boxSizing: "border-box", background: C.white }}
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.blue}55`, fontSize: 14, outline: "none", boxSizing: "border-box", background: C.white, color: C.dark }}
               />
             </>
           ) : (
@@ -1629,7 +1629,7 @@ function TagManagePage({
                 autoFocus
                 value={editDesc}
                 onChange={(event) => setEditDesc(event.target.value)}
-                style={{ width: "100%", minHeight: 88, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.pinkBd}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", background: C.white }}
+                style={{ width: "100%", minHeight: 88, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.pinkBd}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", background: C.white, color: C.dark }}
               />
             </>
           )}
