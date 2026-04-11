@@ -426,8 +426,12 @@ export class AppFacade {
 
   public async startAiProcessing(): Promise<void> {
     const currentLedgerId = this.ledgerManager.getActiveLedgerName();
+    console.log(`[MONI_AI_DEBUG][AppFacade] startAiProcessing triggered for ledger: ${currentLedgerId}`);
+    
     if (currentLedgerId) {
       const pendingCount = await classifyQueue.size(currentLedgerId).catch(() => 0);
+      console.log(`[MONI_AI_DEBUG][AppFacade] Existing pending queue size: ${pendingCount}`);
+      
       if (pendingCount === 0) {
         const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
         const outgoingRecords = Object.values(records).filter((record) =>
@@ -439,14 +443,17 @@ export class AppFacade {
             outgoingRecords
               .filter((record) => {
                 const finalCategory = record.user_category || record.ai_category || record.category;
-                return !record.is_verified && (!finalCategory || finalCategory === 'uncategorized');
+                const isUnclassified = !finalCategory || finalCategory === 'uncategorized';
+                return !record.is_verified && isUnclassified;
               })
-              .map((record) => toDateKey(record.time))
+              .map((record) => record.time.slice(0, 10))
           )
         ).sort();
 
+        console.log(`[MONI_AI_DEBUG][AppFacade] Candidate dates to enqueue:`, candidateDates);
+
         if (candidateDates.length === 0) {
-          // 没有待分类交易时不再启动引擎，避免“未分类为 0 仍显示运行中”。
+          console.log(`[MONI_AI_DEBUG][AppFacade] No unclassified transactions found, stopping.`);
           this.batchProcessor.stop();
           return;
         }
@@ -456,7 +463,14 @@ export class AppFacade {
         }
       }
     }
-    await this.batchProcessor.run();
+    
+    console.log(`[MONI_AI_DEBUG][AppFacade] Invoking BatchProcessor.run()`);
+    try {
+      await this.batchProcessor.run();
+      console.log(`[MONI_AI_DEBUG][AppFacade] BatchProcessor.run() completed.`);
+    } catch (err) {
+      console.error(`[MONI_AI_DEBUG][AppFacade] BatchProcessor.run() error:`, err);
+    }
   }
 
   public stopAiProcessing(): void {

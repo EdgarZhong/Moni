@@ -21,6 +21,7 @@ export interface ChatOptions {
 export class LLMClient {
   private config: LLMConfig;
   private logger: RawLogger;
+  private static readonly DEBUG_TAG = '[MONI_AI_DEBUG][LLMClient]';
 
   constructor(config: LLMConfig) {
     this.config = config;
@@ -65,9 +66,26 @@ export class LLMClient {
     };
 
     const startTime = Date.now();
+    console.log(
+      `${LLMClient.DEBUG_TAG} CHAT_START`,
+      JSON.stringify({
+        url,
+        model: this.config.model,
+        responseFormat,
+        timeoutMs,
+        messageCount: messages.length,
+        payload: {
+          model: this.config.model,
+          temperature,
+          responseFormat,
+          messages: messages.map(m => ({ role: m.role, contentLength: m.content.length }))
+        }
+      }, null, 2)
+    );
     
     try {
       // Log Request
+      console.log(`${LLMClient.DEBUG_TAG} Sending request via NetworkClient...`);
       const response = await NetworkClient.post<LLMResponse>(
         url,
         payload,
@@ -82,10 +100,14 @@ export class LLMClient {
 
       const endTime = Date.now();
       const duration = endTime - startTime;
+      console.log(`${LLMClient.DEBUG_TAG} Request finished in ${duration}ms. Status: OK`);
 
       // Extract content
       const content = response.choices?.[0]?.message?.content;
+      console.log(`${LLMClient.DEBUG_TAG} Response content length: ${content?.length ?? 0}`);
+      
       if (!content) {
+        console.error(`${LLMClient.DEBUG_TAG} Empty response structure:`, JSON.stringify(response, null, 2));
         throw new Error('Empty response from LLM');
       }
 
@@ -102,6 +124,16 @@ export class LLMClient {
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
       console.error('[LLMClient] Chat request failed:', error);
+      console.error(
+        `${LLMClient.DEBUG_TAG} CHAT_FAILED`,
+        JSON.stringify({
+          url,
+          model: this.config.model,
+          responseFormat,
+          duration,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      );
 
       // Log Error
       try {
@@ -127,6 +159,13 @@ export class LLMClient {
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
     const temperature = this.resolveTemperature(baseUrl, this.config.model);
+    console.log(
+      `${LLMClient.DEBUG_TAG} TEST_START`,
+      JSON.stringify({
+        url,
+        model: this.config.model
+      })
+    );
 
     await NetworkClient.post<LLMResponse>(
       url,

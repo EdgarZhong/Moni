@@ -60,7 +60,7 @@ export const isNativePlatform = () => isNativeOverride ?? Capacitor.isNativePlat
  * - 真机 Capacitor（android/ios）：走私有沙箱 Data，避免外部 Documents 的权限/EACCES 问题
  * - 浏览器开发态（含 mock）：继续走 Documents，保持现有调试与夹具行为
  */
-function getLedgerStorageDirectory(): AdapterDirectory {
+export function getLedgerStorageDirectory(): AdapterDirectory {
   const platform = typeof Capacitor.getPlatform === 'function' ? Capacitor.getPlatform() : 'web';
   const isRealNative = Capacitor.isNativePlatform() && platform !== 'web';
   return isRealNative ? AdapterDirectory.Data : AdapterDirectory.Documents;
