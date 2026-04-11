@@ -14,6 +14,7 @@
 
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { getLedgerStorageDirectory } from '@system/filesystem/fs-storage';
 
 const FILE_PATH = 'Moni/self_description/user_profile.md';
 
@@ -30,9 +31,10 @@ export class SelfDescriptionManager {
       }
 
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       const data = await fs.readFile({
         path: FILE_PATH,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8
       });
       return data;
@@ -49,10 +51,11 @@ export class SelfDescriptionManager {
   public static async save(content: string): Promise<void> {
     try {
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       await fs.writeFile({
         path: FILE_PATH,
         data: content,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8,
         recursive: true
       });
@@ -68,9 +71,10 @@ export class SelfDescriptionManager {
   public static async exists(): Promise<boolean> {
     try {
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       await fs.stat({
         path: FILE_PATH,
-        directory: AdapterDirectory.Documents
+        directory
       });
       return true;
     } catch {

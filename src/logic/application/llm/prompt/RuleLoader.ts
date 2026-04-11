@@ -1,6 +1,6 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
-import { DEFAULT_LEDGER_NAME } from '@system/filesystem/fs-storage';
+import { AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { getLedgerStorageDirectory, DEFAULT_LEDGER_NAME } from '@system/filesystem/fs-storage';
 
 export class RuleLoader {
   private static readonly BASE_PATH = 'Moni/classify_rules';
@@ -17,9 +17,10 @@ export class RuleLoader {
     try {
       // 尝试读取规则文件
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       return await fs.readFile({
         path: fullPath,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8
       });
     } catch {
@@ -38,10 +39,11 @@ export class RuleLoader {
 
     try {
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       await fs.writeFile({
         path: fullPath,
         data: content,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8,
         recursive: true // 确保目录存在
       });

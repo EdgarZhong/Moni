@@ -1,6 +1,9 @@
 // 简单的 HTTP 客户端封装
 // 职责：处理超时、重试、错误统一包装
 
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import type { HttpResponse } from '@capacitor/core';
+
 export interface FetchOptions extends RequestInit {
   timeout?: number; // ms
   retries?: number;
@@ -8,13 +11,10 @@ export interface FetchOptions extends RequestInit {
 
 /**
  * 开发环境下将外部 API URL 转换为本地代理 URL 以解决 CORS 问题
- * @param originalUrl 原始 API URL
- * @returns 转换后的 URL（开发环境下）或原始 URL（生产环境/真机）
  */
 function transformUrlForDevProxy(originalUrl: string): string {
-  // 只在浏览器开发环境下使用代理
-  // 注意：Capacitor 真机环境下 isNativePlatform 为 true，不会走这里
-  const isDevBrowser = import.meta.env.DEV && typeof window !== 'undefined' && !(window as unknown as { Capacitor?: unknown }).Capacitor;
+  const isNative = Capacitor.isNativePlatform();
+  const isDevBrowser = import.meta.env.DEV && !isNative;
 
   if (!isDevBrowser) {
     return originalUrl;
@@ -51,6 +51,7 @@ function transformUrlForDevProxy(originalUrl: string): string {
 export class FetchClient {
   private static readonly DEFAULT_TIMEOUT = 30000; // 30s
   private static readonly DEFAULT_RETRIES = 1;
+  private static readonly DEBUG_TAG = '[MONI_AI_DEBUG][FetchClient]';
 
   public static async request<T>(url: string, options: FetchOptions = {}): Promise<T> {
     // 开发环境下转换 URL 以使用代理
@@ -70,13 +71,51 @@ export class FetchClient {
           controller.abort();
         }, timeout);
 
-        const response = await fetch(transformedUrl, {
-          ...fetchInit,
-          signal: controller.signal
-        });
+        let response: Response | HttpResponse;
 
-        if (!response.ok) {
-          const errorText = await response.text();
+        if (Capacitor.isNativePlatform()) {
+          // 在原生平台上使用 CapacitorHttp 绕过 CORS
+          console.log(`${this.DEBUG_TAG} [Native] START: ${fetchInit.method || 'GET'} ${transformedUrl}`);
+          console.log(`${this.DEBUG_TAG} [Native] Headers:`, JSON.stringify(fetchInit.headers || {}));
+          if (fetchInit.body) {
+            console.log(`${this.DEBUG_TAG} [Native] Body size:`, (fetchInit.body as string).length);
+          }
+          
+          try {
+            response = await CapacitorHttp.request({
+              url: transformedUrl,
+              method: fetchInit.method || 'GET',
+              headers: (fetchInit.headers as Record<string, string>) || {},
+              data: fetchInit.body ? JSON.parse(fetchInit.body as string) : undefined,
+              connectTimeout: timeout,
+              readTimeout: timeout,
+            });
+            console.log(`${this.DEBUG_TAG} [Native] SUCCESS: status=${response.status}`);
+          } catch (e) {
+            console.error(`${this.DEBUG_TAG} [Native] EXCEPTION during request:`, e);
+            throw e;
+          }
+        } else {
+          // 在浏览器中使用原生 fetch
+          response = await fetch(transformedUrl, {
+            ...fetchInit,
+            signal: controller.signal
+          });
+        }
+
+        if (response.status < 200 || response.status >= 300) {
+          const errorText = 'data' in response ? JSON.stringify(response.data) : await (response as Response).text();
+          console.error(
+            `${this.DEBUG_TAG} HTTP_ERROR`,
+            JSON.stringify({
+              url: transformedUrl,
+              status: response.status,
+            statusText: 'statusText' in response ? response.statusText : (response.status === 200 ? 'OK' : 'Error'),
+            bodyPreview: errorText.slice(0, 600),
+              attempt,
+              retries
+            })
+          );
           
           // 429 (Too Many Requests) and 5xx (Server Errors) are retryable
           if (response.status === 429 || response.status >= 500) {
@@ -88,7 +127,8 @@ export class FetchClient {
 
         // 尝试解析 JSON
         try {
-          return await response.json() as T;
+          const data = 'data' in response ? response.data : await (response as Response).json();
+          return data as T;
         } catch {
           throw new Error('Invalid JSON response');
         }
@@ -125,6 +165,15 @@ export class FetchClient {
       }
     }
 
+    console.error(
+      `${this.DEBUG_TAG} REQUEST_FAILED`,
+      JSON.stringify({
+        url: transformedUrl,
+        timeout,
+        retries,
+        finalError: lastError?.message || 'unknown'
+      })
+    );
     throw lastError || new Error('Request failed after retries');
   }
 

@@ -21,6 +21,7 @@
 
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { getLedgerStorageDirectory } from '@system/filesystem/fs-storage';
 
 /**
  * 快照元数据
@@ -98,11 +99,12 @@ export class SnapshotManager {
   private static async loadIndex(ledgerName: string): Promise<SnapshotIndex> {
     const indexPath = this.getIndexPath(ledgerName);
     const fs = FilesystemService.getInstance();
+    const directory = getLedgerStorageDirectory();
 
     try {
       const exists = await fs.exists({
         path: indexPath,
-        directory: AdapterDirectory.Documents
+        directory
       });
 
       if (!exists) {
@@ -111,7 +113,7 @@ export class SnapshotManager {
 
       const data = await fs.readFile({
         path: indexPath,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8
       });
       return this.normalizeIndex(JSON.parse(data));
@@ -126,14 +128,16 @@ export class SnapshotManager {
   private static async saveIndex(ledgerName: string, index: SnapshotIndex): Promise<void> {
     const indexPath = this.getIndexPath(ledgerName);
     const fs = FilesystemService.getInstance();
+    const directory = getLedgerStorageDirectory();
 
     await fs.writeFile({
       path: indexPath,
       data: JSON.stringify(index, null, 2),
-      directory: AdapterDirectory.Documents,
+      directory,
       encoding: AdapterEncoding.UTF8,
       recursive: true
     });
+    console.log(`[SnapshotManager] Saved index: ${indexPath} to ${directory}`);
   }
 
   private static normalizeIndex(raw: unknown): SnapshotIndex {

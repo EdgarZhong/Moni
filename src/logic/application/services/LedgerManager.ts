@@ -1,6 +1,7 @@
 import { LedgerService } from './LedgerService';
 import {
   getAutoDirectoryHandle,
+  getLedgerStorageDirectory,
   readMemoryFile,
   writeMemoryFile,
   DEFAULT_MEMORY,
@@ -13,9 +14,9 @@ import {
   scanForLedgerFiles,
   DEFAULT_LEDGER_INDEX,
   DEFAULT_LEDGER_NAME,
-  type LedgerMeta,
+  type StorageDirHandle,
   type LedgerIndex,
-  type StorageDirHandle
+  type LedgerMeta
 } from '@system/filesystem/fs-storage';
 import type { LedgerMemory } from '@shared/types/metadata';
 import { format } from 'date-fns';
@@ -153,14 +154,14 @@ export class LedgerManager {
 
     // 4. 移除孤儿记录（索引中有但文件不存在）
     const beforeCount = index.ledgers.length;
-    index.ledgers = index.ledgers.filter(l => actualFileNames.has(l.fileName));
+    index.ledgers = index.ledgers.filter((l: LedgerMeta) => actualFileNames.has(l.fileName));
     if (index.ledgers.length !== beforeCount) {
       console.log('[LedgerManager] Removed orphaned ledger records:',
         beforeCount - index.ledgers.length);
     }
 
     // 5. 添加新发现的文件（文件存在但索引中没有）
-    const existingNames = new Set(index.ledgers.map(l => l.name));
+    const existingNames = new Set(index.ledgers.map((l: LedgerMeta) => l.name));
     for (const file of actualFiles) {
       if (!existingNames.has(file.name)) {
         index.ledgers.push(file);
@@ -169,7 +170,7 @@ export class LedgerManager {
     }
 
     // 6. 确保默认账本存在
-    const hasDefault = index.ledgers.some(l => l.name === DEFAULT_LEDGER_NAME);
+    const hasDefault = index.ledgers.some((l: LedgerMeta) => l.name === DEFAULT_LEDGER_NAME);
     if (!hasDefault) {
       const defaultExists = actualFiles.some(f => f.name === DEFAULT_LEDGER_NAME);
       if (!defaultExists) {
@@ -198,7 +199,7 @@ export class LedgerManager {
     }
 
     // 7. 检查 active 账本
-    const activeExists = index.ledgers.some(l => l.name === index.activeLedger);
+    const activeExists = index.ledgers.some((l: LedgerMeta) => l.name === index.activeLedger);
     if (!activeExists) {
       console.warn('[LedgerManager] Active ledger "' + index.activeLedger + '" not found, falling back to default ledger');
       index.activeLedger = DEFAULT_LEDGER_NAME;
@@ -326,14 +327,14 @@ export class LedgerManager {
       const index = await this.readIndex();
 
       // 2. 验证账本存在
-      const ledgerMeta = index.ledgers.find(l => l.name === ledgerName);
+      const ledgerMeta = index.ledgers.find((l: LedgerMeta) => l.name === ledgerName);
       if (!ledgerMeta) {
         console.error('[LedgerManager] Ledger not found:', ledgerName);
         return false;
       }
 
       // 3. 更新索引中的 lastOpenedAt 和 activeLedger
-      const updatedLedgers = index.ledgers.map(l =>
+      const updatedLedgers = index.ledgers.map((l: LedgerMeta) =>
         l.name === ledgerName
           ? { ...l, lastOpenedAt: new Date().toISOString() }
           : l
@@ -422,10 +423,8 @@ export class LedgerManager {
     try {
       // 1. 读取索引
       const index = await this.readIndex();
-
-      // 2. 检查重名
-      if (index.ledgers.some(l => l.name === sanitizedName)) {
-        console.error('[LedgerManager] Ledger name already exists:', sanitizedName);
+      if (index.ledgers.some((l: LedgerMeta) => l.name === sanitizedName)) {
+        console.warn('[LedgerManager] Ledger name already exists:', sanitizedName);
         return false;
       }
 
@@ -503,7 +502,7 @@ export class LedgerManager {
       const index = await this.readIndex();
 
       // 2. 验证账本存在
-      const ledgerMeta = index.ledgers.find(l => l.name === ledgerName);
+      const ledgerMeta = index.ledgers.find((l: LedgerMeta) => l.name === ledgerName);
       if (!ledgerMeta) {
         console.error('[LedgerManager] Ledger not found:', ledgerName);
         return false;
@@ -516,7 +515,7 @@ export class LedgerManager {
       await this.deleteLedgerAIFiles(ledgerName);
 
       // 4. 更新索引
-      const updatedLedgers = index.ledgers.filter(l => l.name !== ledgerName);
+      const updatedLedgers = index.ledgers.filter((l: LedgerMeta) => l.name !== ledgerName);
       const newActiveLedger = index.activeLedger === ledgerName ? DEFAULT_LEDGER_NAME : index.activeLedger;
 
       await this.writeIndex({
@@ -560,13 +559,13 @@ export class LedgerManager {
 
     try {
       const index = await this.readIndex();
-      const oldLedger = index.ledgers.find(l => l.name === oldName);
+      const oldLedger = index.ledgers.find((l: LedgerMeta) => l.name === oldName);
       if (!oldLedger) {
         console.error('[LedgerManager] Ledger not found:', oldName);
         return false;
       }
 
-      if (index.ledgers.some(l => l.name === sanitizedNewName)) {
+      if (index.ledgers.some((l: LedgerMeta) => l.name === sanitizedNewName)) {
         console.error('[LedgerManager] Ledger name already exists:', sanitizedNewName);
         return false;
       }
@@ -597,7 +596,7 @@ export class LedgerManager {
       await this.renameLedgerAIFiles(oldName, sanitizedNewName);
 
       const now = new Date().toISOString();
-      const updatedLedgers = index.ledgers.map(l =>
+      const updatedLedgers = index.ledgers.map((l: LedgerMeta) =>
         l.name === oldName
           ? { ...l, name: sanitizedNewName, fileName: `${sanitizedNewName}.moni.json`, lastOpenedAt: now }
           : l
@@ -712,19 +711,20 @@ export class LedgerManager {
    * 任一文件不存在时静默忽略，不影响整体删除流程。
    */
   private async deleteLedgerAIFiles(ledgerName: string): Promise<void> {
-    // 1. 删除快照目录（v6：Documents/Moni/classify_memory/{ledger}/）
+    const ledgerStorageDir = getLedgerStorageDirectory();
+    // 1. 删除快照目录（v6：Moni/classify_memory/{ledger}/）
     const snapshotDir = `Moni/classify_memory/${ledgerName}`;
     try {
-      await this.safeRemoveDir(snapshotDir, AdapterDirectory.Documents);
-      console.log(`[LedgerManager] Deleted snapshot directory for: ${ledgerName}`);
+      await this.safeRemoveDir(snapshotDir, ledgerStorageDir);
+      console.log(`[LedgerManager] Deleted snapshot directory for: ${ledgerName} in ${ledgerStorageDir}`);
     } catch {
       // 目录不存在时静默忽略
     }
 
-    // 2. 删除自述文件（Documents）
+    // 2. 删除自述文件
     try {
-      await this.safeDeleteFile(`Moni/self_description/user_profile.md`, AdapterDirectory.Documents);
-      console.log(`[LedgerManager] Deleted self-description file`);
+      await this.safeDeleteFile(`Moni/self_description/user_profile.md`, ledgerStorageDir);
+      console.log(`[LedgerManager] Deleted self-description file in ${ledgerStorageDir}`);
     } catch {
       // 文件不存在时静默忽略
     }
@@ -772,16 +772,17 @@ export class LedgerManager {
    * 任一源文件不存在时静默跳过，不影响整体重命名流程。
    */
   private async renameLedgerAIFiles(oldName: string, newName: string): Promise<void> {
-    // 1. 迁移快照目录（v6：Documents/Moni/classify_memory/{old}/ → {new}/）
+    const ledgerStorageDir = getLedgerStorageDirectory();
+    // 1. 迁移快照目录（v6：Moni/classify_memory/{old}/ → {new}/）
     const oldSnapshotDir = `Moni/classify_memory/${oldName}`;
     const newSnapshotDir = `Moni/classify_memory/${newName}`;
     try {
       const fs = FilesystemService.getInstance();
-      const exists = await this.pathExists(oldSnapshotDir, AdapterDirectory.Documents);
+      const exists = await this.pathExists(oldSnapshotDir, ledgerStorageDir);
       if (exists) {
         const result = await fs.readdir({
           path: oldSnapshotDir,
-          directory: AdapterDirectory.Documents
+          directory: ledgerStorageDir
         });
         for (const entry of result) {
           const fileName = entry.name;
@@ -789,33 +790,30 @@ export class LedgerManager {
             const sourcePath = `${oldSnapshotDir}/${fileName}`;
             const targetPath = `${newSnapshotDir}/${fileName}`;
             if (entry.type === 'directory') {
-              await this.copyDirectoryRecursive(sourcePath, targetPath, AdapterDirectory.Documents);
+              await this.copyDirectoryRecursive(sourcePath, targetPath, ledgerStorageDir);
               continue;
             }
-            const fileContent = await fs.readFile({
+            const data = await fs.readFile({
               path: sourcePath,
-              directory: AdapterDirectory.Documents,
+              directory: ledgerStorageDir,
               encoding: AdapterEncoding.UTF8
             });
             await fs.writeFile({
               path: targetPath,
-              data: fileContent,
-              directory: AdapterDirectory.Documents,
+              data,
+              directory: ledgerStorageDir,
               encoding: AdapterEncoding.UTF8,
               recursive: true
             });
           } catch (e) {
-            console.warn(`[LedgerManager] Failed to copy snapshot file ${fileName}:`, e);
+            console.warn(`[LedgerManager] Failed to migrate snapshot item ${fileName}:`, e);
           }
         }
-        // 删除旧目录。
-        // 这里不用直接 rmdir(oldDir, recursive)，而是复用手动递归删除，
-        // 避免开发态 mock fs 因目录未清空抛 ENOTEMPTY。
-        await this.safeRemoveDir(oldSnapshotDir, AdapterDirectory.Documents);
-        console.log(`[LedgerManager] Migrated snapshot directory: ${oldName} -> ${newName}`);
+        await this.safeRemoveDir(oldSnapshotDir, ledgerStorageDir);
+        console.log(`[LedgerManager] Migrated snapshot directory for: ${oldName} -> ${newName} in ${ledgerStorageDir}`);
       }
     } catch {
-      // 源目录不存在时静默忽略
+      // 目录不存在时静默跳过
     }
 
     // 2. 迁移实例库文件（沙箱）
