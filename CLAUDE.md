@@ -4,7 +4,7 @@
 
 ## 当前阶段目标
 
-当前主线目标是完成首轮集成的剩余收口与验收。
+当前主线目标是先完成持久化口径迁移与 AI 分类链路收口，再进入后续验收。
 
 当前已完成主线能力：
 
@@ -17,6 +17,7 @@
 - 记账页（MoniEntry）已集成：导入账单、随手记、分类拖放、记一笔表单
 - 交易详情面板已集成：分类修改、锁定、备注、AI 判断理由展示、边缘滑动返回
 - 设置页已集成：MoniSettings 三页路由、全局配置（AI/自述/账本管理/关于）、账本级配置（标签/记忆/预算/学习/重分类）
+- 参赛文档已按代码现状收口：`docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已修正字段、队列、快照与数据流口径
 
 ## 当前剩余缺口
 
@@ -24,6 +25,11 @@
 - 真实 LLM 配置下的学习 / 收编回归仍未完成
 - 测试数据迁移策略与调试时钟策略仍未正式定稿
 - 默认账本可重命名语义仍需继续收口
+- 设置页全局自述保存存在假保存问题，尚未真实落盘
+- 分类消费仍是单日串行，尚未切到“最近日期优先 + 单次最多 3 天”
+- 持久化存储口径刚完成转向：目标规格已明确为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”，当前代码仍残留 Documents 与顶层散落文件混合态
+- 分类结果理由长度尚未统一限制到 `20` 个字以内
+- 规格文档已移除“代码/规格差异”维护职责，差异清单需转由会话说明与任务看板承接
 
 ## 当前任务看板
 
@@ -32,12 +38,18 @@
 | 首页主舞台集成 | Done | `homeDateRange`、`trendCard`、手记首页字段、AI backlog、无预算退化态均已落地 |
 | 随手记逻辑链路 | Done | 录入、删除、实例库联动、首页手记展示链路已接通 |
 | 预算逻辑链路 | Done | 预算配置读写、首页预算卡、预算提示卡、标签联动已接通 |
-| v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、ledger_prefs 已落地 |
+| v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、账本级 AI 行为配置已落地 |
 | 记账页集成 | Done | MoniEntry 页面、useMoniEntryData hook、AppFacade 记账读模型、导入/随手记/分类拖放/表单均已接通 |
 | 交易详情面板 | Done | TransactionDetailPanel：分类修改、锁定、备注、AI 理由、边缘滑动返回手势 |
 | 设置页集成 | Done | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由、账本管理 CRUD、AI 记忆/快照、预算设置均已接通 |
+| 参赛技术文档修订 | Done | `docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已按当前代码收口，移除旧的 `classification_source` / 三数组队列等过时口径 |
+| 持久化规格重规划 | Done | 持久化目标结构已收口为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”；规格文档不再维护代码差异段落 |
 | 浏览器调试入口与逻辑测试 | In Progress | 已接入主要调试入口与 smoke test，后续仍可继续扩覆盖面 |
 | 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
+| 持久化目录迁移 | Ready | 需将账本、自述、记忆、实例库、预算、行为配置、分类运行态统一迁到 `Directory.Data/ledgers/{ledger}/` 与顶层全局文件结构 |
+| 自述落盘修复 | Ready | 当前主设置页“保存自述”只弹 toast 未调用持久化链路；修复时需直接落到新的 `self_description.md` 口径 |
+| 分类消费批次收口 | Ready | 需实现最近日期优先、单次分类会话默认最多消费 3 天，并把队列运行态并入 `classify_runtime.json` |
+| AI 理由长度收口 | Ready | 需在 Prompt 约束与运行时写回两层同时限制 `reasoning / ai_reasoning` 不超过 20 字 |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
 | 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
 | 测试数据迁移 / 调试时钟方案 | Ready | 需明确测试账本继续迁移还是引入 debug clock |
@@ -45,10 +57,10 @@
 
 ## 当前优先级
 
-1. Android 真环境专项验收
-2. 真实 LLM 回归
-3. 测试数据迁移 / 调试时钟方案
-4. 默认账本语义收口
+1. 持久化目录迁移
+2. 自述落盘修复
+3. 分类消费批次收口
+4. AI 理由长度收口
 
 ## 当前阶段风险
 
@@ -58,12 +70,25 @@
 
 ## 当前已固定口径
 
-- `ledger_prefs/{ledger}.json` 只承接账本级 AI 行为配置
-- `budget_config/{ledger}.json` 只承接预算配置
+- `ledgers/{ledger}/ai_prefs.json` 只承接账本级 AI 行为配置
+- `ledgers/{ledger}/budget.json` 只承接预算配置
 - `defined_categories` 是账本标签主数据单一信源
-- 全局模型 / 提供方 / 主题 / 自述不进入 `ledger_prefs`
+- 全局模型 / 提供方 / 主题 / 自述不进入 `ai_prefs.json`
+- 正式运行时持久化统一写入 `Directory.Data`；`Directory.Documents` 仅作为历史迁移来源，不再作为正式落盘目标
+- 顶层只保留全局文件：`ledgers.json / secure_config.bin / self_description.md / logs`
+- 所有账本级文件统一收口到 `Directory.Data/ledgers/{ledger}/`
+- 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 `queue / enqueue_recovery / confirm_recovery`
+- 分类消费顺序本轮收口为“最近日期优先”
+- 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
+- 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
+- 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
 - `MemoryManager`、`ExampleStore`、`SelfDescriptionManager` 均为纯静态类，无 getInstance() 单例
+- 参赛文档当前固定口径：
+  - `FullTransactionRecord` 不含 `classification_source`
+  - `Arbiter` 优先级为 `USER > RULE_ENGINE > AI_AGENT`
+  - 分类队列规范结构为 `version / revision / metrics / tasks[]`
+  - 快照索引规范字段为 `current_snapshot_id`
 
 ## 已知陷阱
 

@@ -2,7 +2,7 @@
 
 **版本**: v7
 **日期**: 2026-04-08
-**状态**: 目标规格已升版至 v7；当前代码与规格差距见第十章
+**状态**: 目标规格已升版至 v7
 
 ***
 
@@ -22,9 +22,55 @@
 
 每个账本独立维护以下数据，互不干扰。
 
+### 2.0 当前统一存储根（2026-04 收口）
+
+从当前阶段开始，**所有正式运行时持久化统一写入 `Directory.Data`（应用沙箱）**，不再把任何正式数据写入 `Directory.Documents`。
+
+这次收口的含义不是“把所有文件都塞进同一个目录”，而是：
+
+- 统一根目录：所有文件都落在 `Directory.Data`
+- 统一命名空间：所有账本级数据统一收口到 `ledgers/{ledger}/`
+- 统一职责边界：账本正文、自述、记忆快照、预算、行为配置、队列、补偿、日志各自独立，不再混写
+
+**统一目录树（目标规格）**：
+
+```text
+Directory.Data/
+├── ledgers.json
+├── secure_config.bin
+├── self_description.md
+├── ledgers/
+│   └── {ledger}/
+│       ├── ledger.json
+│       ├── ai_prefs.json
+│       ├── budget.json
+│       ├── examples.json
+│       ├── example_changes.json
+│       ├── classify_runtime.json
+│       └── memory/
+│           ├── index.json
+│           └── {snapshot_id}.md
+└── logs/
+    └── llm/
+        └── {timestamp}_{batchId}.json
+```
+
+**边界冻结**：
+
+- `ledgers/{ledger}/ledger.json` 是账本主数据单一事实源
+- `ledgers/{ledger}/memory/` 是账本 AI 记忆单一事实源
+- `self_description.md` 是全局自述单一事实源
+- `ledgers.json` 只承载账本索引，不承载账本正文
+- `secure_config.bin` 只承载加密模型配置，不承载自述
+- `ledgers/{ledger}/ai_prefs.json` 只承载账本级 AI 行为配置
+- `ledgers/{ledger}/budget.json` 只承载预算配置
+- `ledgers/{ledger}/classify_runtime.json` 只承载分类运行态，不进入账本主数据 JSON
+- `logs/llm/` 属于调试日志目录，不进入账本主数据 JSON
+- 历史 `Directory.Documents` 路径只作为旧数据迁移来源，不再作为正式写入目标
+
 ### 2.1 结构化存储
 
-#### 2.1.0 账本行为配置（`ledger_prefs/{ledger}.json`）
+#### 2.1.0 账本行为配置（`ledgers/{ledger}/ai_prefs.json`）
 
 为避免学习阈值、收编阈值、压缩比例等账本级行为参数继续散落在 `LedgerMemory`、预算配置或各服务本地常量中，v7 追加一层**账本行为配置文件**。
 
@@ -32,13 +78,13 @@
 
 **边界冻结**：
 
-- `ledger_prefs/{ledger}.json` **只承接账本级 AI 行为配置**
-- 预算配置继续独立存放于 `budget_config/{ledger}.json`
+- `ledgers/{ledger}/ai_prefs.json` **只承接账本级 AI 行为配置**
+- 预算配置继续独立存放于 `ledgers/{ledger}/budget.json`
 - 标签定义继续以账本主数据 `defined_categories` 为单一信源
-- API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ledger_prefs`
-- 尚未形成明确规格的内部实现常量（如快照 GC 上限）暂不提前塞入 `ledger_prefs`
+- API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ai_prefs.json`
+- 尚未形成明确规格的内部实现常量（如快照 GC 上限）暂不提前塞入 `ai_prefs.json`
 
-**存储位置**：`Directory.Data / ledger_prefs/{ledger}.json`
+**存储位置**：`Directory.Data / ledgers/{ledger}/ai_prefs.json`
 
 **目标格式**：
 
@@ -72,8 +118,8 @@
 **账本生命周期联动**：
 
 - 账本创建时可不主动落空文件，读取时按默认值兜底
-- 账本重命名时同步迁移 `ledger_prefs/{old}.json -> ledger_prefs/{new}.json`
-- 账本删除时同步清理 `ledger_prefs/{ledger}.json`
+- 账本重命名时随账本目录整体迁移，无需单独改名
+- 账本删除时随账本目录整体清理
 
 #### 2.1.1 标签定义（`defined_categories`）
 
@@ -99,7 +145,7 @@
 2. **学习锚点**：学习 AI 以此为基准归纳规则，不会偏离用户定义的标签含义
 3. **新增标签门槛**：用户新增标签时必须写至少一句描述，这是唯一的强制交互
 
-#### 2.1.2 实例库（`classify_examples/{ledger}.json`）
+#### 2.1.2 实例库（`ledgers/{ledger}/examples.json`）
 
 存储用户修正过的或锁定确认的分类案例，作为 few-shot examples 注入分类 Prompt。
 
@@ -221,10 +267,10 @@ ai_reasoning 描述了 AI 犯错时的推理逻辑，理解它有助于避免重
 
 为了让学习 AI 看到“相对上次学习的完整实例变更”，实例库不能只维护当前态，还必须维护**revision + 变更日志**。
 
-**当前态文件**：即 `classify_examples/{ledger}.json` 主文件本身（含 `revision` 和 `entries`），不再单独维护。格式见 §2.1.2 存储格式。变更日志在同步更新中追加，不影响主文件结构。
+**当前态文件**：即 `ledgers/{ledger}/examples.json` 主文件本身（含 `revision` 和 `entries`），不再单独维护。格式见 §2.1.2 存储格式。变更日志在同步更新中追加，不影响主文件结构。
 
 
-**变更日志文件（目标规格）**：`classify_example_changes/{ledger}.json`
+**变更日志文件（目标规格）**：`ledgers/{ledger}/example_changes.json`
 
 ```json
 [
@@ -285,7 +331,7 @@ ai_reasoning 描述了 AI 犯错时的推理逻辑，理解它有助于避免重
 
 **学习基线指针（目标规格）**：
 
-- `classify_memory/{ledger}/index.json` 中维护 `last_learned_example_revision`
+- `ledgers/{ledger}/memory/index.json` 中维护 `last_learned_example_revision`
 - 学习成功后将其推进到当前实例库 `revision`
 - 学习失败时不推进，保证下次仍能拿到同一批变更
 
@@ -298,14 +344,14 @@ ai_reasoning 描述了 AI 犯错时的推理逻辑，理解它有助于避免重
 
 ### 2.2 非结构化存储
 
-#### 记忆快照目录（`classify_memory/{ledger}/`）
+#### 记忆快照目录（`ledgers/{ledger}/memory/`）
 
 AI 从用户修正行为中归纳出的模式认知。形式仍为**有序列表**，每条是一个独立信息点；但存储上不再维护“当前记忆文件”单独落盘，而是统一维护为**快照集合 + 当前指针**。
 
 **目录结构**：
 
 ```
-Documents/PixelBill/classify_memory/{ledger}/
+Directory.Data/ledgers/{ledger}/memory/
 ├── index.json
 ├── 2026-03-17_14-30-00-000.md
 ├── 2026-03-17_15-10-00-000.md
@@ -333,9 +379,9 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 **代码维护方式**：内存中为 `string[]`，读取时按行 split、去除序号前缀和空行，写入新快照时遍历加序号。用户编辑后保存时，代码无条件地按行 split + 重编号，不尝试解析任何 Markdown 结构。
 
-#### 自述文件（`PixelBill/self_description/user_profile.md`，全局）
+#### 自述文件（`self_description.md`，全局）
 
-用户手动维护的静态偏好描述，全局共享，不按账本隔离。存储于 `Documents/PixelBill/self_description/user_profile.md`，独立目录，不与账本 JSON 混放。
+用户手动维护的静态偏好描述，全局共享，不按账本隔离。存储于 `Directory.Data/self_description.md`，独立文件，不与账本数据目录混放。
 
 与记忆快照形成分层：**自述是全局人设，记忆快照是账本专属认知**。用户想告诉 AI 的通用信息（"我是西工大学生，和女朋友一起生活"）写在自述里；账本特定的分类规则由 AI 在记忆快照中自动归纳。
 
@@ -361,7 +407,7 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 | 旧字段/文件                  | 处理方式                     | 原因                                       |
 | ---------------------------- | ---------------------------- | ------------------------------------------ |
-| `userContext`                | **迁移**至 `user_profile.md` | 从加密配置中拆出，改为可直接编辑的独立文件 |
+| `userContext`                | **迁移**至 `self_description.md` | 从加密配置中拆出，改为可直接编辑的独立文件 |
 | `classify_rules/{ledger}.md` | **废弃**                     | 记忆快照同时承担规则和认知职责             |
 
 **用户编辑**：记忆区域展示当前快照内容的有序列表，用户可直接增删改任意行；保存时创建一个新的 `user_edit` 快照，并将 `current_snapshot_id` 指向它。即使用户完全破坏了格式，代码也能正确恢复为有序列表。自述区域为自由文本，无格式约束。
@@ -431,10 +477,10 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 AI 拥有 MODIFY 和 DELETE 权限，用户也能任意编辑，任何一次改动都可能导致信息丢失。因此记忆系统统一采用：**快照集合 + 当前指针 + 写后快照**。
 
-**快照存储**：正式存储目录（`Directory.Documents`），与账本记忆同目录，不再拆出单独的沙箱快照目录。
+**快照存储**：正式存储目录为 `Directory.Data/ledgers/{ledger}/memory/`，作为账本目录的一部分统一管理，不再拆成额外的顶层目录。
 
 ```
-Documents/PixelBill/classify_memory/{ledger}/
+Directory.Data/ledgers/{ledger}/memory/
 ├── index.json
 ├── 2026-03-17_14-30-00-000.md
 ├── 2026-03-17_15-10-00-000.md
@@ -516,7 +562,7 @@ Documents/PixelBill/classify_memory/{ledger}/
 - 默认压缩比例：`0.7`
 - 目标上限计算：`targetCount = floor(currentCount * 0.7)`
 - `targetCount` 是 Prompt 与结果校验使用的**不超过上限**，不要求 AI 精确输出到该条数
-- 这些参数属于账本级行为配置，统一从 `ledger_prefs/{ledger}.json` 读取；无配置文件时按默认值兜底
+- 这些参数属于账本级行为配置，统一从 `ledgers/{ledger}/ai_prefs.json` 读取；无配置文件时按默认值兜底
 
 **收编 Prompt**：
 
@@ -605,24 +651,27 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 ### 4.3 分类执行（由队列驱动）
 
-分类不再由单一入口直接触发，而是通过任务队列统一调度（队列架构详见 5.6 节）。AI Engine 从队列中逐天取出任务，执行以下流程：
+分类不再由单一入口直接触发，而是通过任务队列统一调度（队列架构详见 5.6 节）。AI Engine 从队列中按“最近日期优先”成批取出任务，执行以下流程：
 
 ```
 读取当前选中账本 currentLedger
   → 读取当前 UI 的 data range（仅作为消费许可窗口）
-  → 从 classify_queue/{currentLedger}.json 中寻找“落在当前 data range 内的最早可消费日期”
+  → 从 ledgers/{currentLedger}/classify_runtime.json 中读取 queue，筛出“落在当前 data range 内的可消费日期”
+      → 按日期倒序排序（最近日期优先）
+      → 取前 N 天组成一次分类会话；当前默认值 `N = 3`
       → 若当前范围内无可消费任务，则本轮不消费，但队列任务保留
-  → 加载该天全部交易
+  → 按所选日期批量加载这些天的全部交易
   → 并行加载：
-      ① classify_memory/{currentLedger}/ 中 current_snapshot_id 指向的快照（模式记忆）
-      ② classify_examples/{currentLedger}.json
-         → 对该天每条交易检索最多3条相关案例
+      ① ledgers/{currentLedger}/memory/ 中 current_snapshot_id 指向的快照（模式记忆）
+      ② ledgers/{currentLedger}/examples.json
+         → 对本批次每条交易检索最多3条相关案例
          → 按 `id` 去重合并为统一案例列表
       ③ defined_categories（标签定义）
-      ④ self_description/user_profile.md（自述，全局）
-  → 拼接最终 Prompt（见第六节）
+      ④ self_description.md（自述，全局）
+  → 拼接最终 Prompt（见第六节），以 `days[]` 一次注入多天交易
   → 调用 LLM
   → 解析结果 → Arbiter.ingest()（锁定条目受保护）
+  → 对本次会话中成功完成的日期逐个执行版本校验后出队
   → UI 反馈：统一展示“分类处理中 / 有未完成任务”
   → 若队列中仍存在超出当前 data range 的待处理日期，则统一提示“存在当前范围外待处理任务”
 ```
@@ -709,9 +758,9 @@ Documents/PixelBill/classify_memory/{ledger}/
 
 ```
 ┌──────────────────────────────────────────────────┐
-│             分类任务队列（按账本隔离）              │
-│  存储：沙箱 classify_queue/{ledger}.json           │
-│  每个元素 = { date }                               │
+│        分类运行态（按账本隔离，含队列与补偿）        │
+│  存储：ledgers/{ledger}/classify_runtime.json      │
+│  其中 queue[*] 的业务元素 = { date }               │
 │                                                   │
 │  队列语义：                                       │
 │  - 只表达“这一天需要再跑一次 AI 分类”              │
@@ -722,39 +771,46 @@ Documents/PixelBill/classify_memory/{ledger}/
                         ▼
 ┌──────────────────────────────────────────────────┐
 │                  AI Engine（消费者）               │
-│  当前：一次消费一天                                │
-│  未来：可一次消费多天                              │
+│  当前：一次消费最多 3 天（最近日期优先）            │
+│  后续：若需放大批次，再单独评估 token 与时延        │
 │                                                   │
-│  投喂方式统一：该天全部交易打包                    │
-│  AI 为全部交易输出分类结果                         │
+│  投喂方式统一：多天交易按 `days[]` 一次打包         │
+│  AI 为本批次全部交易输出分类结果                    │
 │  结果应用统一：ai_category 全覆盖，                │
 │              Arbiter 保护 is_verified 条目          │
 │  UI 反馈统一：仅展示“分类处理中”状态                │
 └──────────────────────────────────────────────────┘
 ```
 
-**队列持久化**：每个账本独立存于沙箱 `classify_queue/{ledger}.json`。App 重启后保留未完成任务，避免任务丢失。
+**运行态持久化**：每个账本独立存于 `ledgers/{ledger}/classify_runtime.json`。App 重启后保留未完成任务与补偿状态，避免任务丢失。
 
-**天内增量合并规则（唯一规则）**：在**当前账本队列**中，同一天只保留一个任务。反复入队同一天时，不新增第二条，视为“并入已有当日任务”。
+**天内增量合并规则（唯一规则）**：在**当前账本的 `classify_runtime.queue`** 中，同一天只保留一个任务。反复入队同一天时，不新增第二条，视为“并入已有当日任务”。
+
+**消费顺序与批次口径（当前冻结）**：
+
+- 任务消费顺序按日期倒序执行，最近日期优先
+- 单次分类会话会从当前可消费日期中截取一个批次，当前默认最大批次为 `3` 天
+- 该批次大小是当前实现常量，不进入队列元素，也不额外写入 `ai_prefs.json`
+- 后续若需要把批次大小开放给用户配置，再单独升版账本行为配置规格
 
 **来源语义归属说明（冻结）**：
 
 - “仅未分类 / 全量 / 仅受影响 / 仅该标签”这类差异，属于 **UI/触发层来源语义**
 - 它们决定：如何筛选日期、是否清理实例库、是否解锁锁定交易
-- 它们**不进入队列元素本身**
-- 队列元素业务语义始终只有 `{ date }`
+- 它们**不进入 queue 元素本身**
+- queue 元素业务语义始终只有 `{ date }`
 
 > 解释：我们不在队列中维护“条目级并集”。条目级增量由“生产前前置处理”直接落盘完成；消费时始终读取该天最新账本状态，因此天然覆盖多次解锁/重置后的并集结果。
 
 **同日并发重入保护（工程硬约束）**：
 
-- 业务语义保持不变：队列只表达 `{ date }`
+- 业务语义保持不变：`classify_runtime.queue` 只表达 `{ date }`
 - 工程实现允许附加不可见元数据（如 `revision` 或 `lastEnqueueAt`），用于并发安全，不承载业务语义
 - 消费端取队首时记录该任务版本，出队时执行“版本一致性校验”（CAS 语义）
 - 若消费期间同日再次入队导致版本变化，则本次消费完成后**不得删除该日任务**，必须保留并在下一轮继续消费（注：消费期间指的是AI引擎已经发送读入数据并发送LLM请求，到结果返回并完成后续链路触发过程的区间）
 - 目标：避免“运行中二次触发被首次消费 remove 掉”的吞任务问题
 
-**跨账本消费约束**：AI Engine 只消费当前选中账本对应的队列文件；其他账本队列保持停放，不会被后台自动处理。用户切换账本后，消费目标同步切换为新账本队列。
+**跨账本消费约束**：AI Engine 只消费当前选中账本对应的 `classify_runtime.json`；其他账本运行态保持停放，不会被后台自动处理。用户切换账本后，消费目标同步切换为新账本目录。
 
 **`data range` 约束层级（v6 新增高层约束）**：
 
@@ -806,7 +862,7 @@ UI 点击某个会生产任务的按钮
   → 调用该按钮对应的触发层接口
   → 执行该场景要求的条目级数据改写（同步落盘）
   → 计算“脏日期集合 dirtyDates”
-  → 将 dirtyDates 逐天并入 classify_queue（同日合并）
+  → 将 dirtyDates 逐天并入 `classify_runtime.queue`（同日合并）
   → 若入队成功，通知消费端开始消费（空闲则立即启动；运行中则跳过启动）
   → 结束
 ```
@@ -946,7 +1002,7 @@ UI 调用“设置页-全量重分类”接口
 - **仅通知消费型触发**：新增标签后的“现在启动分类”
 - **无副作用退出型触发**：新增标签后的“暂时跳过”
 
-**代码分离点**：触发层独立于 AI Engine。**UI 不得直接读写 `classify_queue`，也不得直接编排 `BatchProcessor` 细节，必须通过触发层暴露的按钮级接口完成。** AI Engine 只看当前账本队列中的 `{ date }`，不关心“为什么要分类”。
+**代码分离点**：触发层独立于 AI Engine。**UI 不得直接读写 `classify_runtime.json`，也不得直接编排 `BatchProcessor` 细节，必须通过触发层暴露的按钮级接口完成。** AI Engine 只看当前账本运行态中的 `queue[{ date }]`，不关心“为什么要分类”。
 
 #### 5.6.4 当前阶段实施边界（补充说明）
 
@@ -1065,9 +1121,9 @@ UI 调用“设置页-全量重分类”接口
 ```typescript
 export interface SystemPromptConfig {
   language?: string;
-  /** 用户自述（全局，来自 self_description/user_profile.md） */
+  /** 用户自述（全局，来自 self_description.md） */
   selfDescription?: string;
-  /** AI 记忆（按账本，来自 classify_memory/{ledger}/ 当前指针指向的快照） */
+  /** AI 记忆（按账本，来自 ledgers/{ledger}/memory/ 当前指针指向的快照） */
   memory?: string;
 }
 
@@ -1106,6 +1162,7 @@ The user will provide a JSON object with the following structure:
   - \`description\`: Product name or remark.
   - \`source\`: Payment source (e.g., wechat, alipay).
   - \`raw_category\`: The original category from the payment platform (for reference only).
+  - 运行时 `days` 按 `date` 倒序排列，最近日期在前；当前实现一次最多注入 3 天
 
 ### Output Format
 You MUST return a strictly valid JSON object. No markdown formatting, no introductory text.
@@ -1116,7 +1173,7 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
     {
       "id": "transaction_id",
       "category": "category_key",
-      "reasoning": "Brief explanation in ${config.language}."
+      "reasoning": "Brief explanation in ${config.language}, no more than 20 characters."
     }
   ]
 }
@@ -1129,7 +1186,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 4. **Respect self-description**: The "Self-Description" section (if present) is written by the user directly. It has the highest authority — follow it even if it conflicts with learned preferences.
 5. **Category selection**: The \`category\` field MUST strictly match a key from \`category_list\`. Do not translate, paraphrase, or invent new categories.
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
-7. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
+8. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):
@@ -1532,199 +1590,56 @@ ${JSON.stringify(currentExamples, null, 2)}`;
 
 ***
 
-## 八、代码现状复核与逻辑待办清单
+## 八、存储位置总览（当前统一规格）
 
-> **说明**：前文第 1～7 章是 **v7 目标规格**；本章只回答两件事：  
->
-> 1) 原 P2 规划里，当前代码实际上完成到了哪里；  
-> 2) 放弃旧 P1/P2/P3 迭代口径后，除 UI/UX 外，还剩哪些逻辑与测试待落地。
+### 8.1 文件分布
 
-### 8.1 原 P2 规划复核（基于当前代码）
+| 文件 | 存储位置 | Directory 枚举 | 作用域 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ledgers.json` | 沙箱根 | `Directory.Data` | 全局 | 账本索引；只记录账本列表、目录名、当前激活账本 |
+| `secure_config.bin` | 沙箱根 | `Directory.Data` | 全局 | 加密配置；保存 API Key、Provider、Model 与 UI 配置 |
+| `self_description.md` | 沙箱根 | `Directory.Data` | 全局 | 全局自述；用户手写偏好，供所有账本共享 |
+| `ledgers/{ledger}/ledger.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 账本主数据；含 `defined_categories / records / last_sync / version` |
+| `ledgers/{ledger}/ai_prefs.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 账本级 AI 行为配置；学习阈值、自动学习、收编参数 |
+| `ledgers/{ledger}/budget.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 预算配置；月预算、分类预算、schemaVersion |
+| `ledgers/{ledger}/examples.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 实例库当前态；含 `revision / entries[]` |
+| `ledgers/{ledger}/example_changes.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 实例库变更日志；供学习会话计算增量基线 |
+| `ledgers/{ledger}/classify_runtime.json` | `ledgers/{ledger}/` | `Directory.Data` | 按账本 | 分类运行态；统一承载 `queue / enqueue_recovery / confirm_recovery / revision / metrics` |
+| `ledgers/{ledger}/memory/index.json` | `ledgers/{ledger}/memory/` | `Directory.Data` | 按账本 | 记忆快照索引；含 `current_snapshot_id / snapshots / last_learned_example_revision` |
+| `ledgers/{ledger}/memory/{snapshot}.md` | `ledgers/{ledger}/memory/` | `Directory.Data` | 按账本 | 单个记忆快照正文；每行一条记忆 |
+| `logs/llm/{timestamp}_{batchId}.json` | `logs/llm/` | `Directory.Data` | 全局 | LLM 原始请求/响应日志；仅用于调试与审计 |
 
-**当前已明确落地的能力**：
+**分布原则（新口径）**：顶层只保留真正的全局文件；所有账本级文件全部收进 `ledgers/{ledger}/`，删除、重命名、迁移账本时按目录整体处理。
 
-- ✅ 队列已按账本隔离持久化，元素业务语义已冻结为 `{ date }`
-- ✅ 同日去重、空日期防御、重启后恢复、按账本聚合查看均已落地
-- ✅ 消费端已固定为“仅消费当前选中账本”
-- ✅ 消费端已具备循环消费、失败不丢任务、失败任务移到队尾、空任务安全消费
-- ✅ 已落地 CAS 版本校验，避免“消费中同日重入”误删任务
-- ✅ 已落地 AI 写回前 `is_verified` 二次校验，保护运行中新增锁定
-- ✅ CSV 自动触发、确认日期入队、recovery 补偿恢复已落地
-- ✅ 切换账本时会自动恢复 `classify_queue_recovery` 与确认重分类补偿记录
-- ✅ 删除/重命名账本时，`classify_queue` 与 `classify_queue_recovery` 已联动处理
-- ✅ 标签重命名已回归冻结口径：只改名，不重分类，不改锁定
-- ✅ 删除标签时会重置受影响交易并清理对应实例库样本，也会追加记忆失效标记
+### 8.2 账本管理器连锁变更
 
-注：协作者声称已完成v6开发测试+原pixelbill表现层剥离，以下代码框中的内容为v6残留，不能确定具体情况
+账本管理器的生命周期处理应以本节的 `Directory.Data` 单根目录结构为准：
 
-```
-**当前仅部分落地的能力**：
-
-- ⚠ 触发层已存在，但仍以“CSV 自动触发 + 确认日期入队 + recovery”通用接口为主，尚未完全重构为“每个 UI 按钮一个显式接口”
-- ⚠ 标签描述修改与删除后的渐进式重分类交互已存在，但其内部触发职责仍有一部分散落在 UI/服务层，而非完全收敛到 v6 触发层模型
-- ⚠ 设置页与重分类对话框已有相关能力，但“设置页账本区的真全量重分类入口”未在当前代码中形成与 v6 一致的清晰逻辑闭环
-
-**当前尚未落地、且已被 v6 明确定义为目标规格的能力**：
-
-- ❌ `data range` 仅约束消费、不约束生产的调度模型尚未落地
-- ❌ “范围外 backlog 的统一提示”尚未落地
-- ❌ 快照系统尚未重构为 `classify_memory/{ledger}/index.json + current_snapshot_id + 日期时间命名快照`
-- ❌ 实例库 rich schema、学习 revision 变更集、收编全量实例库注入尚未落地
-- ❌ 收编机制本体尚未落地
-- ❌ `classify_confirm_recovery` 的账本重命名/删除联动清理尚未补齐
-```
-
-
-
-### 8.2 逻辑落实与测试 Checklist（不含 UI/UX）
-
-- [ ] **重构快照存储为 v6 单一事实源**：迁移到 `classify_memory/{ledger}/index.json + snapshots/` 目录结构；创建账本即生成空快照；维护 `current_snapshot_id`
-- [ ] **重写快照生命周期规则**：快照命名改为日期时间；当前快照不可删；GC 改为“删除最旧且非当前”；回退改为仅移动指针
-- [ ] **改造 PromptBuilder 读取路径**：分类、学习、收编统一从 `current_snapshot_id` 读取当前记忆，不再依赖单独 `classify_memory/{ledger}.md`
-- [ ] **升级实例库存储结构**：在当前态文件中加入 `revision`；补充 `classify_example_changes/{ledger}.json` 变更日志
-- [ ] **实现学习基线推进机制**：在快照索引中维护 `last_learned_example_revision`；学习成功后推进，失败不推进
-- [ ] **实现学习变更集构造器**：按 revision 区间生成净变更 `upserts + deletions`；丢日志或区间不可重建时切到 `full_reconcile`
-- [ ] **统一分类/学习/收编实例注入 schema**：落地 §2.1.2 的注入区块规则，B 类单独区块 + `[错误判断]` 前缀，A+C+D 合并区块，字段名与主 JSON 保持一致
-- [ ] **落地收编机制**：实现触发条件、压缩 Prompt、全量实例库注入、快照生成、失败回退策略
-- [ ] **将触发层重构为按钮级接口**：把新增标签、删除标签两种范围、修改描述两种范围、设置页真全量重分类等动作全部收敛到独立触发接口
-- [ ] **补齐 `data range` 调度层**：只约束引擎消费范围，不影响 dirtyDates 生产、队列入队与 recovery
-- [ ] **实现范围内优先消费算法**：支持“在当前账本队列中寻找当前 `data range` 内最早可消费日期”，而不是死守队首
-- [ ] **补齐范围外 backlog 状态输出**：为消费端和状态层提供“当前范围外仍有待处理任务”的统一信号，供后续 UI 统一接入
-- [ ] **补齐 CSV 导入后的 data range 联动口径**：若产品层仍保留“导入后扩大视图范围”的行为，应明确它只是 UI 状态调整，不属于触发层职责
-- [ ] **补齐 `classify_confirm_recovery` 生命周期联动**：账本重命名/删除时同步迁移或清理确认重分类补偿文件
-- [ ] **补齐端到端测试基线**：覆盖快照迁移、revision 变更集、full_reconcile、收编、data range 调度、范围外 backlog、recovery 生命周期
-
-### 8.3 建议测试顺序
-
-- [ ] **先测底层存储**：快照迁移、当前指针、GC、账本创建空快照
-- [ ] **再测实例库学习链路**：revision、change log、delta / full_reconcile
-- [ ] **再测分类主链**：Prompt rich schema、`data range` 调度、范围外 backlog
-- [ ] **最后测重分类与恢复链路**：触发层按钮接口、确认补偿、账本生命周期联动、收编回归
-
-***
-
-## 九、存储位置总览（当前代码现状）
-
-### 9.1 文件分布
-
-| 文件                                | 存储位置                                    | Directory 枚举          | 作用域 | 说明                               |
-| --------------------------------- | --------------------------------------- | --------------------- | --- | -------------------------------- |
-| `ledgers.json`                    | 沙箱                                      | `Directory.Data`      | 全局  | 账本索引，已有                          |
-| `*.pixelbill.json`                | `Documents/PixelBill/`                  | `Directory.Documents` | 按账本 | 账本数据，已有                          |
-| `secure_config.bin`               | 沙箱                                      | `Directory.Data`      | 全局  | 加密配置（API 密钥等），已有                 |
-| `user_profile.md`                 | `Documents/PixelBill/self_description/` | `Directory.Documents` | 全局  | **新增**：自述文件，用户手写偏好，独立目录便于用户识别    |
-| `classify_memory/{ledger}.md`     | `Documents/PixelBill/classify_memory/`  | `Directory.Documents` | 按账本 | **当前实现**：AI 记忆文件 |
-| `classify_examples/{ledger}.json` | 沙箱 `classify_examples/`                 | `Directory.Data`      | 按账本 | **新增**：实例库                       |
-| `memory_snapshots/{ledger}/`      | 沙箱 `memory_snapshots/`                  | `Directory.Data`      | 按账本 | **当前实现**：记忆文件快照目录（含 index.json + snap_XXX.md） |
-| `classify_queue/{ledger}.json`    | 沙箱 `classify_queue/`                    | `Directory.Data`      | 按账本 | **新增**：分类任务队列（按账本隔离），App 重启后继续消费 |
-| `classify_queue_recovery/{ledger}.json` | 沙箱 `classify_queue_recovery/`     | `Directory.Data`      | 按账本 | **当前实现**：队列入队失败补偿恢复文件 |
-| `classify_confirm_recovery/{ledger}.json` | 沙箱 `classify_confirm_recovery/` | `Directory.Data`      | 按账本 | **当前实现**：前置改写成功但确认入队未完成时的补偿文件 |
-
-**分布原则**：用户需要直接访问/编辑的 → Documents；纯系统内部维护的 → 沙箱。
-
-### 9.2 账本管理器连锁变更
-
-现有代码中的账本管理器已经扩展了 AI 相关文件的生命周期处理，但仍是基于**当前实现存储结构**：
-
-**创建账本**：当前实现**不会**在创建账本时立即生成空快照；记忆文件、实例库、快照目录、队列文件、recovery 文件都按需创建。
+**创建账本**：创建 `ledgers/{ledger}/ledger.json` 与 `ledgers.json` 索引项；其余 `ai_prefs / budget / examples / example_changes / classify_runtime / memory` 按需创建。
 
 **删除账本**：
 
 ```
 删除账本 "{ledger}"
-  → [已有] 删除 Documents/PixelBill/{ledger}.pixelbill.json
-  → [新增] 删除 Documents/PixelBill/classify_memory/{ledger}.md（如存在）
-  → [新增] 删除 沙箱/classify_examples/{ledger}.json（如存在）
-  → [新增] 删除 沙箱/memory_snapshots/{ledger}/ 整个目录（如存在）
-  → [新增] 删除 沙箱/classify_queue/{ledger}.json（如存在）
-  → [新增] 删除 沙箱/classify_queue_recovery/{ledger}.json（如存在）
-  → [缺口] classify_confirm_recovery/{ledger}.json 当前代码尚未联动删除
-  → [已有] 更新 ledgers.json 索引
+  → 删除 Directory.Data/ledgers/{ledger}/ 整个目录
+  → 更新 ledgers.json 索引
 ```
 
 **重命名账本**：
 
 ```
 重命名账本 "{old}" → "{new}"
-  → [已有] 重命名 {old}.pixelbill.json → {new}.pixelbill.json
-  → [新增] 重命名 classify_memory/{old}.md → classify_memory/{new}.md（如存在）
-  → [新增] 重命名 classify_examples/{old}.json → classify_examples/{new}.json（如存在）
-  → [新增] 重命名 memory_snapshots/{old}/ → memory_snapshots/{new}/（如存在）
-  → [新增] 重命名 classify_queue/{old}.json → classify_queue/{new}.json（如存在）
-  → [新增] 重命名 classify_queue_recovery/{old}.json → classify_queue_recovery/{new}.json（如存在）
-  → [缺口] classify_confirm_recovery/{old}.json 当前代码尚未联动重命名
-  → [已有] 更新 ledgers.json 索引
+  → 重命名 Directory.Data/ledgers/{old}/ → Directory.Data/ledgers/{new}/
+  → 更新 ledgers.json 索引
 ```
 
-所有新增文件操作都带“如存在”判断——当前实现中，新账本可能尚未产生学习/修正，因此相关文件不一定存在。
+所有可选文件都允许按需创建——新账本在尚未发生学习、预算设置、重分类前，对应文件可能并不存在；但它们都约束在同一个账本目录内。
 
-> **注意**：自述文件（`user_profile.md`）为全局文件，不参与账本级别的生命周期管理。
-
-***
-
-## 十、与现有架构的兼容性（当前代码快照）
-
-### 10.1 已修改/新增模块状态
-
-| 模块                 | 变更内容                                                  | 状态          |
-| ------------------ | ----------------------------------------------------- | ----------- |
-| `PromptBuilder.ts` | 重构 Prompt 拼接逻辑，接入自述、当前记忆文件和实例库                    | ✅ 已完成 |
-| `SystemPrompt.ts`  | 新增 Self-Description / Learned Preferences 动态段、四级优先级层次 | ✅ 已完成 |
-| `Arbiter`          | 修正写入时同步更新实例库                                          | ✅ 已完成    |
-| `ConfigManager`    | 新增用户上下文接口，支持自述文件迁移                                    | ✅ 已完成    |
-| `SettingsPage`     | 新增 AI 记忆面板、历史版本、阈值配置                                  | ✅ 已完成    |
-| `LedgerService`    | 新增标签管理 API（增删改 + 连锁处理）；确认重分类补偿恢复                        | ✅ 已部分按 v6 落地   |
-| `ClassifyQueue`    | 分类任务队列（按账本隔离持久化、按天去重合并）                               | ✅ P2 已完成   |
-| `ClassifyTrigger`  | 触发层——CSV 自动触发、确认日期入队、recovery 管理                       | ✅ 已部分按 v6 落地   |
-
-### 10.2 新增模块状态
-
-| 模块                       | 职责                        | 路径                                            | 状态        |
-| ------------------------ | ------------------------- | --------------------------------------------- | --------- |
-| `ExampleStore`           | 实例库的 CRUD + 批量检索逻辑        | `src/core/services/ExampleStore.ts`           | ✅ 已完成  |
-| `MemoryManager`          | 记忆文件的读取、增量更新              | `src/core/services/MemoryManager.ts`          | ✅ 已完成（旧存储模型）  |
-| `SnapshotManager`        | 快照的创建、索引维护、回退执行、上限清理      | `src/core/services/SnapshotManager.ts`        | ✅ 已完成（旧快照模型）  |
-| `SelfDescriptionManager` | 自述文件的读取、写入、迁移             | `src/core/services/SelfDescriptionManager.ts` | ✅ 已完成  |
-| `LearningSession`        | 学习会话的编排（Prompt 构建、结果执行）   | `src/core/ai_engine/LearningSession.ts`       | ✅ 已完成（旧学习模型）  |
-| `ClassifyQueue`          | 分类任务队列（按账本隔离持久化、按天去重合并）   | `src/core/ai_engine/ClassifyQueue.ts`         | ✅ 已完成 |
-| `ClassifyTrigger`        | 触发层——CSV 自动触发、确认日期入队、恢复补偿 | `src/core/ai_engine/ClassifyTrigger.ts`       | ✅ 已完成（未达 v6 按钮级接口） |
-
-### 10.3 目标规格与当前代码差距
-
-**继承自 v6 的未实施项**：
-
-- **快照系统**：当前代码仍是 `classify_memory/{ledger}.md + memory_snapshots/{ledger}/` 双轨结构，尚未升级到前文的"目录内快照 + current 指针"模型
-- **实例注入字段**：当前代码中的分类 Prompt 仍注入 `created_at`，且未提供 `rawClass / paymentMethod / transactionStatus / remark`；尚未收敛到第六章 rich schema
-- **学习变更集**：当前代码尚未维护 `revision + change log + last_learned_example_revision`，因此无法按规格生成"相对上次学习的完整净变更（upserts + deletions）"
-- **收编上下文**：当前代码的收编设计尚未实现"全量实例库注入"，仍缺少利用现行实例库校验旧记忆是否过时的能力
-- **触发层接口形态**：当前 `ClassifyTrigger` 以"CSV 自动触发 + 确认日期入队 + recovery"三类接口为主，尚未完全按前文拆成"每个 UI 按钮一个显式触发接口"
-- **账本创建时空快照**：前文规格要求创建账本立即生成空快照；当前代码尚未落地
-- **快照命名与 GC**：当前代码仍使用 `snap_001` 风格和"保留最近 30 个"，尚未升级为日期时间命名与"删除最旧且非当前"
-- **`data range` 调度层**：当前代码中的 `dateRange` 仍主要是 UI 状态；消费端尚未实现"只约束消费、不约束生产"的 v6 调度模型
-- **范围外 backlog 提示**：当前代码尚未暴露"当前范围外仍有待处理任务"的统一状态信号
-- **确认重分类补偿文件生命周期**：`classify_confirm_recovery/{ledger}.json` 当前尚未在账本重命名/删除时联动迁移或清理
-
-**v7 新增的未实施项**：
-
-- **实例库存储字段名对齐**：当前 `ExampleStore` 写入实例库时使用的字段名（`tx_id`、`source`、`description`、`ai_reason`、`user_reason`）与主 JSON 字段名不一致，需统一改为 `id`、`sourceType`、`product`、`ai_reasoning`、`user_note`
-- **实例库四类来源区分**：当前 `ExampleStore.addOrUpdate()` 只区分"用户修正"和"用户锁定"两类来源，需扩展为 A/B/C/D 四类，并按对应规则填充 `ai_category`、`ai_reasoning`（B 类保留原值，不置空）
-- **实例库 B 类 `ai_reasoning` 保留**：当前代码对 B 类置空 `ai_reasoning`（v6 旧逻辑），v7 要求保留原值
-- **注入区块规则**：当前分类 Prompt 对所有实例库条目统一注入，未拆分 B 类（错误案例）单独区块。需在 `PromptBuilder` 中实现：B 类单独前置区块 + `[错误判断]` 字段前缀，A+C+D 类合并后置区块（运行时去掉 `ai_category`）
-- **D 类（手记）实例库支持**：`ExampleStore` 当前无手记条目的入库路径。需在 `ManualEntryManager.addEntry()` 落地后，于 `product` 非空时触发写入（见 `Moni_Manual_Entry_Spec_v3.md` §3.3）
-- **`SourceType` 枚举扩展**：`src/types/metadata.ts` 中 `SourceType` 需新增 `'manual'` 枚举值，并检查所有 switch/exhaustive 覆盖
-- **`LearningCorrection` 接口字段对齐**：接口字段需对应更新为 `id`、`sourceType`、`product`、`ai_category`、`ai_reasoning`、`is_verified`、`user_note`
-
-
-### 10.4 不需要修改的模块
-
-- CSV Parser
-- Mock 层
-- UI 组件（除标签管理、AI 记忆页、修正交互外）
-- 网络层 / LLMClient
+> **注意**：`self_description.md` 为全局文件，不参与账本级别的生命周期管理。
 
 ***
 
-## 十一、文档更新历史
+## 九、文档更新历史
 
 
 ### v7 (2026-04-08)
@@ -1736,8 +1651,10 @@ ${JSON.stringify(currentExamples, null, 2)}`;
 - **注入区块规则**：实例库注入分两个区块——B 类单独前置区块（双重保险：区块语义 + 字段前缀），A+C+D 类合并后置区块（运行时去掉 `ai_category`）
 - **D 类（手记）实例库支持**：`sourceType: "manual"` 条目纳入实例库，`product` 字段承载 subject，`user_note` 承载 description，检索中商户名匹配不参与，靠 `product` 和金额天然降权
 - **`LearningCorrection` 接口字段对齐**：接口字段名同步更新
-- **当前态文件与实例库主文件合并**：不再单独维护"当前态文件"，`classify_examples/{ledger}.json` 即同时承担当前态和存储角色
-- **§10.3 补充 v7 新增未实施项**：明确 `ExampleStore`、`PromptBuilder`、`SourceType` 枚举等待实施的具体改动
+- **当前态文件与实例库主文件合并**：不再单独维护“当前态文件”，`ledgers/{ledger}/examples.json` 即同时承担当前态和存储角色
+- **持久化目录重新收口**：正式运行时持久化统一写入 `Directory.Data`，顶层仅保留全局文件，账本级数据统一收口到 `ledgers/{ledger}/`
+- **分类运行态单文件化**：`queue / enqueue_recovery / confirm_recovery` 统一规划为 `ledgers/{ledger}/classify_runtime.json`
+- **规格文档职责收口**：本规格文档仅维护目标结构与目标行为，不再维护“代码/规格差异”清单
 
 ### v6 (2026-04-05)
 
@@ -1746,7 +1663,6 @@ ${JSON.stringify(currentExamples, null, 2)}`;
 - 第五章补充“生产范围超出当前消费范围时的统一提示”规格，并明确全量重分类为例外
 - 第六章将分类、学习、收编的实例注入统一为 rich schema，并新增学习 revision 变更集与收编全量实例库上下文
 - 第八章废弃旧 P1/P2/P3 路线图，改为“原 P2 规划复核 + 非 UI/UX 逻辑待办 checklist”
-- 第九、十章同步到当前代码真实状态，新增 recovery 文件、生命周期联动缺口、`data range` 调度缺口等说明
 
 ### v5.2 (2026-04-05)
 
