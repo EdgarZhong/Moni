@@ -14,6 +14,15 @@ export default defineConfig({
       { find: '@system', replacement: path.resolve(__dirname, 'src/system') },
       { find: '@shared', replacement: path.resolve(__dirname, 'src/shared') },
       { find: '@devtools', replacement: path.resolve(__dirname, 'src/devtools') },
+      /**
+       * Keyboard 插件在当前 Web/Vite 构建下没有稳定的 bundler 入口，
+       * 但项目的浏览器验证链路又需要它存在。
+       * 因此这里固定指向 mock，避免 dev / build 两套行为不一致。
+       */
+      {
+        find: '@capacitor/keyboard',
+        replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-keyboard.ts')
+      },
       ...(process.env.NODE_ENV === 'development' ? [
       {
         find: '@capacitor/filesystem',
@@ -22,10 +31,6 @@ export default defineConfig({
       {
         find: '@capacitor/core',
         replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-core.ts')
-      },
-      {
-        find: '@capacitor/keyboard',
-        replacement: path.resolve(__dirname, 'src/system/mocks/capacitor-keyboard.ts')
       },
       {
         find: '@capacitor/haptics',

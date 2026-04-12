@@ -1,16 +1,9 @@
-import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import type { LedgerMemory } from '@shared/types/metadata';
 import { classifyQueue } from './ClassifyQueue';
+import { ClassifyRuntimeStore, type StoredEnqueueRecovery } from './ClassifyRuntimeStore';
 import { normalizeToDateKey, uniqueSortedDateKeys } from './DateNormalizer';
 
-interface QueueRecoveryData {
-  version: string;
-  ledger: string;
-  dates: string[];
-  reason: string;
-  updatedAt: number;
-}
+type QueueRecoveryData = StoredEnqueueRecovery;
 
 interface EnqueueResult {
   attempted: number;
@@ -18,7 +11,6 @@ interface EnqueueResult {
   failedDates: string[];
 }
 
-const RECOVERY_DIR = 'classify_queue_recovery';
 const RECOVERY_VERSION = '1.0';
 
 export class ClassifyTrigger {
@@ -31,27 +23,11 @@ export class ClassifyTrigger {
     return ClassifyTrigger.instance;
   }
 
-  private getRecoveryPath(ledger: string): string {
-    return `${RECOVERY_DIR}/${ledger}.json`;
-  }
-
   private async readRecovery(ledger: string): Promise<QueueRecoveryData | null> {
     try {
-      const fs = FilesystemService.getInstance();
-      /**
-       * 恢复文件也是可选文件。
-       * 先 stat 再读，减少 mock fs 的 404 控制台噪音。
-       */
-      await fs.stat({
-        path: this.getRecoveryPath(ledger),
-        directory: AdapterDirectory.Data
-      });
-      const parsed = JSON.parse(await fs.readFile({
-        path: this.getRecoveryPath(ledger),
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8
-      })) as QueueRecoveryData;
-      if (!Array.isArray(parsed.dates)) {
+      const runtime = await ClassifyRuntimeStore.load(ledger);
+      const parsed = runtime.enqueue_recovery;
+      if (!parsed || !Array.isArray(parsed.dates)) {
         return null;
       }
       return {
@@ -67,34 +43,22 @@ export class ClassifyTrigger {
   }
 
   private async writeRecovery(data: QueueRecoveryData): Promise<void> {
-    const fs = FilesystemService.getInstance();
-    await fs.writeFile({
-      path: this.getRecoveryPath(data.ledger),
-      directory: AdapterDirectory.Data,
-      encoding: AdapterEncoding.UTF8,
-      recursive: true,
-      data: JSON.stringify(data, null, 2)
+    const runtime = await ClassifyRuntimeStore.load(data.ledger);
+    await ClassifyRuntimeStore.saveOrDeleteIfEmpty(data.ledger, {
+      ...runtime,
+      enqueue_recovery: {
+        ...data,
+        dates: uniqueSortedDateKeys(data.dates),
+      }
     });
   }
 
   private async clearRecovery(ledger: string): Promise<void> {
-    try {
-      const fs = FilesystemService.getInstance();
-      /**
-       * recovery 文件并非每个账本都会生成。
-       * 先 stat 再删除，避免 mock fs 在删除不存在文件时输出 404 噪音。
-       */
-      await fs.stat({
-        path: this.getRecoveryPath(ledger),
-        directory: AdapterDirectory.Data
-      });
-      await fs.deleteFile({
-        path: this.getRecoveryPath(ledger),
-        directory: AdapterDirectory.Data
-      });
-    } catch {
-      return;
-    }
+    const runtime = await ClassifyRuntimeStore.load(ledger);
+    await ClassifyRuntimeStore.saveOrDeleteIfEmpty(ledger, {
+      ...runtime,
+      enqueue_recovery: null
+    });
   }
 
   private async mergeRecoveryDates(ledger: string, failedDates: string[], reason: string): Promise<void> {

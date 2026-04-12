@@ -24,6 +24,12 @@ import { classifyQueue } from '../ai/ClassifyQueue';
 import { classifyTrigger } from '../ai/ClassifyTrigger';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import {
+  getLedgerExampleChangesPath,
+  getLedgerExamplesPath,
+  getLedgerFilePath,
+  getLedgerMemoryDirectoryPath,
+} from '@system/filesystem/persistence-paths';
 import { MemoryManager } from './MemoryManager';
 import { BudgetManager } from './BudgetManager';
 import { LedgerPreferencesManager } from './LedgerPreferencesManager';
@@ -45,7 +51,7 @@ import { LedgerPreferencesManager } from './LedgerPreferencesManager';
 export class LedgerManager {
   private static instance: LedgerManager;
 
-  // 账本数据文件目录（Documents/Moni/）
+  // 账本数据文件目录（Directory.Data/ledgers/）
   private ledgerDirHandle: StorageDirHandle | null = null;
 
   // 当前激活的账本名称
@@ -88,7 +94,7 @@ export class LedgerManager {
     this.initPromise = (async () => {
       console.log('[LedgerManager] Initializing...');
       try {
-        // 1. 获取账本数据文件目录（Documents/Moni/）
+        // 1. 获取账本数据文件目录（Directory.Data/ledgers/）
         this.ledgerDirHandle = await getAutoDirectoryHandle();
         console.log('[LedgerManager] Ledger directory initialized');
 
@@ -127,7 +133,7 @@ export class LedgerManager {
 
   /**
    * 同步索引与文件系统状态
-   * 核心逻辑：确保 ledgers.json 索引与实际 .moni.json 文件一致
+   * 核心逻辑：确保 ledgers.json 索引与实际 ledgers/{ledger}/ledger.json 文件一致
    */
   private async syncIndexWithFiles(): Promise<void> {
     console.log('[LedgerManager] Syncing index with files...');
@@ -136,7 +142,7 @@ export class LedgerManager {
       throw new Error('Ledger directory not initialized');
     }
 
-    // 1. 扫描实际文件（Documents/Moni/）
+    // 1. 扫描实际文件（Directory.Data/ledgers/）
     const actualFiles = await scanForLedgerFiles(this.ledgerDirHandle);
     console.log('[LedgerManager] Scanned ledger files:', actualFiles.map(f => f.name));
 
@@ -191,7 +197,7 @@ export class LedgerManager {
       // 添加默认账本到索引
       const defaultFile = actualFiles.find(f => f.name === DEFAULT_LEDGER_NAME) || {
         name: DEFAULT_LEDGER_NAME,
-        fileName: `${DEFAULT_LEDGER_NAME}.moni.json`,
+        fileName: getLedgerFilePath(DEFAULT_LEDGER_NAME),
         createdAt: new Date().toISOString(),
         lastOpenedAt: new Date().toISOString()
       };
@@ -449,7 +455,7 @@ export class LedgerManager {
       // 4. 更新索引
       const newLedger: LedgerMeta = {
         name: sanitizedName,
-        fileName: `${sanitizedName}.moni.json`,
+        fileName: getLedgerFilePath(sanitizedName),
         createdAt: new Date().toISOString(),
         lastOpenedAt: new Date().toISOString()
       };
@@ -598,7 +604,7 @@ export class LedgerManager {
       const now = new Date().toISOString();
       const updatedLedgers = index.ledgers.map((l: LedgerMeta) =>
         l.name === oldName
-          ? { ...l, name: sanitizedNewName, fileName: `${sanitizedNewName}.moni.json`, lastOpenedAt: now }
+          ? { ...l, name: sanitizedNewName, fileName: getLedgerFilePath(sanitizedNewName), lastOpenedAt: now }
           : l
       );
       const newActiveLedger = index.activeLedger === oldName ? sanitizedNewName : index.activeLedger;
@@ -703,17 +709,16 @@ export class LedgerManager {
 
   /**
    * 删除账本时清理所有关联的 AI 数据文件（v6 语义）
-   * - Documents/Moni/classify_memory/{ledger}/ 整个目录（含 index.json 和所有快照文件）
-   * - Documents/Moni/self_description/user_profile.md（如果存在）
-   * - 沙箱 classify_examples/{ledger}.json
-   * - 沙箱 classify_example_changes/{ledger}.json
+   * - Directory.Data/ledgers/{ledger}/memory/ 整个目录（含 index.json 和所有快照文件）
+   * - Directory.Data/ledgers/{ledger}/examples.json
+   * - Directory.Data/ledgers/{ledger}/example_changes.json
    *
    * 任一文件不存在时静默忽略，不影响整体删除流程。
    */
   private async deleteLedgerAIFiles(ledgerName: string): Promise<void> {
     const ledgerStorageDir = getLedgerStorageDirectory();
-    // 1. 删除快照目录（v6：Moni/classify_memory/{ledger}/）
-    const snapshotDir = `Moni/classify_memory/${ledgerName}`;
+    // 1. 删除快照目录（Directory.Data/ledgers/{ledger}/memory/）
+    const snapshotDir = getLedgerMemoryDirectoryPath(ledgerName);
     try {
       await this.safeRemoveDir(snapshotDir, ledgerStorageDir);
       console.log(`[LedgerManager] Deleted snapshot directory for: ${ledgerName} in ${ledgerStorageDir}`);
@@ -721,31 +726,23 @@ export class LedgerManager {
       // 目录不存在时静默忽略
     }
 
-    // 2. 删除自述文件
+    // 2. 删除实例库文件（沙箱）
     try {
-      await this.safeDeleteFile(`Moni/self_description/user_profile.md`, ledgerStorageDir);
-      console.log(`[LedgerManager] Deleted self-description file in ${ledgerStorageDir}`);
-    } catch {
-      // 文件不存在时静默忽略
-    }
-
-    // 3. 删除实例库文件（沙箱）
-    try {
-      await this.safeDeleteFile(`classify_examples/${ledgerName}.json`, AdapterDirectory.Data);
+      await this.safeDeleteFile(getLedgerExamplesPath(ledgerName), AdapterDirectory.Data);
       console.log(`[LedgerManager] Deleted examples file for: ${ledgerName}`);
     } catch {
       // 文件不存在时静默忽略
     }
 
-    // 4. 删除实例库变更日志文件（沙箱）
+    // 3. 删除实例库变更日志文件（沙箱）
     try {
-      await this.safeDeleteFile(`classify_example_changes/${ledgerName}.json`, AdapterDirectory.Data);
+      await this.safeDeleteFile(getLedgerExampleChangesPath(ledgerName), AdapterDirectory.Data);
       console.log(`[LedgerManager] Deleted example change log for: ${ledgerName}`);
     } catch {
       // 文件不存在时静默忽略
     }
 
-    // 5. 删除预算配置文件（沙箱）
+    // 4. 删除预算配置文件（沙箱）
     try {
       await BudgetManager.getInstance().deleteBudgetConfig(ledgerName);
       console.log(`[LedgerManager] Deleted budget config for: ${ledgerName}`);
@@ -753,7 +750,7 @@ export class LedgerManager {
       // 文件不存在时静默忽略
     }
 
-    // 6. 删除账本行为配置文件（沙箱）
+    // 5. 删除账本行为配置文件（沙箱）
     try {
       await LedgerPreferencesManager.getInstance().deleteLedgerPreferences(ledgerName);
       console.log(`[LedgerManager] Deleted ledger preferences for: ${ledgerName}`);
@@ -764,18 +761,18 @@ export class LedgerManager {
 
   /**
    * 重命名账本时迁移所有关联的 AI 数据文件（v6 语义）
-   * - classify_memory/{old}/ → classify_memory/{new}/（Documents，整个快照目录）
-   * - classify_examples/{old}.json → classify_examples/{new}.json（沙箱）
-   * - classify_example_changes/{old}.json → classify_example_changes/{new}.json（沙箱）
-   * - self_description/user_profile.md 保持不变（全局共享）
+   * - ledgers/{old}/memory/ → ledgers/{new}/memory/（沙箱，整个快照目录）
+   * - ledgers/{old}/examples.json → ledgers/{new}/examples.json（沙箱）
+   * - ledgers/{old}/example_changes.json → ledgers/{new}/example_changes.json（沙箱）
+   * - 全局 self_description.md 保持不变
    *
    * 任一源文件不存在时静默跳过，不影响整体重命名流程。
    */
   private async renameLedgerAIFiles(oldName: string, newName: string): Promise<void> {
     const ledgerStorageDir = getLedgerStorageDirectory();
-    // 1. 迁移快照目录（v6：Moni/classify_memory/{old}/ → {new}/）
-    const oldSnapshotDir = `Moni/classify_memory/${oldName}`;
-    const newSnapshotDir = `Moni/classify_memory/${newName}`;
+    // 1. 迁移快照目录（Directory.Data/ledgers/{old}/memory/ → {new}/memory/）
+    const oldSnapshotDir = getLedgerMemoryDirectoryPath(oldName);
+    const newSnapshotDir = getLedgerMemoryDirectoryPath(newName);
     try {
       const fs = FilesystemService.getInstance();
       const exists = await this.pathExists(oldSnapshotDir, ledgerStorageDir);
@@ -819,7 +816,7 @@ export class LedgerManager {
     // 2. 迁移实例库文件（沙箱）
     try {
       const fs = FilesystemService.getInstance();
-      const examplesPath = `classify_examples/${oldName}.json`;
+      const examplesPath = getLedgerExamplesPath(oldName);
       const exists = await this.pathExists(examplesPath, AdapterDirectory.Data);
       if (exists) {
         const exContent = await fs.readFile({
@@ -828,7 +825,7 @@ export class LedgerManager {
           encoding: AdapterEncoding.UTF8
         });
         await fs.writeFile({
-          path: `classify_examples/${newName}.json`,
+          path: getLedgerExamplesPath(newName),
           data: exContent,
           directory: AdapterDirectory.Data,
           encoding: AdapterEncoding.UTF8,
@@ -844,7 +841,7 @@ export class LedgerManager {
     // 3. 迁移实例库变更日志文件（沙箱）
     try {
       const fs = FilesystemService.getInstance();
-      const changeLogPath = `classify_example_changes/${oldName}.json`;
+      const changeLogPath = getLedgerExampleChangesPath(oldName);
       const exists = await this.pathExists(changeLogPath, AdapterDirectory.Data);
       if (exists) {
         const changeLogContent = await fs.readFile({
@@ -853,7 +850,7 @@ export class LedgerManager {
           encoding: AdapterEncoding.UTF8
         });
         await fs.writeFile({
-          path: `classify_example_changes/${newName}.json`,
+          path: getLedgerExampleChangesPath(newName),
           data: changeLogContent,
           directory: AdapterDirectory.Data,
           encoding: AdapterEncoding.UTF8,

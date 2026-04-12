@@ -49,12 +49,11 @@ The user will provide a JSON object with the following structure:
 You MUST return a strictly valid JSON object. No markdown formatting, no introductory text.
 \`\`\`json
 {
-  "date": "YYYY-MM-DD",
   "results": [
     {
       "id": "transaction_id",
       "category": "category_key",
-      "reasoning": "Brief explanation in ${config.language}."
+      "reasoning": "Brief explanation in ${config.language}, no more than 20 characters."
     }
   ]
 }
@@ -67,7 +66,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 4. **Respect self-description**: The "Self-Description" section (if present) is written by the user directly. It has the highest authority - follow it even if it conflicts with learned preferences.
 5. **Category selection**: The \`category\` field MUST strictly match a key from \`category_list\`. Do not translate, paraphrase, or invent new categories.
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
-7. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
+8. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):
@@ -79,7 +79,8 @@ When information sources conflict, follow this priority (highest to lowest):
 ### Behavioral Guidelines
 - Output strictly JSON only. No markdown fences, no introductory text.
 - Remain objective and non-judgmental about spending habits.
-- When a transaction is ambiguous, choose the most logical category. Explain your reasoning.
+- Return one flat \`results\` array for all transactions across all input days. Do not split the output by day.
+- When a transaction is ambiguous, choose the most logical category. Explain your reasoning in at most 20 characters.
 - Consider time-of-day context: consecutive transactions near the same time may be related (e.g., a small payment right after a large meal could be a supplement).
 - Never imitate a \`[错误判断]\`-prefixed \`ai_category\`. Those fields exist only to show what mistake should be avoided.
 - Manual-entry examples may have empty \`counterparty\`; when that happens, rely more on \`description\`, amount, and the confirmed \`category\`.

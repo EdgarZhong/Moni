@@ -2,7 +2,7 @@
  * SnapshotManager - 记忆快照管理（v6 架构）
  *
  * v6 核心变更：
- * 1. 快照存储：Documents/Moni/classify_memory/{ledger}/
+ * 1. 快照存储：Directory.Data/ledgers/{ledger}/memory/
  * 2. 快照命名：日期时间格式 YYYY-MM-DD_HH-mm-ss-SSS
  * 3. 当前指针：index.json 中的 current_snapshot_id
  * 4. 单一事实源：当前记忆内容始终通过 current_snapshot_id 获取
@@ -11,7 +11,7 @@
  *
  * 目录结构：
  * ```
- * Documents/Moni/classify_memory/{ledger}/
+ * Directory.Data/ledgers/{ledger}/memory/
  * ├── index.json
  * ├── 2026-03-17_14-30-00-000.md
  * ├── 2026-03-17_15-10-00-000.md
@@ -20,8 +20,13 @@
  */
 
 import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import { getLedgerStorageDirectory } from '@system/filesystem/fs-storage';
+import {
+  getLedgerMemoryDirectoryPath,
+  getLedgerMemoryIndexPath,
+  getLedgerMemorySnapshotPath,
+} from '@system/filesystem/persistence-paths';
 
 /**
  * 快照元数据
@@ -50,7 +55,6 @@ export interface SnapshotContent extends SnapshotMeta {
 }
 
 export class SnapshotManager {
-  private static readonly BASE_PATH = 'Moni/classify_memory';
   private static readonly MAX_SNAPSHOTS = 30;
   private static readonly VALID_TRIGGERS: ReadonlyArray<SnapshotMeta['trigger']> = [
     'ledger_init',
@@ -63,17 +67,17 @@ export class SnapshotManager {
   ];
 
   /**
-   * 获取账本快照目录路径（v6：Documents 目录）
+   * 获取账本快照目录路径
    */
   private static getLedgerDir(ledgerName: string): string {
-    return `${this.BASE_PATH}/${ledgerName}`;
+    return getLedgerMemoryDirectoryPath(ledgerName);
   }
 
   /**
    * 获取索引文件路径
    */
   private static getIndexPath(ledgerName: string): string {
-    return `${this.getLedgerDir(ledgerName)}/index.json`;
+    return getLedgerMemoryIndexPath(ledgerName);
   }
 
   /**
@@ -252,13 +256,14 @@ export class SnapshotManager {
         summary
       };
 
-      // 3. 保存快照文件到 Documents/Moni/classify_memory/{ledger}/{id}.md
-      const snapshotPath = `${this.getLedgerDir(ledgerName)}/${snapshotId}.md`;
+      // 3. 保存快照文件到 ledgers/{ledger}/memory/{id}.md
+      const snapshotPath = getLedgerMemorySnapshotPath(ledgerName, snapshotId);
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       await fs.writeFile({
         path: snapshotPath,
         data: content,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8,
         recursive: true
       });
@@ -311,12 +316,13 @@ export class SnapshotManager {
 
       // 删除快照文件
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       for (const snap of toDelete) {
         try {
-          const snapPath = `${this.getLedgerDir(ledgerName)}/${snap.id}.md`;
+          const snapPath = getLedgerMemorySnapshotPath(ledgerName, snap.id);
           await fs.deleteFile({
             path: snapPath,
-            directory: AdapterDirectory.Documents
+            directory
           });
         } catch (e) {
           console.warn(`[SnapshotManager] Failed to delete snapshot file ${snap.id}:`, e);
@@ -346,9 +352,10 @@ export class SnapshotManager {
     if (snapshots.length === 0) {
       try {
         const fs = FilesystemService.getInstance();
+        const directory = getLedgerStorageDirectory();
         const entries = await fs.readdir({
           path: this.getLedgerDir(ledgerName),
-          directory: AdapterDirectory.Documents
+          directory
         });
         const fallbackSnapshots = entries
           .map((entry) => entry.name)
@@ -418,12 +425,13 @@ export class SnapshotManager {
         return null;
       }
 
-      // 2. 读取内容（v6：从 Documents 目录读取）
-      const snapshotPath = `${this.getLedgerDir(ledgerName)}/${snapshotId}.md`;
+      // 2. 读取内容（从账本 memory 目录读取）
+      const snapshotPath = getLedgerMemorySnapshotPath(ledgerName, snapshotId);
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       const data = await fs.readFile({
         path: snapshotPath,
-        directory: AdapterDirectory.Documents,
+        directory,
         encoding: AdapterEncoding.UTF8
       });
 
@@ -537,12 +545,13 @@ export class SnapshotManager {
       }
 
       // 4. 删除快照文件
-      const snapshotPath = `${this.getLedgerDir(ledgerName)}/${snapshotId}.md`;
+      const snapshotPath = getLedgerMemorySnapshotPath(ledgerName, snapshotId);
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       try {
         await fs.deleteFile({
           path: snapshotPath,
-          directory: AdapterDirectory.Documents
+          directory
         });
       } catch (e) {
         console.warn(`[SnapshotManager] Failed to delete snapshot file ${snapshotId}:`, e);
@@ -571,9 +580,10 @@ export class SnapshotManager {
     try {
       const ledgerDir = this.getLedgerDir(ledgerName);
       const fs = FilesystemService.getInstance();
+      const directory = getLedgerStorageDirectory();
       await fs.rmdir({
         path: ledgerDir,
-        directory: AdapterDirectory.Documents,
+        directory,
         recursive: true
       });
       console.log(`[SnapshotManager] Cleared all snapshots for ${ledgerName}`);

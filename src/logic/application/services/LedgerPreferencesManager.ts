@@ -1,5 +1,6 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { getLedgerAiPrefsPath } from '@system/filesystem/persistence-paths';
 import type {
   LedgerCompressionPreferences,
   LedgerLearningPreferences,
@@ -16,7 +17,7 @@ import type {
  * 3. 处理账本重命名/删除时的配置文件迁移与清理
  *
  * 存储位置：
- * - Directory.Data / ledger_prefs/{ledger}.json
+ * - Directory.Data / ledgers/{ledger}/ai_prefs.json
  */
 export class LedgerPreferencesManager {
   private static instance: LedgerPreferencesManager;
@@ -158,7 +159,7 @@ export class LedgerPreferencesManager {
    * 构造配置文件路径。
    */
   private filePath(ledgerId: string): string {
-    return `ledger_prefs/${ledgerId}.json`;
+    return getLedgerAiPrefsPath(ledgerId);
   }
 
   /**

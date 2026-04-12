@@ -61,7 +61,7 @@
 
 ## 当前长期有效约束
 
-- `ledger_prefs/{ledger}.json` 只承接账本级 AI 行为配置
-- `budget_config/{ledger}.json` 只承接预算配置
+- `ledgers/{ledger}/ai_prefs.json` 只承接账本级 AI 行为配置
+- `ledgers/{ledger}/budget.json` 只承接预算配置
 - `defined_categories` 继续作为账本标签主数据单一信源
-- API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ledger_prefs`
+- API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ai_prefs.json`

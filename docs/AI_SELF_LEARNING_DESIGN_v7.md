@@ -786,6 +786,8 @@ Directory.Data/ledgers/{ledger}/memory/
 
 **天内增量合并规则（唯一规则）**：在**当前账本的 `classify_runtime.queue`** 中，同一天只保留一个任务。反复入队同一天时，不新增第二条，视为“并入已有当日任务”。
 
+**工程实现说明**：虽然命名仍沿用 `queue`，但消费模型本质上更接近“按天缓冲区”而不是严格 FIFO 队列。生产端只负责把 dirtyDates 并入运行态；消费端再按当前 `data range` 过滤，并从可消费日期中按最近日期倒序抽取最多 3 天执行。
+
 **消费顺序与批次口径（当前冻结）**：
 
 - 任务消费顺序按日期倒序执行，最近日期优先
@@ -1168,7 +1170,6 @@ The user will provide a JSON object with the following structure:
 You MUST return a strictly valid JSON object. No markdown formatting, no introductory text.
 \`\`\`json
 {
-  "date": "YYYY-MM-DD",
   "results": [
     {
       "id": "transaction_id",
@@ -1178,6 +1179,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
   ]
 }
 \`\`\`
+
+- `results` 为跨本次所有输入 `days[]` 的扁平结果数组，调用方按 `id` 回填到具体交易，不再要求按天拆分返回
 
 ### Core Responsibilities
 1. **Analyze**: Examine transaction descriptions, amounts, times, and counterparties to accurately categorize expenses.
@@ -1199,6 +1202,7 @@ When information sources conflict, follow this priority (highest to lowest):
 ### Behavioral Guidelines
 - Output strictly JSON only. No markdown fences, no introductory text.
 - Remain objective and non-judgmental about spending habits.
+- Return one flat `results` array for all transactions across all input days. Do not split the output by day.
 - When a transaction is ambiguous, choose the most logical category. Explain your reasoning.
 - Consider time-of-day context: consecutive transactions near the same time may be related (e.g., a small payment right after a large meal could be a supplement).
 ${selfDescriptionSection}${memorySection}`;

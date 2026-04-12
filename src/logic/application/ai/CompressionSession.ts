@@ -39,7 +39,7 @@ export interface CompressionContext {
  *
  * 职责：
  * 1. 读取当前记忆、账本分类体系、实例库全量
- * 2. 基于 ledger_prefs 计算收编阈值与目标上限
+ * 2. 基于 ledgers/{ledger}/ai_prefs.json 计算收编阈值与目标上限
  * 3. 调用 LLM 产出压缩后的完整编号列表
  * 4. 校验结果不超过 targetCount，并写入 ai_compress 快照
  */

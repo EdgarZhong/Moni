@@ -3,13 +3,12 @@
  *
  * 职责：
  * 1. 管理分类任务的入队/出队
- * 2. 持久化到沙箱 classify_queue/{ledger}.json（按账本隔离）
+ * 2. 持久化到 ledgers/{ledger}/classify_runtime.json（按账本隔离）
  * 3. 任务去重（仅按 date 语义）
  * 4. App 重启后恢复队列状态
  */
 
-import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { ClassifyRuntimeStore } from './ClassifyRuntimeStore';
 
 /**
  * 分类任务结构
@@ -28,16 +27,6 @@ interface LedgerQueueTask {
   enqueuedAt: number;
 }
 
-/**
- * 队列数据结构
- */
-interface QueueData {
-  version: string;
-  revision: number;
-  metrics?: LedgerQueueMetrics;
-  tasks: LedgerQueueTask[];
-}
-
 interface LedgerQueueMetrics {
   emptyTaskConsumedCount: number;
   lastEmptyTaskDate: string | null;
@@ -48,15 +37,22 @@ export interface QueuePeekSnapshot {
   revision: number;
 }
 
+/**
+ * 队列快照。
+ * 这里保留 revision，是为了让消费端能在多天批处理成功后做一次 CAS 移除，
+ * 避免处理期间若有新的生产动作插入同日期任务，被当前批次误删。
+ */
+export interface QueueLedgerSnapshot {
+  tasks: ClassifyTask[];
+  revision: number;
+}
+
 export interface QueueMetrics {
   ledger: string;
   revision: number;
   emptyTaskConsumedCount: number;
   lastEmptyTaskDate: string | null;
 }
-
-const QUEUE_DIR = 'classify_queue';
-const QUEUE_VERSION = '1.1';
 
 /**
  * 分类任务队列管理器
@@ -85,30 +81,10 @@ export class ClassifyQueue {
   // ============================================
 
   /**
-   * 获取账本队列文件路径
-   */
-  private getLedgerQueuePath(ledger: string): string {
-    return `${QUEUE_DIR}/${ledger}.json`;
-  }
-
-  /**
    * 获取当前存在队列文件的账本名列表
    */
   private async listLedgersWithQueueFile(): Promise<string[]> {
-    try {
-      const fs = FilesystemService.getInstance();
-      const files = await fs.readdir({
-        path: QUEUE_DIR,
-        directory: AdapterDirectory.Data
-      });
-
-      return files
-        .map(file => file.name)
-        .filter(fileName => fileName.endsWith('.json'))
-        .map(fileName => fileName.slice(0, -5));
-    } catch {
-      return [];
-    }
+    return ClassifyRuntimeStore.listLedgers();
   }
 
   /**
@@ -117,28 +93,14 @@ export class ClassifyQueue {
   private async loadLedger(ledger: string): Promise<void> {
     if (this.loadedLedgers.has(ledger)) return;
 
-    const queuePath = this.getLedgerQueuePath(ledger);
     try {
-      const fs = FilesystemService.getInstance();
-      /**
-       * 分类队列文件不是每个账本都会存在。
-       * 先 stat 再读，避免浏览器开发态因可选文件缺失刷出 404 噪音。
-       */
-      await fs.stat({
-        path: queuePath,
-        directory: AdapterDirectory.Data
-      });
-      const data = JSON.parse(await fs.readFile({
-        path: queuePath,
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8
-      })) as QueueData;
+      const data = await ClassifyRuntimeStore.load(ledger);
       /**
        * v5.1 收口：队列任务业务语义仅保留 { date }。
        * 这里对历史数据做向后兼容迁移，丢弃旧的 type/tag 字段。
        */
-      const normalizedTasks = Array.isArray(data.tasks)
-        ? data.tasks
+      const normalizedTasks = Array.isArray(data.queue)
+        ? data.queue
             .filter(task => typeof task?.date === 'string' && task.date.length > 0)
             .map(task => ({
               date: task.date,
@@ -148,8 +110,8 @@ export class ClassifyQueue {
       this.ledgerTasks.set(ledger, normalizedTasks);
       this.ledgerRevisions.set(ledger, Number.isFinite(data.revision) ? data.revision : 0);
       this.ledgerMetrics.set(ledger, {
-        emptyTaskConsumedCount: data.metrics?.emptyTaskConsumedCount ?? 0,
-        lastEmptyTaskDate: data.metrics?.lastEmptyTaskDate ?? null
+        emptyTaskConsumedCount: data.metrics.emptyTaskConsumedCount ?? 0,
+        lastEmptyTaskDate: data.metrics.lastEmptyTaskDate ?? null
       });
       console.log(
         `[ClassifyQueue] Loaded ${ledger}: ${normalizedTasks.length} tasks, rev=${this.ledgerRevisions.get(ledger)}`
@@ -180,21 +142,13 @@ export class ClassifyQueue {
     };
     this.ledgerMetrics.set(ledger, metrics);
     const tasks = this.ledgerTasks.get(ledger) || [];
-    const data: QueueData = {
-      version: QUEUE_VERSION,
-      revision,
-      metrics,
-      tasks
-    };
-
     try {
-      const fs = FilesystemService.getInstance();
-      await fs.writeFile({
-        path: this.getLedgerQueuePath(ledger),
-        data: JSON.stringify(data, null, 2),
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8,
-        recursive: true
+      const runtime = await ClassifyRuntimeStore.load(ledger);
+      await ClassifyRuntimeStore.saveOrDeleteIfEmpty(ledger, {
+        ...runtime,
+        revision,
+        metrics,
+        queue: tasks
       });
     } catch (e) {
       console.error(`[ClassifyQueue] Failed to save queue for ${ledger}:`, e);
@@ -206,15 +160,7 @@ export class ClassifyQueue {
    * 删除指定账本队列文件
    */
   private async deleteLedgerFile(ledger: string): Promise<void> {
-    try {
-      const fs = FilesystemService.getInstance();
-      await fs.deleteFile({
-        path: this.getLedgerQueuePath(ledger),
-        directory: AdapterDirectory.Data
-      });
-    } catch {
-      // 队列文件不存在时静默忽略
-    }
+    await ClassifyRuntimeStore.delete(ledger);
   }
 
   /**
@@ -231,16 +177,7 @@ export class ClassifyQueue {
   }
 
   private async hasLedgerQueueFile(ledger: string): Promise<boolean> {
-    try {
-      const fs = FilesystemService.getInstance();
-      await fs.stat({
-        path: this.getLedgerQueuePath(ledger),
-        directory: AdapterDirectory.Data
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    return ClassifyRuntimeStore.exists(ledger);
   }
 
   /**
@@ -386,6 +323,19 @@ export class ClassifyQueue {
   }
 
   /**
+   * 获取指定账本的“任务列表 + revision”快照。
+   * 消费端会基于这个快照做范围过滤和倒序挑批次，
+   * 因此这里刻意不改变底层存储顺序，只返回当前真实内容。
+   */
+  public async getPendingWithRevision(ledger: string): Promise<QueueLedgerSnapshot> {
+    await this.ensureLedgerLoaded(ledger);
+    return {
+      tasks: this.toPublicTasks(ledger, [...(this.ledgerTasks.get(ledger) || [])]),
+      revision: this.getCurrentRevision(ledger)
+    };
+  }
+
+  /**
    * 移除指定任务
    * @param ledger 账本名称
    * @param date 日期
@@ -430,6 +380,44 @@ export class ClassifyQueue {
     }
     await this.saveLedger(ledger, { bumpRevision: true });
     console.log(`[ClassifyQueue] CAS removed task for ${ledger}/${date} @rev=${expectedRevision}`);
+    return true;
+  }
+
+  /**
+   * 在 revision 匹配时批量移除多个日期任务。
+   * 这个接口专门服务“多天一批”的消费模型：
+   * - 生产端仍然逐天入队
+   * - 消费端可以一次处理多天
+   * - 成功后再用同一个 revision 一次性清掉本批日期
+   */
+  public async removeBatchIfRevisionMatch(
+    ledger: string,
+    dates: string[],
+    expectedRevision: number
+  ): Promise<boolean> {
+    await this.ensureLedgerLoaded(ledger);
+    const currentRevision = this.getCurrentRevision(ledger);
+    if (currentRevision !== expectedRevision) {
+      console.warn(
+        `[ClassifyQueue] Skip batch remove for ${ledger}: revision changed ${currentRevision} !== ${expectedRevision}`
+      );
+      return false;
+    }
+
+    const dateSet = new Set(dates.filter((date) => typeof date === 'string' && date.length > 0));
+    if (dateSet.size === 0) {
+      return true;
+    }
+
+    const ledgerQueue = this.ledgerTasks.get(ledger)!;
+    const nextQueue = ledgerQueue.filter((task) => !dateSet.has(task.date));
+    if (nextQueue.length === ledgerQueue.length) {
+      return false;
+    }
+
+    this.ledgerTasks.set(ledger, nextQueue);
+    await this.saveLedger(ledger, { bumpRevision: true });
+    console.log(`[ClassifyQueue] CAS removed ${dateSet.size} tasks for ${ledger} @rev=${expectedRevision}`);
     return true;
   }
 
