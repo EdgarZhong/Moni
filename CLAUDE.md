@@ -23,13 +23,9 @@
 
 - Android 真环境专项验收仍未完成
 - 真实 LLM 配置下的学习 / 收编回归仍未完成
-- 测试数据迁移策略与调试时钟策略仍未正式定稿
 - 默认账本可重命名语义仍需继续收口
-- 设置页全局自述保存存在假保存问题，尚未真实落盘
-- 分类消费仍是单日串行，尚未切到“最近日期优先 + 单次最多 3 天”
-- 持久化存储口径刚完成转向：目标规格已明确为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”，当前代码仍残留 Documents 与顶层散落文件混合态
-- 分类结果理由长度尚未统一限制到 `20` 个字以内
 - 规格文档已移除“代码/规格差异”维护职责，差异清单需转由会话说明与任务看板承接
+- 空沙箱初始化阶段仍会出现一组“可选文件不存在”的 `POST /api/fs 404` 控制台噪音，后续可再单独收敛为静默探测
 
 ## 当前任务看板
 
@@ -44,23 +40,22 @@
 | 设置页集成 | Done | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由、账本管理 CRUD、AI 记忆/快照、预算设置均已接通 |
 | 参赛技术文档修订 | Done | `docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已按当前代码收口，移除旧的 `classification_source` / 三数组队列等过时口径 |
 | 持久化规格重规划 | Done | 持久化目标结构已收口为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”；规格文档不再维护代码差异段落 |
-| 浏览器调试入口与逻辑测试 | In Progress | 已接入主要调试入口与 smoke test，后续仍可继续扩覆盖面 |
+| 浏览器调试入口与逻辑测试 | In Progress | 已补空沙箱验证、自述落盘、账本 CRUD、分类范围消费与理由截断链路，后续仍可继续扩覆盖面 |
 | 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
-| 持久化目录迁移 | Ready | 需将账本、自述、记忆、实例库、预算、行为配置、分类运行态统一迁到 `Directory.Data/ledgers/{ledger}/` 与顶层全局文件结构 |
-| 自述落盘修复 | Ready | 当前主设置页“保存自述”只弹 toast 未调用持久化链路；修复时需直接落到新的 `self_description.md` 口径 |
-| 分类消费批次收口 | Ready | 需实现最近日期优先、单次分类会话默认最多消费 3 天，并把队列运行态并入 `classify_runtime.json` |
-| AI 理由长度收口 | Ready | 需在 Prompt 约束与运行时写回两层同时限制 `reasoning / ai_reasoning` 不超过 20 字 |
+| 持久化目录迁移 | Done | 账本、自述、记忆、实例库、预算、行为配置、分类运行态已统一到 `Directory.Data` 与 `ledgers/{ledger}/` 新结构 |
+| 自述落盘修复 | Done | 设置页保存自述已接通真实持久化链路，直接写入 `self_description.md` |
+| 分类消费批次收口 | Done | 消费端已按当前 `data range` 过滤，只消费范围内最近日期倒序的最多 3 天；运行态统一写入 `classify_runtime.json` |
+| AI 理由长度收口 | Done | Prompt 与运行时写回已双重限制 `reasoning / ai_reasoning` 不超过 20 字 |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
 | 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
-| 测试数据迁移 / 调试时钟方案 | Ready | 需明确测试账本继续迁移还是引入 debug clock |
 | 默认账本语义收口 | Ready | 需确认默认账本初始名称与"可重命名"语义最终一致 |
 
 ## 当前优先级
 
-1. 持久化目录迁移
-2. 自述落盘修复
-3. 分类消费批次收口
-4. AI 理由长度收口
+1. Android 真环境专项验收
+2. 真实 LLM 回归
+3. 默认账本语义收口
+4. 控制台 404 噪音收敛
 
 ## 当前阶段风险
 
@@ -80,6 +75,8 @@
 - 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 `queue / enqueue_recovery / confirm_recovery`
 - 分类消费顺序本轮收口为“最近日期优先”
 - 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
+- `classify_runtime.json` 在工程行为上更接近“按天缓冲区”，但当前文档与代码命名继续沿用 queue 术语
+- `data range` 只约束 AI 消费，不限制 dirtyDates 生产与日期入队
 - 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`

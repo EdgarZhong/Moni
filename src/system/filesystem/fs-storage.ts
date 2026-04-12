@@ -1,6 +1,13 @@
 import { Capacitor } from '@capacitor/core';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import {
+  getLedgerFilePath,
+  LEDGER_FILE_NAME,
+  LEDGERS_INDEX_PATH,
+  LEDGERS_ROOT_DIR,
+  PERSISTENCE_DIRECTORY,
+} from '@system/filesystem/persistence-paths';
 import { format } from 'date-fns';
 import type { LedgerMemory } from '@shared/types/metadata';
 
@@ -23,7 +30,7 @@ export type StorageHandle = FileSystemFileHandle | NativeFileHandle;
 export type StorageDirHandle = FileSystemDirectoryHandle | NativeDirHandle;
 
 export const DEFAULT_LEDGER_NAME = '日常开销';
-export const MEMORY_FILE_NAME = `${DEFAULT_LEDGER_NAME}.moni.json`;
+export const MEMORY_FILE_NAME = LEDGER_FILE_NAME;
 
 /**
  * 默认分类定义
@@ -56,14 +63,12 @@ let isNativeOverride: boolean | null = null;
 export const isNativePlatform = () => isNativeOverride ?? Capacitor.isNativePlatform();
 
 /**
- * 账本主数据目录选择策略：
- * - 真机 Capacitor（android/ios）：走私有沙箱 Data，避免外部 Documents 的权限/EACCES 问题
- * - 浏览器开发态（含 mock）：继续走 Documents，保持现有调试与夹具行为
+ * 持久化目录选择策略：
+ * - 当前版本所有正式持久化统一写入 Directory.Data
+ * - 浏览器开发态 mock 也跟随同一目录，确保夹具结构与目标结构一致
  */
 export function getLedgerStorageDirectory(): AdapterDirectory {
-  const platform = typeof Capacitor.getPlatform === 'function' ? Capacitor.getPlatform() : 'web';
-  const isRealNative = Capacitor.isNativePlatform() && platform !== 'web';
-  return isRealNative ? AdapterDirectory.Data : AdapterDirectory.Documents;
+  return PERSISTENCE_DIRECTORY;
 }
 
 // Test Helpers
@@ -90,8 +95,8 @@ export const getAutoDirectoryHandle = async (): Promise<StorageDirHandle> => {
       }
     }
 
-    // 真机走 Data，浏览器开发态继续走 Documents（见 getLedgerStorageDirectory）
-    const ledgerDir = 'Moni';
+    // 正式持久化统一收口到 ledgers/ 根目录。
+    const ledgerDir = LEDGERS_ROOT_DIR;
     const ledgerDirectory = getLedgerStorageDirectory();
     try {
       await fs.mkdir({
@@ -148,40 +153,38 @@ export const getMemoryFileHandle = async (
   dirHandle: StorageDirHandle,
   create: boolean = false
 ): Promise<StorageHandle | null> => {
-  if (isNativePlatform()) {
-    const nativeDir = dirHandle as NativeDirHandle;
-    // 安全拼接路径
-    const filePath = nativeDir.path
-      ? `${nativeDir.path}/${MEMORY_FILE_NAME}`
-      : MEMORY_FILE_NAME;
+  const defaultLedgerPath = getLedgerFilePath(DEFAULT_LEDGER_NAME);
 
+  if (isNativePlatform()) {
     try {
       // 检查文件是否存在
       const fs = FilesystemService.getInstance();
       await fs.stat({
-        path: filePath,
+        path: defaultLedgerPath,
         directory: getLedgerStorageDirectory()
       });
 
       return {
         kind: 'file',
-        path: filePath,
-        name: MEMORY_FILE_NAME
+        path: defaultLedgerPath,
+        name: DEFAULT_LEDGER_NAME
       };
     } catch {
       if (create) {
         // 返回句柄，写入时会创建文件
         return {
           kind: 'file',
-          path: filePath,
-          name: MEMORY_FILE_NAME
+          path: defaultLedgerPath,
+          name: DEFAULT_LEDGER_NAME
         };
       }
       return null;
     }
   } else {
     try {
-      return await (dirHandle as FileSystemDirectoryHandle).getFileHandle(MEMORY_FILE_NAME, { create });
+      const ledgerRoot = dirHandle as FileSystemDirectoryHandle;
+      const ledgerDir = await ledgerRoot.getDirectoryHandle(DEFAULT_LEDGER_NAME, { create });
+      return await ledgerDir.getFileHandle(LEDGER_FILE_NAME, { create });
     } catch (error) {
       if (!create) return null;
       throw error;
@@ -330,14 +333,14 @@ export const scanForCSVFiles = async (
 // 账本索引管理 - Ledger Index Management
 // ============================================
 
-export const LEDGERS_INDEX_NAME = 'ledgers.json';
+export const LEDGERS_INDEX_NAME = LEDGERS_INDEX_PATH;
 
 /**
  * 账本元数据接口
  */
 export interface LedgerMeta {
   name: string;           // 账本显示名称
-  fileName: string;       // 实际文件名（{name}.moni.json）
+  fileName: string;       // 账本主数据相对路径（ledgers/{name}/ledger.json）
   createdAt: string;      // ISO 8601 格式创建时间
   lastOpenedAt: string;   // ISO 8601 格式最后打开时间
 }
@@ -357,7 +360,7 @@ export const DEFAULT_LEDGER_INDEX: LedgerIndex = {
   ledgers: [
     {
       name: DEFAULT_LEDGER_NAME,
-      fileName: MEMORY_FILE_NAME,
+      fileName: getLedgerFilePath(DEFAULT_LEDGER_NAME),
       createdAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString()
     }
@@ -463,7 +466,7 @@ export const writeLedgersIndex = async (
 
 /**
  * 获取指定账本的文件句柄
- * @param dirHandle 目录句柄（Moni 目录）
+ * @param dirHandle 目录句柄（ledgers 根目录）
  * @param ledgerName 账本名称
  * @param create 是否创建（默认 false）
  */
@@ -472,14 +475,9 @@ export const getLedgerFileHandle = async (
   ledgerName: string,
   create: boolean = false
 ): Promise<StorageHandle | null> => {
-  const fileName = `${ledgerName}.moni.json`;
+  const filePath = getLedgerFilePath(ledgerName);
 
   if (isNativePlatform()) {
-    const nativeDir = dirHandle as NativeDirHandle;
-    const filePath = nativeDir.path
-      ? `${nativeDir.path}/${fileName}`
-      : fileName;
-
     try {
       // 检查是否存在
       const fs = FilesystemService.getInstance();
@@ -491,21 +489,23 @@ export const getLedgerFileHandle = async (
       return {
         kind: 'file',
         path: filePath,
-        name: fileName
+        name: ledgerName
       };
     } catch {
       if (create) {
         return {
           kind: 'file',
           path: filePath,
-          name: fileName
+          name: ledgerName
         };
       }
       return null;
     }
   } else {
     try {
-      return await (dirHandle as FileSystemDirectoryHandle).getFileHandle(fileName, { create });
+      const ledgerRoot = dirHandle as FileSystemDirectoryHandle;
+      const ledgerDir = await ledgerRoot.getDirectoryHandle(ledgerName, { create });
+      return await ledgerDir.getFileHandle(LEDGER_FILE_NAME, { create });
     } catch (error) {
       if (!create) return null;
       throw error;
@@ -515,21 +515,16 @@ export const getLedgerFileHandle = async (
 
 /**
  * 删除账本文件
- * @param dirHandle 目录句柄（Moni 目录）
+ * @param dirHandle 目录句柄（ledgers 根目录）
  * @param ledgerName 账本名称
  */
 export const deleteLedgerFile = async (
   dirHandle: StorageDirHandle,
   ledgerName: string
 ): Promise<void> => {
-  const fileName = `${ledgerName}.moni.json`;
+  const filePath = getLedgerFilePath(ledgerName);
 
   if (isNativePlatform()) {
-    const nativeDir = dirHandle as NativeDirHandle;
-    const filePath = nativeDir.path
-      ? `${nativeDir.path}/${fileName}`
-      : fileName;
-
     try {
       const fs = FilesystemService.getInstance();
       await fs.deleteFile({
@@ -542,7 +537,7 @@ export const deleteLedgerFile = async (
     }
   } else {
     try {
-      await (dirHandle as FileSystemDirectoryHandle).removeEntry(fileName);
+      await (dirHandle as FileSystemDirectoryHandle).removeEntry(ledgerName, { recursive: true });
     } catch (e) {
       console.error('Failed to delete ledger file (Web):', e);
       throw e;
@@ -552,7 +547,7 @@ export const deleteLedgerFile = async (
 
 /**
  * 扫描目录下所有账本文件（用于重建索引）
- * @param dirHandle 目录句柄（Moni 目录）
+ * @param dirHandle 目录句柄（ledgers 根目录）
  * @returns 账本文件元数据列表
  */
 export const scanForLedgerFiles = async (
@@ -561,26 +556,34 @@ export const scanForLedgerFiles = async (
   const ledgers: LedgerMeta[] = [];
 
   if (isNativePlatform()) {
-    const nativeDir = dirHandle as NativeDirHandle;
     try {
       const fs = FilesystemService.getInstance();
-      const files = await fs.readdir({
-        path: nativeDir.path || '',
+      const ledgerDirs = await fs.readdir({
+        path: LEDGERS_ROOT_DIR,
         directory: getLedgerStorageDirectory()
       });
 
-      for (const file of files) {
-        if (file.type === 'file' && file.name.endsWith('.moni.json')) {
-          const name = file.name.replace('.moni.json', '');
-          ledgers.push({
-            name,
-            fileName: file.name,
-            createdAt: new Date(file.ctime || Date.now()).toISOString(),
-            lastOpenedAt: name === DEFAULT_LEDGER_NAME
-              ? new Date().toISOString()
-              : '1970-01-01T00:00:00.000Z'
-          });
+      for (const entry of ledgerDirs) {
+        if (entry.type !== 'directory') {
+          continue;
         }
+        const name = entry.name;
+        const ledgerFilePath = getLedgerFilePath(name);
+        const stat = await fs.stat({
+          path: ledgerFilePath,
+          directory: getLedgerStorageDirectory()
+        }).catch(() => null);
+        if (!stat || stat.type !== 'file') {
+          continue;
+        }
+        ledgers.push({
+          name,
+          fileName: ledgerFilePath,
+          createdAt: new Date(stat.ctime || Date.now()).toISOString(),
+          lastOpenedAt: name === DEFAULT_LEDGER_NAME
+            ? new Date().toISOString()
+            : '1970-01-01T00:00:00.000Z'
+        });
       }
     } catch (e) {
       console.error('Failed to scan ledger files (Native):', e);
@@ -588,12 +591,18 @@ export const scanForLedgerFiles = async (
   } else {
     const webDir = dirHandle as FileSystemDirectoryHandle;
     for await (const entry of webDir.values()) {
-      if (entry.kind === 'file' && entry.name.endsWith('.moni.json')) {
-        const file = await (entry as FileSystemFileHandle).getFile();
-        const name = file.name.replace('.moni.json', '');
+      if (entry.kind === 'directory') {
+        const ledgerDir = entry as FileSystemDirectoryHandle;
+        const name = ledgerDir.name;
+        let file: File;
+        try {
+          file = await (await ledgerDir.getFileHandle(LEDGER_FILE_NAME)).getFile();
+        } catch {
+          continue;
+        }
         ledgers.push({
           name,
-          fileName: file.name,
+          fileName: getLedgerFilePath(name),
           createdAt: new Date(file.lastModified).toISOString(),
           lastOpenedAt: name === DEFAULT_LEDGER_NAME
             ? new Date().toISOString()

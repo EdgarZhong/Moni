@@ -1495,7 +1495,7 @@ const AIMemoryPanel: React.FC<AIMemoryPanelProps> = ({
   const [isSavingMemories, setIsSavingMemories] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotContent | null>(null);
   /**
-   * 阈值滑杆现在接到 ledger_prefs。
+   * 阈值滑杆现在接到账本目录下的 ai_prefs.json。
    * 这里用一个“是否已完成首轮水合”的标记，避免 loadPanelData 刚把配置读进来，
    * useEffect 又立刻把相同值当成用户修改重新写回磁盘。
    */
@@ -1545,7 +1545,7 @@ const AIMemoryPanel: React.FC<AIMemoryPanelProps> = ({
   }, [ledgerName]);
 
   /**
-   * 将学习阈值静默持久化到 ledger_prefs。
+   * 将学习阈值静默持久化到账本目录下的 ai_prefs.json。
    * 当前 UI 仍保持原来的滑杆交互，不额外新增按钮，
    * 只是把原先的本地状态接成真实账本级配置。
    */
@@ -2120,7 +2120,7 @@ const SettingItemRow: React.FC<SettingItemRowProps> = ({
  * 预算配置面板组件
  *
  * 提供月度总预算配置 + 分类预算配置（按规格 §7.2/7.3）。
- * 保存后立即通过 BudgetManager 写入沙箱 budget_config/{ledger}.json。
+ * 保存后立即通过 BudgetManager 写入 ledgers/{ledger}/budget.json。
  */
 interface BudgetConfigPanelProps {
   ledgerName: string;

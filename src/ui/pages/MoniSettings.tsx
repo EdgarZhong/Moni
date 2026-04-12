@@ -1057,8 +1057,20 @@ function AIConfigPage({
   );
 }
 
-function SelfDescPage({ onBack, text, onChange }: { onBack: () => void; text: string; onChange: (value: string) => void }) {
+function SelfDescPage({
+  onBack,
+  text,
+  onChange,
+  onSave,
+}: {
+  onBack: () => void;
+  text: string;
+  onChange: (value: string) => void;
+  onSave: (value: string) => Promise<void>;
+}) {
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -1069,11 +1081,26 @@ function SelfDescPage({ onBack, text, onChange }: { onBack: () => void; text: st
           footer={
             <Btn
               onClick={() => {
-                setSaved(true);
-                window.setTimeout(() => setSaved(false), 2000);
+                /**
+                 * 自述页必须走真实持久化链路。
+                 * 这里不再只弹 toast，而是等待 AppFacade 完成写盘后再提示成功。
+                 */
+                void (async () => {
+                  setSaving(true);
+                  setSaveError("");
+                  try {
+                    await onSave(text);
+                    setSaved(true);
+                    window.setTimeout(() => setSaved(false), 2000);
+                  } catch {
+                    setSaveError("自述保存失败，请重试");
+                  } finally {
+                    setSaving(false);
+                  }
+                })();
               }}
             >
-              保存
+              {saving ? "保存中…" : "保存"}
             </Btn>
           }
         >
@@ -1102,6 +1129,7 @@ function SelfDescPage({ onBack, text, onChange }: { onBack: () => void; text: st
             }}
           />
           <div style={{ marginTop: 8, textAlign: "right", fontSize: 11, color: C.sub }}>{text.length}/200</div>
+          {saveError ? <div style={{ marginTop: 8, fontSize: 12, color: C.coral }}>{saveError}</div> : null}
         </FormCard>
       </div>
       <Toast visible={saved} message="自述已保存" />
@@ -2613,8 +2641,9 @@ export default function MoniSettings({
       updateActiveModel,
       updateMaxTokens,
       updateTemperature,
-      updateEnableThinking,
-      testConnection,
+        updateEnableThinking,
+        testConnection,
+        saveSelfDescription,
     },
   } = useMoniSettingsData();
   const [aiEngineStatus, setAiEngineStatus] = useState<string>("IDLE");
@@ -2877,7 +2906,14 @@ export default function MoniSettings({
           />
         );
       case "selfDesc":
-        return <SelfDescPage onBack={() => setPage("root")} text={selfDescription} onChange={setSelfDescription} />;
+        return (
+          <SelfDescPage
+            onBack={() => setPage("root")}
+            text={selfDescription}
+            onChange={setSelfDescription}
+            onSave={saveSelfDescription}
+          />
+        );
       case "ledgerManage":
         return (
           <LedgerManagePage

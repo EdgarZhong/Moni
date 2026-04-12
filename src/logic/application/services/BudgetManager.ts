@@ -2,7 +2,7 @@
  * BudgetManager — 预算配置持久化 + 逻辑层
  *
  * 按规格文档 Moni_Budget_System_Spec_v2 终版冻结实现：
- * - 持久化：独立文件 budget_config/{ledger}.json（Directory.Data）
+ * - 持久化：独立文件 ledgers/{ledger}/budget.json（Directory.Data）
  * - 逻辑：computeMonthlyBudgetSummary / computeCategoryBudgetSummary / getBudgetHints
  * - 标签联动：invalidateCategoryBudgets / migrateCategoryBudgetKey
  * - 账本生命周期：deleteBudgetConfig / renameBudgetConfig
@@ -12,6 +12,7 @@
 
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import { getLedgerBudgetPath } from '@system/filesystem/persistence-paths';
 import type { LedgerMemory, FullTransactionRecord } from '@shared/types/metadata';
 import type {
   BudgetConfig,
@@ -72,7 +73,7 @@ export class BudgetManager implements BudgetStore, BudgetService {
 
   /** 构造存储路径 */
   private filePath(ledgerId: string): string {
-    return `budget_config/${ledgerId}.json`;
+    return getLedgerBudgetPath(ledgerId);
   }
 
   private createEmptyConfig(): BudgetConfig {
@@ -95,21 +96,12 @@ export class BudgetManager implements BudgetStore, BudgetService {
   /** 序列化并写入配置文件 */
   private async write(ledgerId: string, config: BudgetConfig): Promise<void> {
     const fs = FilesystemService.getInstance();
-    // 确保目录存在
-    try {
-      await fs.mkdir({
-        path: 'budget_config',
-        directory: AdapterDirectory.Data,
-        recursive: true,
-      });
-    } catch {
-      // 目录已存在，忽略
-    }
     await fs.writeFile({
       path: this.filePath(ledgerId),
       data: JSON.stringify(config, null, 2),
       directory: AdapterDirectory.Data,
       encoding: AdapterEncoding.UTF8,
+      recursive: true,
     });
   }
 

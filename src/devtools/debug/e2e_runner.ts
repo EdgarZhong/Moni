@@ -16,6 +16,12 @@ import {
 import { MemoryManager } from '@logic/application/services/MemoryManager';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory } from '@system/adapters/IFilesystemAdapter';
+import {
+  getLedgerAiPrefsPath,
+  getLedgerExampleChangesPath,
+  getLedgerExamplesPath,
+  getLedgerMemoryDirectoryPath,
+} from '@system/filesystem/persistence-paths';
 import type {
   BudgetConfig,
   CategoryBudgetEntry,
@@ -293,8 +299,8 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
 
     /**
      * 先写入一条真实随手记，确保该临时账本已经生成：
-     * - classify_examples/{ledger}.json
-     * - classify_example_changes/{ledger}.json
+     * - ledgers/{ledger}/examples.json
+     * - ledgers/{ledger}/example_changes.json
      *
      * 否则后面的重命名 / 删除只能测到账本主文件，测不到实例库增量文件生命周期。
      */
@@ -317,9 +323,9 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
     );
 
     const beforeRenameFiles = {
-      snapshotDir: await pathExists(`Moni/classify_memory/${createdLedger}`, AdapterDirectory.Documents),
-      examples: await pathExists(`classify_examples/${createdLedger}.json`, AdapterDirectory.Data),
-      changeLog: await pathExists(`classify_example_changes/${createdLedger}.json`, AdapterDirectory.Data),
+      snapshotDir: await pathExists(getLedgerMemoryDirectoryPath(createdLedger), AdapterDirectory.Data),
+      examples: await pathExists(getLedgerExamplesPath(createdLedger), AdapterDirectory.Data),
+      changeLog: await pathExists(getLedgerExampleChangesPath(createdLedger), AdapterDirectory.Data),
     };
     assertStep(
       report,
@@ -335,13 +341,13 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
         ratio: 0.7,
       },
     });
-    const prefsBeforeRename = await pathExists(`ledger_prefs/${createdLedger}.json`, AdapterDirectory.Data);
+    const prefsBeforeRename = await pathExists(getLedgerAiPrefsPath(createdLedger), AdapterDirectory.Data);
     assertStep(
       report,
       'ledgerPrefsCreatedBeforeRename',
       prefsBeforeRename,
       { createdLedger, prefsBeforeRename },
-      '写入账本行为配置后，应生成 ledger_prefs/{ledger}.json'
+      '写入账本行为配置后，应生成 ledgers/{ledger}/ai_prefs.json'
     );
 
     const afterCreateList = await ledgerManager.listLedgers({ syncWithFiles: false });
@@ -383,14 +389,14 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
     );
 
     const afterRenameFiles = {
-      oldSnapshotDir: await pathExists(`Moni/classify_memory/${createdLedger}`, AdapterDirectory.Documents),
-      newSnapshotDir: await pathExists(`Moni/classify_memory/${renamedLedger}`, AdapterDirectory.Documents),
-      oldExamples: await pathExists(`classify_examples/${createdLedger}.json`, AdapterDirectory.Data),
-      newExamples: await pathExists(`classify_examples/${renamedLedger}.json`, AdapterDirectory.Data),
-      oldChangeLog: await pathExists(`classify_example_changes/${createdLedger}.json`, AdapterDirectory.Data),
-      newChangeLog: await pathExists(`classify_example_changes/${renamedLedger}.json`, AdapterDirectory.Data),
-      oldPrefs: await pathExists(`ledger_prefs/${createdLedger}.json`, AdapterDirectory.Data),
-      newPrefs: await pathExists(`ledger_prefs/${renamedLedger}.json`, AdapterDirectory.Data),
+      oldSnapshotDir: await pathExists(getLedgerMemoryDirectoryPath(createdLedger), AdapterDirectory.Data),
+      newSnapshotDir: await pathExists(getLedgerMemoryDirectoryPath(renamedLedger), AdapterDirectory.Data),
+      oldExamples: await pathExists(getLedgerExamplesPath(createdLedger), AdapterDirectory.Data),
+      newExamples: await pathExists(getLedgerExamplesPath(renamedLedger), AdapterDirectory.Data),
+      oldChangeLog: await pathExists(getLedgerExampleChangesPath(createdLedger), AdapterDirectory.Data),
+      newChangeLog: await pathExists(getLedgerExampleChangesPath(renamedLedger), AdapterDirectory.Data),
+      oldPrefs: await pathExists(getLedgerAiPrefsPath(createdLedger), AdapterDirectory.Data),
+      newPrefs: await pathExists(getLedgerAiPrefsPath(renamedLedger), AdapterDirectory.Data),
     };
     assertStep(
       report,
@@ -422,10 +428,10 @@ async function runLedgerCrudTest(): Promise<DebugTestReport> {
     assertStep(report, 'deleteLedger', deleted, { renamedLedger }, '应能删除临时账本');
 
     const afterDeleteFiles = {
-      snapshotDir: await pathExists(`Moni/classify_memory/${renamedLedger}`, AdapterDirectory.Documents),
-      examples: await pathExists(`classify_examples/${renamedLedger}.json`, AdapterDirectory.Data),
-      changeLog: await pathExists(`classify_example_changes/${renamedLedger}.json`, AdapterDirectory.Data),
-      prefs: await pathExists(`ledger_prefs/${renamedLedger}.json`, AdapterDirectory.Data),
+      snapshotDir: await pathExists(getLedgerMemoryDirectoryPath(renamedLedger), AdapterDirectory.Data),
+      examples: await pathExists(getLedgerExamplesPath(renamedLedger), AdapterDirectory.Data),
+      changeLog: await pathExists(getLedgerExampleChangesPath(renamedLedger), AdapterDirectory.Data),
+      prefs: await pathExists(getLedgerAiPrefsPath(renamedLedger), AdapterDirectory.Data),
     };
     assertStep(
       report,
@@ -994,7 +1000,7 @@ async function runLearningAutomationSpecTest(): Promise<DebugTestReport> {
       'persistInitialLearningPrefs',
       savedPrefs.learning.threshold === 2 && savedPrefs.learning.autoLearn === true,
       savedPrefs.learning,
-      '学习阈值与 autoLearn 应写入 ledger_prefs'
+      '学习阈值与 autoLearn 应写入 ledgers/{ledger}/ai_prefs.json'
     );
 
     const seededId = await manualManager.addEntry(tempLedger, {
@@ -1145,7 +1151,7 @@ async function runCompressionSpecTest(): Promise<DebugTestReport> {
         context.targetCount === 21 &&
         context.currentExamples.length >= 1,
       context,
-      '收编上下文应读取 ledger_prefs，并按 floor(currentCount * 0.7) 计算 targetCount'
+      '收编上下文应读取 ledgers/{ledger}/ai_prefs.json，并按 floor(currentCount * 0.7) 计算 targetCount'
     );
 
     const parsed = CompressionSession.parseOutput(

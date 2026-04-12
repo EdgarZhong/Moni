@@ -2,7 +2,7 @@
  * MemoryManager - 记忆文件管理模块（v6 架构）
  *
  * v6 核心变更：
- * 1. 记忆文件路径：Documents/Moni/classify_memory/{ledger}/current_snapshot_id.md
+ * 1. 记忆文件路径：Directory.Data/ledgers/{ledger}/memory/{current_snapshot_id}.md
  * 2. 单一事实源：当前记忆始终通过 SnapshotManager.getCurrentId() 获取
  * 3. 写后快照：每次 save() 后自动创建快照并更新 current_snapshot_id
  * 4. 读取逻辑：通过 current_snapshot_id 读取对应快照文件

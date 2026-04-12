@@ -133,8 +133,9 @@ npm run lint
 
 当前首页真实账本使用：
 
-- `virtual_android_filesys/Documents_path/Moni/*.moni.json`
 - `virtual_android_filesys/sandbox_path/ledgers.json`
+- `virtual_android_filesys/sandbox_path/ledgers/{ledger}/ledger.json`
+- `virtual_android_filesys/sandbox_path/self_description.md`
 
 ### 使用要求
 
@@ -172,7 +173,7 @@ npm run lint
   - 即便 dev server 正常，也可能只是预算配置、分类队列等可选文件不存在时的探测读；这类 404 会污染浏览器控制台，但不一定表示账本主文件加载失败
 - 如果首页初始化报文件系统错误
   - 先确认开发态 alias 已生效
-  - 再确认 `virtual_android_filesys/Documents_path/Moni` 与 `virtual_android_filesys/sandbox_path` 是否存在目标文件
+  - 再确认 `virtual_android_filesys/sandbox_path/ledgers` 与 `virtual_android_filesys/sandbox_path/ledgers.json` 是否存在目标文件
 
 ### 当前剩余集成风险
 
@@ -194,7 +195,7 @@ npm run lint
 
 作用：
 
-- 扫描 `virtual_android_filesys/Documents_path/Moni/*.moni.json`
+- 扫描 `virtual_android_filesys/sandbox_path/ledgers/*/ledger.json`
 - 将英文分类键改写为中文：
   - `meal -> 正餐`
   - `snack -> 零食`

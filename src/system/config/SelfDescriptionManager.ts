@@ -2,7 +2,7 @@
  * SelfDescriptionManager - 用户自述文件管理
  *
  * 职责：
- * 1. 管理用户自述文件（Documents/Moni/self_description/user_profile.md）
+ * 1. 管理用户自述文件（Directory.Data/self_description.md）
  * 2. 从 secure_config.bin 迁移 userContext 到独立文件
  * 3. 提供读写接口供 ConfigManager 使用
  *
@@ -14,9 +14,9 @@
 
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
-import { getLedgerStorageDirectory } from '@system/filesystem/fs-storage';
+import { SELF_DESCRIPTION_PATH } from '@system/filesystem/persistence-paths';
 
-const FILE_PATH = 'Moni/self_description/user_profile.md';
+const FILE_PATH = SELF_DESCRIPTION_PATH;
 
 export class SelfDescriptionManager {
   /**
@@ -31,10 +31,9 @@ export class SelfDescriptionManager {
       }
 
       const fs = FilesystemService.getInstance();
-      const directory = getLedgerStorageDirectory();
       const data = await fs.readFile({
         path: FILE_PATH,
-        directory,
+        directory: AdapterDirectory.Data,
         encoding: AdapterEncoding.UTF8
       });
       return data;
@@ -51,11 +50,10 @@ export class SelfDescriptionManager {
   public static async save(content: string): Promise<void> {
     try {
       const fs = FilesystemService.getInstance();
-      const directory = getLedgerStorageDirectory();
       await fs.writeFile({
         path: FILE_PATH,
         data: content,
-        directory,
+        directory: AdapterDirectory.Data,
         encoding: AdapterEncoding.UTF8,
         recursive: true
       });
@@ -71,10 +69,9 @@ export class SelfDescriptionManager {
   public static async exists(): Promise<boolean> {
     try {
       const fs = FilesystemService.getInstance();
-      const directory = getLedgerStorageDirectory();
       await fs.stat({
         path: FILE_PATH,
-        directory
+        directory: AdapterDirectory.Data
       });
       return true;
     } catch {
@@ -101,7 +98,7 @@ export class SelfDescriptionManager {
 
     try {
       await this.save(oldUserContext);
-      console.log('[SelfDescriptionManager] Migrated userContext to user_profile.md');
+      console.log('[SelfDescriptionManager] Migrated userContext to self_description.md');
       return true;
     } catch (e) {
       console.error('[SelfDescriptionManager] Migration failed:', e);
@@ -117,7 +114,7 @@ export class SelfDescriptionManager {
       const fs = FilesystemService.getInstance();
       await fs.deleteFile({
         path: FILE_PATH,
-        directory: AdapterDirectory.Documents
+        directory: AdapterDirectory.Data
       });
     } catch (e) {
       console.warn('[SelfDescriptionManager] Failed to delete:', e);

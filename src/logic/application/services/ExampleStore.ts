@@ -1,5 +1,9 @@
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
+import {
+  getLedgerExampleChangesPath,
+  getLedgerExamplesPath,
+} from '@system/filesystem/persistence-paths';
 import type { FullTransactionRecord, SourceType, TransactionStatus } from '@shared/types/metadata';
 
 export type ExampleKind = 'A' | 'B' | 'C' | 'D';
@@ -99,16 +103,14 @@ export interface LearningExampleDelta {
 type MealTime = 'breakfast' | 'lunch' | 'dinner' | 'other';
 
 export class ExampleStore {
-  private static readonly BASE_PATH = 'classify_examples';
-  private static readonly CHANGE_LOG_BASE_PATH = 'classify_example_changes';
   private static readonly ERROR_PREFIX = '[错误判断] ';
 
   private static getFilePath(ledgerName: string): string {
-    return `${this.BASE_PATH}/${ledgerName}.json`;
+    return getLedgerExamplesPath(ledgerName);
   }
 
   private static getChangeLogPath(ledgerName: string): string {
-    return `${this.CHANGE_LOG_BASE_PATH}/${ledgerName}.json`;
+    return getLedgerExampleChangesPath(ledgerName);
   }
 
   public static async exists(ledgerName: string): Promise<boolean> {

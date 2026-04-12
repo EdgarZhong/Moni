@@ -49,7 +49,7 @@ export interface AutoLearningEvent {
  * LearningAutomationService - 自动学习协调层
  *
  * 职责：
- * 1. 统一读取 ledger_prefs.learning 配置
+ * 1. 统一读取 ledgers/{ledger}/ai_prefs.json 中的 learning 配置
  * 2. 基于实例库 delta 与学习基线计算“当前待学习量”
  * 3. 避免多个入口在同一账本上重复并发触发学习
  * 4. 在真正调用 LearningSession 前做最基础的模型配置检查

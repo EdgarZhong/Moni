@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { Capacitor } from '@capacitor/core';
+import type { KeyboardListenerHandle } from '@capacitor/keyboard';
 
 /**
  * Hook to detect if the software keyboard is visible.
@@ -20,8 +21,8 @@ export function useKeyboard() {
       });
 
       return () => {
-        void showListener.then((l) => l.remove());
-        void hideListener.then((l) => l.remove());
+        void showListener.then((listener: KeyboardListenerHandle) => listener.remove());
+        void hideListener.then((listener: KeyboardListenerHandle) => listener.remove());
       };
     } else {
       // Browser fallback

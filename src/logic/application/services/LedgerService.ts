@@ -5,8 +5,6 @@ import {
   writeMemoryFile,
   DEFAULT_MEMORY
 } from '@system/filesystem/fs-storage';
-import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import type { StorageHandle, StorageDirHandle } from '@system/filesystem/fs-storage';
 import type { Transaction } from '@shared/types';
 import type { LedgerMemory, FullTransactionRecord } from '@shared/types/metadata';
@@ -21,6 +19,7 @@ import { classifyTrigger } from '../ai/ClassifyTrigger';
 import { normalizeToDateKey } from '../ai/DateNormalizer';
 import { BudgetManager } from './BudgetManager';
 import { LearningAutomationService } from '../ai/LearningAutomationService';
+import { ClassifyRuntimeStore } from '../ai/ClassifyRuntimeStore';
 
 export interface LedgerState {
   rawTransactions: Transaction[];
@@ -85,7 +84,6 @@ export class LedgerService {
   public static readonly CATEGORY_NAME_MAX_LENGTH = 50;
   public static readonly CATEGORY_DESCRIPTION_MAX_LENGTH = 120;
   private static readonly RESERVED_CATEGORY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
-  private static readonly PENDING_RECLASSIFY_DIR = 'classify_confirm_recovery';
   private static readonly PENDING_RECLASSIFY_VERSION = '1.0';
   private state: LedgerState = { ...DEFAULT_STATE };
   private listeners: Set<() => void> = new Set();
@@ -246,15 +244,11 @@ export class LedgerService {
 
   /**
    * 获取当前账本名称
-   * 从 memoryFileHandle 的文件名中提取
+   * 优先使用 memoryFileHandle 上的账本名语义。
    */
   public getCurrentLedgerName(): string | null {
     if (!this.memoryFileHandle) return null;
-
-    // 文件名格式: {ledgerName}.moni.json
-    const fileName = this.memoryFileHandle.name;
-    const match = fileName.match(/^(.+)\.moni\.json$/);
-    return match ? match[1] : null;
+    return this.memoryFileHandle.name || null;
   }
 
   private applyPatch(patch: PersistencePatch, prevMemory: LedgerMemory) {
@@ -1904,28 +1898,11 @@ export class LedgerService {
     return { updatedRecords, affectedTxIds };
   }
 
-  private getPendingReclassifyPath(ledger: string): string {
-    return `${LedgerService.PENDING_RECLASSIFY_DIR}/${ledger}.json`;
-  }
-
   private async readPendingReclassifyRecovery(ledger: string): Promise<PendingReclassifyRecovery | null> {
     try {
-      const fs = FilesystemService.getInstance();
-      /**
-       * 待重分类恢复文件按需生成，缺失是正常状态。
-       * 这里先探测存在性，避免浏览器开发态误报 404。
-       */
-      await fs.stat({
-        path: this.getPendingReclassifyPath(ledger),
-        directory: AdapterDirectory.Data
-      });
-      const data = await fs.readFile({
-        path: this.getPendingReclassifyPath(ledger),
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8
-      });
-      const parsed = JSON.parse(data) as PendingReclassifyRecovery;
-      if (!Array.isArray(parsed.dirtyDates) || !parsed.mutation) {
+      const runtime = await ClassifyRuntimeStore.load(ledger);
+      const parsed = runtime.confirm_recovery as PendingReclassifyRecovery | null;
+      if (!parsed || !Array.isArray(parsed.dirtyDates) || !parsed.mutation) {
         return null;
       }
       return {
@@ -1942,24 +1919,19 @@ export class LedgerService {
   }
 
   private async writePendingReclassifyRecovery(data: PendingReclassifyRecovery): Promise<void> {
-    await FilesystemService.getInstance().writeFile({
-      path: this.getPendingReclassifyPath(data.ledger),
-      directory: AdapterDirectory.Data,
-      encoding: AdapterEncoding.UTF8,
-      recursive: true,
-      data: JSON.stringify(data, null, 2)
+    const runtime = await ClassifyRuntimeStore.load(data.ledger);
+    await ClassifyRuntimeStore.saveOrDeleteIfEmpty(data.ledger, {
+      ...runtime,
+      confirm_recovery: data
     });
   }
 
   private async clearPendingReclassifyRecovery(ledger: string): Promise<void> {
-    try {
-      await FilesystemService.getInstance().deleteFile({
-        path: this.getPendingReclassifyPath(ledger),
-        directory: AdapterDirectory.Data
-      });
-    } catch {
-      return;
-    }
+    const runtime = await ClassifyRuntimeStore.load(ledger);
+    await ClassifyRuntimeStore.saveOrDeleteIfEmpty(ledger, {
+      ...runtime,
+      confirm_recovery: null
+    });
   }
 
   /**
