@@ -1,0 +1,11 @@
+{
+  "ledgers": [
+    {
+      "name": "日常开销",
+      "fileName": "ledgers/日常开销/ledger.json",
+      "createdAt": "2026-04-12T09:47:00.265Z",
+      "lastOpenedAt": "2026-04-12T09:47:00.265Z"
+    }
+  ],
+  "activeLedger": "日常开销"
+}
