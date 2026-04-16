@@ -1,0 +1,12 @@
+{
+  "current_snapshot_id": "2026-04-12_17-47-15-302",
+  "snapshots": [
+    {
+      "id": "2026-04-12_17-47-15-302",
+      "timestamp": "2026-04-12T09:47:15.302Z",
+      "trigger": "migration",
+      "summary": "历史快照补建"
+    }
+  ],
+  "last_learned_example_revision": 0
+}
