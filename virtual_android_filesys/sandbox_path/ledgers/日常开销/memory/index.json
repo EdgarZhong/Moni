@@ -1,12 +1,24 @@
 {
-  "current_snapshot_id": "2026-04-12_17-47-15-302",
+  "current_snapshot_id": "2026-04-16_17-27-29-807",
   "snapshots": [
     {
       "id": "2026-04-12_17-47-15-302",
       "timestamp": "2026-04-12T09:47:15.302Z",
       "trigger": "migration",
       "summary": "历史快照补建"
+    },
+    {
+      "id": "2026-04-16_17-26-15-069",
+      "timestamp": "2026-04-16T09:26:15.069Z",
+      "trigger": "ai_learn",
+      "summary": "学习会话：revision 0 -> 5"
+    },
+    {
+      "id": "2026-04-16_17-27-29-807",
+      "timestamp": "2026-04-16T09:27:29.807Z",
+      "trigger": "user_edit",
+      "summary": "user_edit 触发的记忆更新"
     }
   ],
-  "last_learned_example_revision": 0
+  "last_learned_example_revision": 7
 }

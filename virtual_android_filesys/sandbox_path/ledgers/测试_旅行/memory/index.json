@@ -1,0 +1,12 @@
+{
+  "current_snapshot_id": "2026-04-16_17-28-48-512",
+  "snapshots": [
+    {
+      "id": "2026-04-16_17-28-48-512",
+      "timestamp": "2026-04-16T09:28:48.512Z",
+      "trigger": "ledger_init",
+      "summary": "账本初始化"
+    }
+  ],
+  "last_learned_example_revision": 0
+}
