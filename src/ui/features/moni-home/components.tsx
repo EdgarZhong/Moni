@@ -77,6 +77,21 @@ export interface ControlUpdateRef {
   move: (clientY: number) => void;
 }
 
+/**
+ * 首页金额展示格式化。
+ *
+ * 这里不改变业务层真实数值，只在展示层做统一收口：
+ * 1. 消除浮点运算后偶发出现的超长小数尾巴
+ * 2. 最多保留两位小数
+ * 3. 整数不强制补零，避免视觉上过于拥挤
+ */
+function formatCurrencyAmount(value: number): string {
+  return new Intl.NumberFormat("zh-CN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 // ──────────────────────────────────────────────
 // 纯视觉组件
 // ──────────────────────────────────────────────
@@ -564,7 +579,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
             </span>
           )}
         </div>
-        <span style={{ fontSize: 12, color: C.coral, fontFamily: "'Space Mono',monospace", fontWeight: 500 }}>−¥{total}</span>
+        <span style={{ fontSize: 12, color: C.coral, fontFamily: "'Space Mono',monospace", fontWeight: 500 }}>−¥{formatCurrencyAmount(total)}</span>
       </div>
 
       {/* 收起摘要行 */}
@@ -614,8 +629,22 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                 </div>
                 {/* 中间：商户名 + 分类徽章 + AI 理由 + 时间支付方式 */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>{item.n}</span>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: C.dark,
+                        flex: "1 1 120px",
+                        minWidth: 0,
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {item.n}
+                    </span>
                     <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 999, background: C.blueBg, color: "#3A6EA5" }}>
                       {item.sourceLabel ?? "来源未知"}
                     </span>
@@ -635,7 +664,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                   </div>
                 </div>
                 {/* 右侧金额 */}
-                <div style={{ fontSize: 14, fontWeight: 600, color: category ? C.dark : "#D85A30", flexShrink: 0, marginLeft: 8, fontFamily: "'Space Mono',monospace" }}>¥{item.a}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: category ? C.dark : "#D85A30", flexShrink: 0, marginLeft: 8, fontFamily: "'Space Mono',monospace" }}>¥{formatCurrencyAmount(item.a)}</div>
               </div>
             );
           })}

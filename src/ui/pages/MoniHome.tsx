@@ -771,7 +771,18 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       setDragPoint({ x: event.clientX, y: event.clientY });
       resolveHoverCategory(event.clientX, event.clientY);
     };
-    const handlePointerEnd = (event: PointerEvent) => {
+    /**
+     * 只有用户真实抬手（pointerup）时才允许提交分类。
+     *
+     * 真机触摸流里，系统可能因为手势仲裁、滚动接管、来电/通知、WebView 自身策略等原因
+     * 触发 pointercancel。此前这里把 pointercancel 与 pointerup 共用同一套逻辑，
+     * 导致“手指尚未松开，只是移动到分类框上方”时，一旦收到 cancel，
+     * 就会错误地把当前 hover 分类当成最终 drop 结果提交。
+     *
+     * 桌面浏览器用鼠标时通常只会在真实松手后触发 pointerup，
+     * 因此 DevTools 移动端模拟很难稳定复现这个问题。
+     */
+    const handlePointerUp = (event: PointerEvent) => {
       const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-drop-category]");
       const category = target?.getAttribute("data-drop-category") ?? hoverCategoryRef.current;
       if (category) {
@@ -784,13 +795,24 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       setHoverCategory(null);
       hoverCategoryRef.current = null;
     };
+    /**
+     * pointercancel 只表示当前触摸流被中断，不代表用户完成了放手。
+     * 因此这里必须无条件取消拖拽，不能提交任何分类结果。
+     */
+    const handlePointerCancel = () => {
+      unlockDragScroll();
+      setDragItem(null);
+      setDragPoint(null);
+      setHoverCategory(null);
+      hoverCategoryRef.current = null;
+    };
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
     };
   }, [dragItem, handleDropCategory, resolveHoverCategory, unlockDragScroll]);
 

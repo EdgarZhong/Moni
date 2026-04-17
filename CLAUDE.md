@@ -6,6 +6,13 @@
 
 当前主线目标是先完成持久化口径迁移与 AI 分类链路收口，再进入后续验收。
 
+当前新增阶段目标：
+
+- 产出一个给评委演示使用的 Android release APK
+- 演示包需内置当前 `virtual_android_filesys/sandbox_path` 全量沙盒数据（含 `secure_config.bin`）
+- 演示包首次安装打开时直接落到正式 `Directory.Data`，不要求评委手工导入
+- Android App Icon 需使用仓库现有 `public/icon.svg` 对应图标，不再走默认自适应裁切图标
+
 当前已完成主线能力：
 
 - 首页主舞台读模型已接入真实账本数据
@@ -23,7 +30,6 @@
 
 - Android 真环境专项验收仍未完成
 - 真实 LLM 配置下的学习 / 收编回归仍未完成
-- 默认账本可重命名语义仍需继续收口
 - 规格文档已移除“代码/规格差异”维护职责，差异清单需转由会话说明与任务看板承接
 - 空沙箱初始化阶段仍会出现一组“可选文件不存在”的 `POST /api/fs 404` 控制台噪音，后续可再单独收敛为静默探测
 
@@ -40,7 +46,6 @@
 | 设置页集成 | Done | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由、账本管理 CRUD、AI 记忆/快照、预算设置均已接通 |
 | 参赛技术文档修订 | Done | `docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已按当前代码收口，移除旧的 `classification_source` / 三数组队列等过时口径 |
 | 持久化规格重规划 | Done | 持久化目标结构已收口为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”；规格文档不再维护代码差异段落 |
-| 浏览器调试入口与逻辑测试 | In Progress | 已补空沙箱验证、自述落盘、账本 CRUD、分类范围消费与理由截断链路，后续仍可继续扩覆盖面 |
 | 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
 | 持久化目录迁移 | Done | 账本、自述、记忆、实例库、预算、行为配置、分类运行态已统一到 `Directory.Data` 与 `ledgers/{ledger}/` 新结构 |
 | 自述落盘修复 | Done | 设置页保存自述已接通真实持久化链路，直接写入 `self_description.md` |
@@ -48,13 +53,14 @@
 | AI 理由长度收口 | Done | Prompt 与运行时写回已双重限制 `reasoning / ai_reasoning` 不超过 20 字 |
 | Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
 | 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
-| 默认账本语义收口 | Ready | 需确认默认账本初始名称与"可重命名"语义最终一致 |
+| 默认账本语义收口 | Done | 默认账本初始名称固定为 `日常开销`，且已支持重命名 |
+| 评委演示安装包 | In Progress | 当前口径已收敛为：release APK 内置当前 `sandbox_path` 全量数据，首启自动写入 `Directory.Data`，并改用现有 App Icon 静态位图 |
 
 ## 当前优先级
 
 1. Android 真环境专项验收
-2. 真实 LLM 回归
-3. 默认账本语义收口
+2. 评委演示安装包
+3. 真实 LLM 回归
 4. 控制台 404 噪音收敛
 
 ## 当前阶段风险
@@ -72,6 +78,9 @@
 - 正式运行时持久化统一写入 `Directory.Data`；`Directory.Documents` 仅作为历史迁移来源，不再作为正式落盘目标
 - 顶层只保留全局文件：`ledgers.json / secure_config.bin / self_description.md / logs`
 - 所有账本级文件统一收口到 `Directory.Data/ledgers/{ledger}/`
+- 评委演示包当前固定口径：APK 随包携带由 `virtual_android_filesys/sandbox_path` 生成的 demo seed，原生首启仅在正式沙盒为空时自动导入，避免覆盖已有用户数据
+- Android 安装打包链路已建成，可按当前工程状态随时产出安装包
+- Android App Icon 当前固定口径：以 `public/icon.svg` 为唯一信源，生成 launcher icon 时必须保持原图构图与装饰位置，不允许使用会导致错位/裁切的渲染链
 - 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 `queue / enqueue_recovery / confirm_recovery`
 - 分类消费顺序本轮收口为“最近日期优先”
 - 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
@@ -80,6 +89,8 @@
 - 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
+- 端到端测试仅在用户明确指令下开启
+- 默认账本初始名称固定为 `日常开销`，且允许用户后续重命名
 - `MemoryManager`、`ExampleStore`、`SelfDescriptionManager` 均为纯静态类，无 getInstance() 单例
 - 参赛文档当前固定口径：
   - `FullTransactionRecord` 不含 `classification_source`
