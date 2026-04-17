@@ -4,17 +4,17 @@
 
 :root {
   font-family: 'Space Mono', monospace;
-  /* 默认深色主题变量 */
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #111111;
-  --bg-card: #111111;
-  --text-primary: #d1d5db;
-  --text-secondary: #6b7280;
-  --border-color: #374151;
-  --scrollbar-track: #0a0a0a;
-  --scrollbar-thumb: #333;
-  --scrollbar-thumb-hover: #555;
-  --dot-color: #333;
+  /* 当前主线 App 已切到暖色全屏画布，根层默认值也要同步，避免出现黑边漏底。 */
+  --bg-primary: #f5f0eb;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --text-primary: #222222;
+  --text-secondary: #888888;
+  --border-color: #dddddd;
+  --scrollbar-track: #f5f0eb;
+  --scrollbar-thumb: #d1c7be;
+  --scrollbar-thumb-hover: #b9aea5;
+  --dot-color: rgba(34, 34, 34, 0.12);
 }
 
 /* 亮色主题 */
@@ -36,10 +36,31 @@ html.light {
   color: var(--text-primary);
 }
 
+html,
 body {
   margin: 0;
+  width: 100%;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
+  background-color: #f5f0eb;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  background: #f5f0eb;
 }
 
 /* Custom Scrollbar for Webkit */

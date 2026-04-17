@@ -42,6 +42,7 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
     status: 'idle',
     activeLedger: FALLBACK_LEDGER.id,
     activeDate: null,
+    activeDates: [],
     hasPendingInRange: false,
     hasPendingOutOfRange: false,
     pendingCount: 0,

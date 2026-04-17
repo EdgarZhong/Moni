@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, OVERVIEW_COLORS } from "./config";
+import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, LEDGER_HEADER_CONTROL_WIDTH, OVERVIEW_COLORS } from "./config";
 import { getCategory, seededShapes, type OverviewItem } from "./helpers";
 
 // ──────────────────────────────────────────────
@@ -173,6 +173,65 @@ export function Logo() {
   );
 }
 
+interface LedgerHeaderControlProps {
+  ledgerName: string;
+  onClick?: () => void;
+  ariaLabel?: string;
+}
+
+/**
+ * LedgerHeaderControl — 首页与记账页共用的账本选择器外观。
+ *
+ * 这次专门抽出来，是因为用户明确要求两页右上角的“日常开销”必须
+ * 在位置、宽度、圆角和排版上完全一致；不能再各写一份近似样式。
+ */
+export function LedgerHeaderControl({ ledgerName, onClick, ariaLabel }: LedgerHeaderControlProps) {
+  const interactive = typeof onClick === "function";
+
+  return (
+    <div
+      onClick={onClick}
+      aria-label={ariaLabel}
+      style={{
+        width: LEDGER_HEADER_CONTROL_WIDTH,
+        height: 34,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 6,
+        padding: "0 14px",
+        borderRadius: 999,
+        background: C.white,
+        border: `1.8px solid ${C.dark}`,
+        color: C.dark,
+        fontSize: 13,
+        fontWeight: 700,
+        lineHeight: 1,
+        cursor: interactive ? "pointer" : "default",
+        boxShadow: "0 1px 0 rgba(0,0,0,.04)",
+        userSelect: "none",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          textAlign: "center",
+        }}
+      >
+        {ledgerName}
+      </span>
+      <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <path d="M2 3.8L5 6.8L8 3.8" stroke={C.dark} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
 /** NavIcon — 底部导航中央品牌 M 图标 */
 export function NavIcon() {
   return (
@@ -319,6 +378,11 @@ interface DisplayBoardProps {
   trendWindowLabel: string;
   hasEarlierTrendWindow: boolean;
   hasLaterTrendWindow: boolean;
+  /**
+   * 当前趋势图正在进行的拖拽预览位移。
+   * 图表先跟手偏移，松手后由页面容器折算成最终的日期窗口偏移。
+   */
+  trendDragOffsetPx: number;
   onManualSwitch: (index: number) => void;
   onTrendForward: () => void;
   onTrendBackward: () => void;
@@ -344,6 +408,7 @@ export function DisplayBoard({
   trendWindowLabel,
   hasEarlierTrendWindow,
   hasLaterTrendWindow,
+  trendDragOffsetPx,
   onManualSwitch,
   onTrendForward,
   onTrendBackward,
@@ -400,6 +465,10 @@ export function DisplayBoard({
               height="58"
               viewBox={`0 0 ${chartTrackWidth} 58`}
               preserveAspectRatio="none"
+              style={{
+                transform: `translateX(${trendDragOffsetPx}px)`,
+                transition: trendDragOffsetPx === 0 ? "transform .18s ease-out" : "none",
+              }}
             >
               <polyline
                 points={trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / safeTrendMax) * 42}`).join(" ")}
@@ -418,7 +487,14 @@ export function DisplayBoard({
           </div>
           <div style={{ width: "100%", overflow: "hidden" }}>
             <div
-              style={{ display: "flex", fontSize: 8, color: "#BBB", width: chartTrackWidth }}
+              style={{
+                display: "flex",
+                fontSize: 8,
+                color: "#BBB",
+                width: chartTrackWidth,
+                transform: `translateX(${trendDragOffsetPx}px)`,
+                transition: trendDragOffsetPx === 0 ? "transform .18s ease-out" : "none",
+              }}
             >
               {trendData.map((item) => (
                 <span key={item.key} style={{ width: chartStep, flexShrink: 0, textAlign: "center" }}>{item.label}</span>

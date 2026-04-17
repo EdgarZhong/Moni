@@ -68,6 +68,7 @@ src/
 - 主仓库已迁移到 `bootstrap / logic / system / ui / shared`
 - 首页主舞台读模型、随手记逻辑链路、预算逻辑链路、v7 记忆核心链路均已接入主线
 - 浏览器调试入口、Playwright / MCP 验证链路已固定为稳定开发测试工具
+- 当前项目语境中的 `E2E` 默认指 agent 通过 `Playwright MCP` 在浏览器开发态执行自动化页面验证
 - Android 安装打包链路已建成，可随时产出安装包做后续验证或演示
 - 默认账本初始名称固定为 `日常开销`，且支持后续重命名
 
@@ -107,6 +108,13 @@ npm run lint
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：
 
 - [docs/Moni_E2E_RECORD_INT1.md](D:/Code/Moni/docs/Moni_E2E_RECORD_INT1.md)
+
+当前默认 E2E 测试画像：
+
+- 工具：`Playwright MCP`
+- 环境：浏览器开发态
+- 默认移动端视口：以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
+- “一图一测试”只适用于这套浏览器自动化链路，不等同于 Android 安装包人工验收
 
 ## 浏览器 F12 测试系统
 

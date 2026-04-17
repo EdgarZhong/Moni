@@ -85,7 +85,7 @@ export class BatchProcessor {
   private static instance: BatchProcessor;
   private mutex = new AsyncMutex();
   private status: AIStatus = 'IDLE';
-  private progress: AIProgress = { total: 0, current: 0, currentDate: '' };
+  private progress: AIProgress = { total: 0, current: 0, currentDate: '', currentDates: [] };
   private eventListeners: { [K in keyof BatchProcessorEventMap]?: ((data: BatchProcessorEventMap[K]) => void)[] } = {};
   private shouldStop = false;
   private proposalHandler?: (txId: string, proposal: Proposal) => void;
@@ -316,7 +316,7 @@ export class BatchProcessor {
     }
 
     this.shouldStop = false;
-    this.updateState('ANALYZING', { total: 0, current: 0, currentDate: '' });
+    this.updateState('ANALYZING', { total: 0, current: 0, currentDate: '', currentDates: [] });
 
     return this.mutex.dispatch(async () => {
       try {
@@ -345,7 +345,7 @@ export class BatchProcessor {
 
         if (initialTotal === 0) {
           console.log('[MONI_AI_DEBUG][BatchProcessor] No in-range tasks to consume, returning IDLE.');
-          this.updateState('IDLE', { total: 0, current: 0, currentDate: '' });
+          this.updateState('IDLE', { total: 0, current: 0, currentDate: '', currentDates: [] });
           return { success: true, processedCount: 0, errors: [] };
         }
 
@@ -375,7 +375,12 @@ export class BatchProcessor {
           this.updateState('ANALYZING', {
             total: initialTotal,
             current: currentIndex,
-            currentDate: batchDates[0]
+            currentDate: batchDates[0],
+            /**
+             * 引擎层显式暴露“当前批次到底有哪些日期”。
+             * UI 层后续应只消费这个正式接口，不要再根据 DEFAULT_MAX_PARALLEL_DAYS 或队列结构自行猜。
+             */
+            currentDates: batchDates
           });
 
           const memory = await this.readLedgerMemory(ledgerName);
@@ -453,12 +458,12 @@ export class BatchProcessor {
         }
 
         console.log(`[MONI_AI_DEBUG][BatchProcessor] Run completed. Processed: ${processedCount}, Errors: ${allErrors.length}`);
-        this.updateState('IDLE');
+        this.updateState('IDLE', { currentDate: '', currentDates: [] });
         return { success: allErrors.length === 0, processedCount, errors: allErrors };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error('[MONI_AI_DEBUG][BatchProcessor] Fatal error in run():', errMsg);
-        this.updateState('ERROR');
+        this.updateState('ERROR', { currentDates: [] });
         return { success: false, processedCount: 0, errors: [errMsg] };
       }
     });

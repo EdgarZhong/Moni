@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BOTTOM_NAV_PADDING_BOTTOM, C, PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from "@ui/features/moni-home/config";
+import {
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
+  BOTTOM_NAV_PADDING_BOTTOM,
+  C,
+  PHONE_FRAME_HEIGHT_CSS,
+  PHONE_FRAME_WIDTH_CSS,
+} from "@ui/features/moni-home/config";
 import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { useKeyboard } from "@ui/hooks/useKeyboard";
@@ -276,7 +283,8 @@ function SubPageHeader({ title, onBack }: { title: string; onBack: () => void })
         display: "flex",
         alignItems: "center",
         gap: 8,
-        padding: "14px 16px 10px",
+        padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+        minHeight: APP_HEADER_MIN_HEIGHT,
         position: "sticky",
         top: 0,
         zIndex: 10,
@@ -542,10 +550,6 @@ function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: 
         style={{
           textAlign: "center",
           padding: "4px 16px",
-          borderRadius: 14,
-          background: C.blueBg,
-          border: `1px solid ${C.blue}35`,
-          boxShadow: "inset 0 0 0 1px rgba(255,255,255,.35)",
         }}
       >
         <GearIcon active />
@@ -600,10 +604,32 @@ function SettingsRoot({
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {/* 设置首页顶栏也切到共享组件，确保三页切换时顶部结构稳定。 */}
-      <div style={{ position: "sticky", top: 0, zIndex: 10, background: C.bg, padding: "14px 16px 8px", borderBottom: `1px solid ${C.border}22` }}>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: C.bg,
+          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+          minHeight: APP_HEADER_MIN_HEIGHT,
+          borderBottom: `1px solid ${C.border}22`,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Logo />
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.dark }}>设置</div>
+          <div
+            style={{
+              minWidth: 84,
+              display: "flex",
+              justifyContent: "flex-end",
+              color: C.dark,
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            设置
+          </div>
         </div>
       </div>
       <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
@@ -612,7 +638,7 @@ function SettingsRoot({
           <SettingRow icon="👤" label="自述" desc="让 AI 了解你的消费习惯" onClick={() => onNavigate("selfDesc")} />
           <SettingRow icon="📚" label="账本管理" value={`${ledgerCount} 个账本`} onClick={() => onNavigate("ledgerManage")} />
           <SettingRow icon="📤" label="数据导出" desc="导出账单数据" value="P2" />
-          <SettingRow icon="ℹ️" label="关于" desc="Moni v0.1.0" onClick={() => onNavigate("about")} />
+          <SettingRow icon="ℹ️" label="关于" desc="Moni v0.2.0" onClick={() => onNavigate("about")} />
         </SectionCard>
         <SectionCard title={`📒 账本：${currentLedgerName || "未选择账本"}`} subtitle="当前账本配置">
           <SettingRow icon="🏷️" label="标签管理" value={customTagCount ? `${customTagCount} 个` : "未设置"} onClick={() => onNavigate("tagManage")} />
@@ -2586,7 +2612,7 @@ function AboutPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontSize: 22, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif", marginBottom: 4 }}>Moni</div>
         <div style={{ fontSize: 12, color: C.sub, marginBottom: 20 }}>AI 原生个人财务助手</div>
         <div style={{ fontSize: 12, color: C.muted, textAlign: "center", lineHeight: 1.7 }}>越用越聪明的记账伙伴。<br />导入账单，浏览流水，顺手纠错，AI 自动学会。</div>
-        <div style={{ marginTop: 28, fontSize: 11, color: C.muted }}>版本 0.1.0 · 构建于 2026-04</div>
+        <div style={{ marginTop: 28, fontSize: 11, color: C.muted }}>版本 0.2.0 · 构建于 2026-04</div>
         <div style={{ marginTop: 20, display: "flex", gap: 16 }}>
           {["反馈", "文档", "致谢"].map((text) => (
             <div key={text} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 12, color: C.sub, cursor: "pointer" }}>
@@ -3026,18 +3052,15 @@ export default function MoniSettings({
     <div
       style={{
         width: PHONE_FRAME_WIDTH_CSS,
-        margin: "0 auto",
+        maxWidth: "100vw",
+        margin: 0,
         background: C.bg,
-        borderRadius: 24,
-        border: `2.5px solid ${C.dark}`,
         overflow: "hidden",
         position: "relative",
         fontFamily: "'Nunito', -apple-system, sans-serif",
         height: PHONE_FRAME_HEIGHT_CSS,
         display: "flex",
         flexDirection: "column",
-        paddingTop: "env(safe-area-inset-top)",
-        boxShadow: "0 20px 60px rgba(0,0,0,.18)",
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />

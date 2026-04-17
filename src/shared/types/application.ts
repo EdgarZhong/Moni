@@ -104,7 +104,16 @@ export interface HomeDayGroupReadModel {
 export interface HomeAiEngineUiState {
   status: 'idle' | 'running' | 'draining' | 'paused' | 'error';
   activeLedger: string;
+  /**
+   * 当前批次的首日。
+   * 保留这个字段，方便旧 UI 或日志快速拿到一个代表性日期。
+   */
   activeDate: string | null;
+  /**
+   * 当前 AI 引擎明确声明“正在处理”的完整日期集合。
+   * 首页日卡高亮必须消费这个接口，而不是默认写死 1 天或 3 天。
+   */
+  activeDates: string[];
   hasPendingInRange: boolean;
   hasPendingOutOfRange: boolean;
   pendingCount: number;

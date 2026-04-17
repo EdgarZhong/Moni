@@ -7,7 +7,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AUTO_CAROUSEL_MS,
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
   C,
+  LEDGER_HEADER_CONTROL_WIDTH,
   MANUAL_IDLE_LOCK_MS,
   MANUAL_RESUME_MS,
   PHONE_FRAME_HEIGHT_CSS,
@@ -22,6 +25,7 @@ import {
   DisplayBoard,
   DragOverlay,
   HintCard,
+  LedgerHeaderControl,
   Logo,
   OverviewCard,
   ReasonDialog,
@@ -46,6 +50,15 @@ interface SwipeState {
   ex: number;
   ey: number;
   axis: "vertical" | "horizontal" | null;
+}
+
+interface TrendDragState extends SwipeState {
+  /**
+   * 趋势图当前跟手预览位移。
+   * 我们先在 UI 层做有限位移预览，松手后再折算成真实日期偏移，
+   * 让用户感知到“自由滑动”，而不是每次只触发一个固定步长。
+   */
+  offsetPx: number;
 }
 
 interface PressState {
@@ -342,6 +355,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
   const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
+  const [trendDragOffsetPx, setTrendDragOffsetPx] = useState(0);
 
   const [controlOpen, setControlOpen] = useState(false);
   const [controlHit, setControlHit] = useState<string | null>(null);
@@ -360,7 +374,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlRef = useRef<HTMLDivElement>(null);
   const boardSwipeRef = useRef<SwipeState | null>(null);
-  const trendSwipeRef = useRef<SwipeState | null>(null);
+  const trendSwipeRef = useRef<TrendDragState | null>(null);
   const pressRef = useRef<PressState | null>(null);
   const hoverCategoryRef = useRef<string | null>(null);
   const dragLockRef = useRef<DragLock | null>(null);
@@ -370,8 +384,14 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const primaryHint = hintCards[0] ?? null;
   const aiStop = aiEngineUiState.status === "draining" || optimisticStopping;
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining" || optimisticStopping;
-  const aiCurrentDate = aiEngineUiState.activeDate;
+  const aiCurrentDates = aiEngineUiState.activeDates;
   const currentLedgerName = currentLedger.name || availableLedgers.find((ledger) => ledger.id === currentLedger.id)?.name || "未设置账本";
+  /**
+   * 趋势图每跨一格对应一天。
+   * 这里复用 DisplayBoard 当前 260 宽度 / 6 间隔的视觉节奏，保证拖拽位移和日期位移直觉一致。
+   */
+  const TREND_DAY_STEP_PX = 260 / 6;
+  const MAX_TREND_DRAG_PREVIEW_PX = TREND_DAY_STEP_PX * 3;
   const clampDateString = useCallback((value: string, min: string, max: string) => {
     if (value < min) return min;
     if (value > max) return max;
@@ -603,26 +623,37 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
 
   const handleTrendSwipeEnd = useCallback(() => {
     if (!trendSwipeRef.current) return;
-    const { sx, ex, sy, ey, axis } = trendSwipeRef.current;
+    const { sx, ex, sy, ey, axis, offsetPx } = trendSwipeRef.current;
     const deltaX = ex - sx;
     const deltaY = ey - sy;
     if (axis === "horizontal") {
-      if (deltaX < -28 && trendCard.hasEarlierWindow) {
-        actions.setTrendWindowOffset(trendCard.windowOffset + 1);
-      } else if (deltaX > 28 && trendCard.hasLaterWindow) {
-        actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset - 1));
+      /**
+       * 过去是“只要横向划一下，就固定跳 1 天”。
+       * 现在改成按真实拖拽距离折算天数，这样一次拖动可以连续跨过多天。
+       */
+      const offsetDays = Math.round(-offsetPx / TREND_DAY_STEP_PX);
+      if (offsetDays !== 0) {
+        actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset + offsetDays));
       }
     } else if (Math.abs(deltaY) > 28 && Math.abs(deltaY) > Math.abs(deltaX)) {
       if (deltaY > 0) manualSwitch(Math.max(0, carouselIndex - 1));
       else manualSwitch(Math.min(1, carouselIndex + 1));
     }
+    setTrendDragOffsetPx(0);
     trendSwipeRef.current = null;
-  }, [actions, carouselIndex, manualSwitch, trendCard.hasEarlierWindow, trendCard.hasLaterWindow, trendCard.windowOffset]);
+  }, [TREND_DAY_STEP_PX, actions, carouselIndex, manualSwitch, trendCard.windowOffset]);
 
   const handleTrendPointerDown = useCallback((event: React.PointerEvent) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.stopPropagation();
-    trendSwipeRef.current = { sx: event.clientX, ex: event.clientX, sy: event.clientY, ey: event.clientY, axis: null };
+    trendSwipeRef.current = {
+      sx: event.clientX,
+      ex: event.clientX,
+      sy: event.clientY,
+      ey: event.clientY,
+      axis: null,
+      offsetPx: 0,
+    };
   }, []);
 
   const handleTrendPointerMove = useCallback((event: React.PointerEvent) => {
@@ -636,9 +667,11 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     }
     if (next.axis === "horizontal") {
       event.preventDefault();
+      next.offsetPx = Math.max(-MAX_TREND_DRAG_PREVIEW_PX, Math.min(MAX_TREND_DRAG_PREVIEW_PX, next.ex - next.sx));
+      setTrendDragOffsetPx(next.offsetPx);
     }
     trendSwipeRef.current = next;
-  }, []);
+  }, [MAX_TREND_DRAG_PREVIEW_PX]);
 
   const startHold = useCallback((callback: () => void) => {
     if (holdRef.current != null) clearTimeout(holdRef.current);
@@ -913,13 +946,29 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     onPointerDown: handleTrendPointerDown,
     onPointerMove: handleTrendPointerMove,
     onPointerUp: handleTrendSwipeEnd,
-    onPointerCancel: () => { trendSwipeRef.current = null; },
+    onPointerCancel: () => {
+      trendSwipeRef.current = null;
+      setTrendDragOffsetPx(0);
+    },
   };
 
   const { isKeyboardVisible } = useKeyboard();
 
   return (
-    <div style={{ width: PHONE_FRAME_WIDTH_CSS, margin: "0 auto", background: C.bg, borderRadius: 24, border: `2.5px solid ${C.dark}`, overflow: "hidden", position: "relative", fontFamily: "'Nunito',-apple-system,sans-serif", height: PHONE_FRAME_HEIGHT_CSS, display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top)" }}>
+    <div
+      style={{
+        width: PHONE_FRAME_WIDTH_CSS,
+        maxWidth: "100vw",
+        margin: 0,
+        background: C.bg,
+        overflow: "hidden",
+        position: "relative",
+        fontFamily: "'Nunito',-apple-system,sans-serif",
+        height: PHONE_FRAME_HEIGHT_CSS,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes rb {
@@ -955,47 +1004,35 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
 
       <Decor />
 
-      <div style={{ padding: "12px 16px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg, zIndex: 20, flexShrink: 0, position: "relative" }}>
+      <div
+        style={{
+          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+          minHeight: APP_HEADER_MIN_HEIGHT,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          background: C.bg,
+          zIndex: 20,
+          flexShrink: 0,
+          position: "relative",
+        }}
+      >
         <Logo />
         <div
           ref={ledgerDropdownWrapRef}
           style={{
-            minWidth: 120,
+            width: LEDGER_HEADER_CONTROL_WIDTH,
             display: "flex",
             justifyContent: "flex-end",
             position: "relative",
           }}
         >
-          <div
-            onClick={() => setLedgerDropdownOpen((open) => !open)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "5px 14px",
-              borderRadius: 999,
-              background: C.white,
-              border: `1.8px solid ${C.dark}`,
-              color: C.dark,
-              fontSize: 13,
-              fontWeight: 650,
-              lineHeight: 1,
-              cursor: "pointer",
-              boxShadow: "0 1px 0 rgba(0,0,0,.04)",
-            }}
-          >
-            <span style={{ maxWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {currentLedgerName}
-            </span>
-            <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 3.8L5 6.8L8 3.8" stroke={C.dark} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
+          <LedgerHeaderControl ledgerName={currentLedgerName} onClick={() => setLedgerDropdownOpen((open) => !open)} ariaLabel="切换账本" />
           {ledgerDropdownOpen && (
             <div
               style={{
                 position: "absolute",
-                top: 36,
+                top: 40,
                 right: 0,
                 minWidth: 146,
                 maxWidth: 220,
@@ -1066,6 +1103,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
             : "近 7 天支出"}
           hasEarlierTrendWindow={trendCard.hasEarlierWindow}
           hasLaterTrendWindow={trendCard.hasLaterWindow}
+          trendDragOffsetPx={trendDragOffsetPx}
           onManualSwitch={manualSwitch}
           onTrendForward={() => {
             if (trendCard.hasEarlierWindow) {
@@ -1113,7 +1151,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
               day={day}
               isExpanded={expandedDays.includes(day.id)}
               hideCategoryTag={selectedFilter !== "全部"}
-              isAi={aiOn && day.id === aiCurrentDate}
+              isAi={aiOn && aiCurrentDates.includes(day.id)}
               aiStop={aiStop}
               onToggle={() => toggleDay(day.id)}
               onItemPointerDown={handleItemPointerDown}

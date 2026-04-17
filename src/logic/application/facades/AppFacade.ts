@@ -167,7 +167,7 @@ export class AppFacade {
   private readonly listeners = new Set<() => void>();
 
   private aiStatus: AIStatus = 'IDLE';
-  private aiProgress: AIProgress = { total: 0, current: 0, currentDate: '' };
+  private aiProgress: AIProgress = { total: 0, current: 0, currentDate: '', currentDates: [] };
 
   private constructor() {
     this.ledgerService.subscribe(() => {
@@ -505,6 +505,11 @@ export class AppFacade {
       status,
       activeLedger: currentLedgerId,
       activeDate: this.aiProgress.currentDate || null,
+      /**
+       * 显示层高亮范围只读这里，不再自己猜“当前批次可能是几天”。
+       * 这样后续即便引擎批次策略继续变化，首页也只需要跟接口同步。
+       */
+      activeDates: this.aiProgress.currentDates ?? [],
       hasPendingInRange: pendingInRangeCount > 0,
       hasPendingOutOfRange: pendingCount > pendingInRangeCount,
       pendingCount,
