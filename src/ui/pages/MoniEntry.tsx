@@ -8,8 +8,17 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from "@ui/features/moni-home/config";
-import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
+import {
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
+  BOTTOM_NAV_PADDING_BOTTOM,
+  C,
+  CAT,
+  LEDGER_HEADER_CONTROL_WIDTH,
+  PHONE_FRAME_HEIGHT_CSS,
+  PHONE_FRAME_WIDTH_CSS,
+} from "@ui/features/moni-home/config";
+import { Decor, GearIcon, LedgerHeaderControl, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { useKeyboard } from "@ui/hooks/useKeyboard";
 import { parseFiles } from "@shared/utils/parser";
@@ -708,6 +717,12 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const [showToast, setShowToast] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
 
+  /**
+   * 本轮 Android 真机修复要求首屏优先露出“记一笔”入口。
+   * 因此这里暂时关闭“最近流水”参考区渲染，只保留实现以便后续再恢复。
+   */
+  const showRecentReferences = false;
+
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPointerDownRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
@@ -816,6 +831,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
       isPointerDownRef.current = false;
       setPressed(false);
       clearLongPressTimer();
+      longPressTriggeredRef.current = false;
       if (hoverCatRef.current) {
         openEntryForm(hoverCatRef.current);
         return;
@@ -823,13 +839,25 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
       closeOverlay();
     };
 
+    /**
+     * pointercancel 只表示当前触摸流被系统中断，不代表用户已经松手完成投放。
+     * Android 真机上若把它和 pointerup 共用，会出现“手还没松就提前落类”的问题。
+     */
+    const handlePointerCancel = () => {
+      isPointerDownRef.current = false;
+      setPressed(false);
+      clearLongPressTimer();
+      longPressTriggeredRef.current = false;
+      closeOverlay();
+    };
+
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
     };
   }, [clearLongPressTimer, closeOverlay, openEntryForm, phase]);
 
@@ -878,17 +906,15 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
     <div
       style={{
         width: PHONE_FRAME_WIDTH_CSS,
-        margin: "0 auto",
+        maxWidth: "100vw",
+        margin: 0,
         background: C.bg,
-        borderRadius: 24,
-        border: `2.5px solid ${C.dark}`,
         overflow: "hidden",
         position: "relative",
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Nunito',-apple-system,sans-serif",
         height: PHONE_FRAME_HEIGHT_CSS,
-        paddingTop: "env(safe-area-inset-top)",
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -924,24 +950,25 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
       <div
         style={{
           position: "sticky", top: 0, zIndex: 10, background: C.bg,
-          padding: "14px 16px 8px", borderBottom: `1px solid ${C.border}22`,
+          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`, borderBottom: `1px solid ${C.border}22`,
+          minHeight: APP_HEADER_MIN_HEIGHT,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Logo />
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, padding: "4px 12px", borderRadius: 8, background: C.white, border: `1.5px solid ${C.border}` }}>
-            {currentLedger.name} ▾
+          <div style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: "flex", justifyContent: "flex-end" }}>
+            <LedgerHeaderControl ledgerName={currentLedger.name} ariaLabel="当前账本" />
           </div>
         </div>
       </div>
 
       <div className="entry-scroll-container" style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
-        <div style={{ padding: "12px 16px 6px" }}>
+        <div style={{ padding: "10px 16px 4px" }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif" }}>记账</div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>导入账单或随手记录一笔</div>
         </div>
 
-        <div style={{ padding: "8px 0" }}>
+        <div style={{ padding: "6px 0" }}>
           <ImportCard onImport={handleImportClick} />
         </div>
 
@@ -961,13 +988,13 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
           </div>
         )}
 
-        <div style={{ padding: "16px 16px 8px", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ padding: "12px 16px 6px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif" }}>随手记</div>
           <div style={{ flex: 1, height: 1.5, background: C.border, borderRadius: 1 }} />
           <div style={{ fontSize: 10, color: C.muted, padding: "2px 8px", borderRadius: 999, background: C.white, border: `1px solid ${C.border}` }}>现金 · 补漏</div>
         </div>
 
-        <div style={{ padding: "0 16px 10px" }}>
+        <div style={{ padding: "0 16px 6px" }}>
           <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.55 }}>长按下方按钮，拖到想记录的分类里，即可快速记一笔。</div>
         </div>
 
@@ -978,17 +1005,19 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
           </div>
         )}
 
-        <div style={{ padding: "0 0 12px" }}>
-          <RecentReferenceList entries={displayReferences} />
-        </div>
+        {showRecentReferences ? (
+          <div style={{ padding: "0 0 12px" }}>
+            <RecentReferenceList entries={displayReferences} />
+          </div>
+        ) : null}
 
         {phase === "idle" && (
-          <div style={{ padding: "6px 0 0" }} onPointerUp={handleButtonPointerEnd} onPointerCancel={handleButtonPointerEnd}>
+          <div style={{ padding: "4px 0 0" }} onPointerUp={handleButtonPointerEnd} onPointerCancel={handleButtonPointerEnd}>
             <EntryButton pressed={pressed} onClick={handleButtonClick} onPointerDown={handleButtonPointerDown} />
           </div>
         )}
 
-        <div style={{ height: 88 }} />
+        <div style={{ height: 72 }} />
       </div>
 
       {!isKeyboardVisible && (

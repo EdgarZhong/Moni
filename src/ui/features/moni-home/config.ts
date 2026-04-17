@@ -118,7 +118,26 @@ export const PHONE_FRAME_HEIGHT_CSS = "100dvh";
 export const PHONE_FRAME_WIDTH_CSS = "100vw";
 
 /**
+ * 统一顶栏顶部留白。
+ * 这里不再把 safe area 直接塞进页面根容器，而是只让顶栏自己吃掉安全区，
+ * 这样三页切换时标题不会因为外层 padding 不一致而上下跳动。
+ */
+export const APP_HEADER_PADDING_TOP = "calc(env(safe-area-inset-top) + 8px)";
+
+/**
+ * 统一顶栏最小高度。
+ * 无论右侧是账本胶囊、设置标签还是返回按钮，标题行都保持同一高度。
+ */
+export const APP_HEADER_MIN_HEIGHT = 36;
+
+/**
+ * 首页与记账页右上角账本选择器的统一宽度。
+ * 固定宽度可以消除“同名账本在不同页面左右错位、长度变化”的视觉抖动。
+ */
+export const LEDGER_HEADER_CONTROL_WIDTH = 132;
+
+/**
  * 底部导航安全区内边距
  * 在 Android WebView 取不到 safe-area 时，至少保留 14px，避免贴底遮挡。
  */
-export const BOTTOM_NAV_PADDING_BOTTOM = "max(env(safe-area-inset-bottom), 14px)";
+export const BOTTOM_NAV_PADDING_BOTTOM = "calc(env(safe-area-inset-bottom) + 12px)";
