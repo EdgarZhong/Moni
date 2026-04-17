@@ -4,7 +4,13 @@
       "name": "日常开销",
       "fileName": "ledgers/日常开销/ledger.json",
       "createdAt": "2026-04-12T09:47:00.265Z",
-      "lastOpenedAt": "2026-04-12T09:47:00.265Z"
+      "lastOpenedAt": "2026-04-17T17:17:00.964Z"
+    },
+    {
+      "name": "测试_旅行",
+      "fileName": "ledgers/测试_旅行/ledger.json",
+      "createdAt": "2026-04-16T09:28:48.502Z",
+      "lastOpenedAt": "2026-04-16T09:28:48.502Z"
     }
   ],
   "activeLedger": "日常开销"

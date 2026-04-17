@@ -1,0 +1,19 @@
+{
+  "monthly": {
+    "amount": 3000,
+    "currency": "CNY"
+  },
+  "categoryBudgets": {
+    "正餐": {
+      "amount": 1500
+    },
+    "零食": {
+      "amount": 100
+    },
+    "大餐": {
+      "amount": 398
+    }
+  },
+  "categoryBudgetSchemaVersion": 0,
+  "updatedAt": "2026-04-16T09:23:08.227Z"
+}
