@@ -187,6 +187,14 @@ const INITIAL_LEARNING_SETTINGS: LearningSettingsDraft = {
 };
 
 /**
+ * 自述页空态示例文案。
+ * 它只应在“用户尚未保存任何自述”时作为展示默认值出现，
+ * 绝不能覆盖从持久化层真实加载出来的内容。
+ */
+const DEFAULT_SELF_DESCRIPTION_DEMO =
+  "Demo 示例：我平时会把咖啡、奶茶、小零食分开记，也希望 AI 先按常见消费场景帮我分类。你可以把这里改成自己的真实习惯。";
+
+/**
  * 返回箭头、右箭头等细节图标仍放在页面内定义，
  * 目的是让设置页在不打扰首页组件文件的前提下保持自洽。
  */
@@ -2606,6 +2614,7 @@ export default function MoniSettings({
   const onOpenEntry = () => onNavigate("entry");
   const {
     aiConfig,
+    selfDescription: selfDescriptionFromReadModel,
     ledgers,
     activeLedgerId,
     tags,
@@ -2651,9 +2660,7 @@ export default function MoniSettings({
     void switchLedger(ledgerId);
   }, [switchLedger]);
   const [page, setPage] = useState<SettingsPageKey>("root");
-  const [selfDescription, setSelfDescription] = useState(
-    "Demo 示例：我平时会把咖啡、奶茶、小零食分开记，也希望 AI 先按常见消费场景帮我分类。你可以把这里改成自己的真实习惯。",
-  );
+  const [selfDescription, setSelfDescription] = useState(DEFAULT_SELF_DESCRIPTION_DEMO);
   const [customTagsByLedger, setCustomTagsByLedger] = useState<Record<string, CustomTag[]>>({});
   const [memoryByLedger, setMemoryByLedger] = useState<Record<string, string[]>>({});
   const [snapshotsByLedger, setSnapshotsByLedger] = useState<Record<string, SettingsSnapshotItem[]>>({});
@@ -2701,6 +2708,19 @@ export default function MoniSettings({
       onChangeActiveLedgerId(ledgers[0].id);
     }
   }, [ledgers, activeLedgerId, onChangeActiveLedgerId]);
+
+  useEffect(() => {
+    /**
+     * 自述展示值必须由设置页读模型驱动。
+     * 之前这里遗漏了回填，导致刷新后始终显示本地 demo 初始值，
+     * 即便 `self_description.md` 已经真实落盘，也不会重新显示出来。
+     */
+    setSelfDescription(
+      selfDescriptionFromReadModel && selfDescriptionFromReadModel.trim().length > 0
+        ? selfDescriptionFromReadModel
+        : DEFAULT_SELF_DESCRIPTION_DEMO
+    );
+  }, [selfDescriptionFromReadModel]);
 
   useEffect(() => {
     if (!activeLedgerId) {

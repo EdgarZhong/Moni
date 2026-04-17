@@ -17,6 +17,7 @@ import { ManualEntryManager } from '@logic/application/services/ManualEntryManag
 import type { ManualEntryInput } from '@logic/application/services/ManualEntryManager';
 import { ConfigManager } from '@system/config/ConfigManager';
 import { LLMClient } from '@logic/application/llm/LLMClient';
+import { DemoSeedInstaller } from '@system/filesystem/DemoSeedInstaller';
 import type {
   EntryPageReadModel,
   EntryRecentReference,
@@ -372,6 +373,13 @@ export class AppFacade {
   }
 
   public async init(): Promise<void> {
+    /**
+     * 原生演示包首启时，优先尝试把随 APK 携带的 demo seed 写入正式沙盒目录。
+     *
+     * 这样后续 LedgerManager / ConfigManager 看到的就是已经就位的真实持久化文件，
+     * 不需要为“预置演示数据”再走一套旁路读取逻辑。
+     */
+    await DemoSeedInstaller.installIfNeeded();
     await this.ledgerManager.init();
   }
 
