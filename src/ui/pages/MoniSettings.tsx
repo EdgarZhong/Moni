@@ -638,7 +638,7 @@ function SettingsRoot({
           <SettingRow icon="👤" label="自述" desc="让 AI 了解你的消费习惯" onClick={() => onNavigate("selfDesc")} />
           <SettingRow icon="📚" label="账本管理" value={`${ledgerCount} 个账本`} onClick={() => onNavigate("ledgerManage")} />
           <SettingRow icon="📤" label="数据导出" desc="导出账单数据" value="P2" />
-          <SettingRow icon="ℹ️" label="关于" desc="Moni v0.2.0" onClick={() => onNavigate("about")} />
+          <SettingRow icon="ℹ️" label="关于" desc="Moni v0.2.1" onClick={() => onNavigate("about")} />
         </SectionCard>
         <SectionCard title={`📒 账本：${currentLedgerName || "未选择账本"}`} subtitle="当前账本配置">
           <SettingRow icon="🏷️" label="标签管理" value={customTagCount ? `${customTagCount} 个` : "未设置"} onClick={() => onNavigate("tagManage")} />
@@ -2612,7 +2612,7 @@ function AboutPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontSize: 22, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif", marginBottom: 4 }}>Moni</div>
         <div style={{ fontSize: 12, color: C.sub, marginBottom: 20 }}>AI 原生个人财务助手</div>
         <div style={{ fontSize: 12, color: C.muted, textAlign: "center", lineHeight: 1.7 }}>越用越聪明的记账伙伴。<br />导入账单，浏览流水，顺手纠错，AI 自动学会。</div>
-        <div style={{ marginTop: 28, fontSize: 11, color: C.muted }}>版本 0.2.0 · 构建于 2026-04</div>
+        <div style={{ marginTop: 28, fontSize: 11, color: C.muted }}>版本 0.2.1 · 构建于 2026-04</div>
         <div style={{ marginTop: 20, display: "flex", gap: 16 }}>
           {["反馈", "文档", "致谢"].map((text) => (
             <div key={text} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 12, color: C.sub, cursor: "pointer" }}>

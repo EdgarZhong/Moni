@@ -40,6 +40,7 @@ virtual_android_filesys/sandbox_path/llm_logs
 
 # Security
 public/secure_config.json
+public/demo-seed-manifest.json
 secure_config.bin
 secure_config.json
 
