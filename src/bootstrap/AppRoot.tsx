@@ -3,10 +3,17 @@ import { appFacade } from '@bootstrap/appFacade';
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
+import { useAppViewportLock } from '@ui/hooks/useAppViewportLock';
 
 type Page = 'home' | 'entry' | 'settings';
 
 function App() {
+  /**
+   * 在应用根层锁定稳定画布高度。
+   * 这样页面容器就不会在 Android 软键盘弹出时跟着 viewport 一起缩短。
+   */
+  useAppViewportLock();
+
   const [activePage, setActivePage] = useState<Page>('home');
   const [autoLearningNotice, setAutoLearningNotice] = useState<{
     visible: boolean;

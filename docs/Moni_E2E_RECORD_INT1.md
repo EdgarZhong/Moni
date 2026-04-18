@@ -476,3 +476,22 @@ await window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()
    - facade 读模型通过 `HomeAiEngineUiState.activeDates`
    - 显示层只消费 `activeDates` 决定哪些日期卡片亮起
 5. 本轮浏览器样本下首页读模型处于 `paused`，因此 `activeDates=[]`；字段形状已在调试入口返回结果中确认，但仍需等 Android 真机或真实运行态再补一次“运行中多日高亮”实测
+
+### 7.7 Android 真机问题本轮代码修复补记
+
+1. 针对“Android 真机无法新建账本”，本轮已在 native 持久化链路补上递归写盘：
+   - `writeMemoryFile()` 现在对 `ledgers/{ledger}/ledger.json` 使用 `recursive: true`
+   - 这意味着首次创建账本时，会一并创建缺失的账本目录，而不再依赖目录预先存在
+2. 针对“输入框唤起虚拟键盘后底部导航被顶起”，本轮已同时从原生层和 Web 层收口：
+   - Android `Activity` 已固定 `windowSoftInputMode="stateHidden|adjustNothing"`
+   - Web 根层新增 `--app-root-height`，在原生环境下锁定键盘弹出前的稳定画布高度
+   - 页面级手机画布高度口径已统一改为 `var(--app-root-height)`
+3. 浏览器开发态补充回归：
+   - `window.__MONI_E2E__.tests.runLedgerCrudTest()`：通过
+   - 账本创建、改名、删除、实例库迁移、账本行为配置迁移均通过
+4. 本轮 console 复核结果：
+   - 未出现新增 runtime/hook 异常
+   - 仍有已知 `POST /api/fs 404` 与 `[MockFS] API Call Failed (delete)` 清理噪音，属于旧问题
+5. 本轮仍未覆盖项：
+   - 尚未在 Android 真机重新执行“新建账本 + 弹起键盘 + 输入表单 + 关闭键盘”完整回归
+   - 因此当前结论是“代码修复已落地，浏览器链路回归通过，真机待复测”

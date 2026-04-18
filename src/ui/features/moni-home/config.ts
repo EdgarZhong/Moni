@@ -109,9 +109,11 @@ export const MANUAL_IDLE_LOCK_MS = 2 * 60 * 1000;
 
 /**
  * 手机帧容器高度（屏幕自适配）
- * - 使用 dVH 跟随可视视口高度，旋转/地址栏收起时可实时自适应
+ * - 默认读取应用根层写入的稳定画布高度
+ * - 浏览器开发态若未注入该变量，则自动回退到 `100dvh`
+ * - Android 真机键盘弹出时，不再直接跟随当前可视视口缩短
  */
-export const PHONE_FRAME_HEIGHT_CSS = "100dvh";
+export const PHONE_FRAME_HEIGHT_CSS = "var(--app-root-height)";
 
 
 /** 手机帧容器宽度（屏幕自适配） */

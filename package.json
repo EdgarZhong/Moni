@@ -1,12 +1,13 @@
 {
   "name": "moni",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "CyberZen Studio",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:release": "node scripts/generate-demo-seed.mjs && npm run build && npx cap sync android && cd android && ./gradlew :app:publishReleaseApk",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "verify": "npm run typecheck && npm run build && npm run lint",

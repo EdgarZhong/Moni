@@ -30,6 +30,7 @@ dist-ssr
 .worktrees/**
 test-img/
 .codex/artifacts/
+.claude/
 # private data
 2025-11-5to2026-1-5/
 
@@ -46,4 +47,17 @@ secure_config.json
 .archive/
 
 # Native projects
-android/
+android/.gradle/
+android/build/
+android/local.properties
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/release-signing.properties
+
+# Release outputs
+release/*
+!release/.gitkeep
+!release/*.md
+release/*.apk
+release/*.aab
+release/*.p12

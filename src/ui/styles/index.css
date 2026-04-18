@@ -4,6 +4,12 @@
 
 :root {
   font-family: 'Space Mono', monospace;
+  /*
+   * 应用根画布的稳定高度。
+   * 默认仍然回退到 `100dvh`，但原生 Android 启动后会由 `useAppViewportLock`
+   * 改写成“键盘弹出前的稳定像素高度”。
+   */
+  --app-root-height: 100dvh;
   /* 当前主线 App 已切到暖色全屏画布，根层默认值也要同步，避免出现黑边漏底。 */
   --bg-primary: #f5f0eb;
   --bg-secondary: #ffffff;
@@ -56,8 +62,8 @@ body {
 
 #root {
   width: 100vw;
-  height: 100dvh;
-  min-height: 100dvh;
+  height: var(--app-root-height);
+  min-height: var(--app-root-height);
   margin: 0;
   padding: 0;
   background: #f5f0eb;
