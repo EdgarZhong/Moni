@@ -1,0 +1,10 @@
+# Android release 签名模板：
+# 1. 复制本文件为 `android/release-signing.properties`
+# 2. 把 keystore 放到仓库根目录 `release/`
+# 3. 按实际环境填写绝对路径、别名和密码
+# 4. 然后执行 `npm run build:release`
+
+storeFile=/absolute/path/to/moni/release/moni-release.p12
+storePassword=replace-with-store-password
+keyAlias=replace-with-key-alias
+keyPassword=replace-with-key-password

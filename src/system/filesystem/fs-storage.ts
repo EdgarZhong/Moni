@@ -227,11 +227,17 @@ export const writeMemoryFile = async (
   if (isNativePlatform()) {
     const nativeHandle = fileHandle as NativeFileHandle;
     const fs = FilesystemService.getInstance();
+    /**
+     * Android/Capacitor 在写入 `ledgers/{账本名}/ledger.json` 这类嵌套路径时，
+     * 如果中间目录尚未存在，会直接抛错而不是帮我们补目录。
+     * 这里显式开启递归创建，确保“新建账本”第一次落盘时能把账本目录一起建出来。
+     */
     await fs.writeFile({
       path: nativeHandle.path,
       data: JSON.stringify(data, null, 2),
       directory: getLedgerStorageDirectory(),
-      encoding: AdapterEncoding.UTF8
+      encoding: AdapterEncoding.UTF8,
+      recursive: true
     });
   } else {
     const webHandle = fileHandle as FileSystemFileHandle;

@@ -13,16 +13,28 @@ export function useKeyboard() {
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
+      /**
+       * Android 真机上 `will` 事件可能略早于布局变化，`did` 事件又可能更稳定。
+       * 这里两组都监听，并把状态收口到同一布尔值，避免出现“键盘已弹出但底部导航还没隐藏”的时序抖动。
+       */
       const showListener = Keyboard.addListener('keyboardWillShow', () => {
+        setKeyboardVisible(true);
+      });
+      const didShowListener = Keyboard.addListener('keyboardDidShow', () => {
         setKeyboardVisible(true);
       });
       const hideListener = Keyboard.addListener('keyboardWillHide', () => {
         setKeyboardVisible(false);
       });
+      const didHideListener = Keyboard.addListener('keyboardDidHide', () => {
+        setKeyboardVisible(false);
+      });
 
       return () => {
         void showListener.then((listener: KeyboardListenerHandle) => listener.remove());
+        void didShowListener.then((listener: KeyboardListenerHandle) => listener.remove());
         void hideListener.then((listener: KeyboardListenerHandle) => listener.remove());
+        void didHideListener.then((listener: KeyboardListenerHandle) => listener.remove());
       };
     } else {
       // Browser fallback

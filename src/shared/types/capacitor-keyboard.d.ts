@@ -10,7 +10,7 @@ declare module '@capacitor/keyboard' {
 
   export interface KeyboardPlugin {
     addListener(
-      eventName: 'keyboardWillShow' | 'keyboardWillHide',
+      eventName: 'keyboardWillShow' | 'keyboardDidShow' | 'keyboardWillHide' | 'keyboardDidHide',
       listenerFunc: () => void
     ): Promise<KeyboardListenerHandle>;
   }

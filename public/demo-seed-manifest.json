@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "generatedAt": "2026-04-16T09:35:47.803Z",
+  "generatedAt": "2026-04-18T06:04:45.841Z",
   "sourceRoot": "virtual_android_filesys/sandbox_path",
   "files": [
     {
       "path": "ledgers.json",
-      "data": "{\n  \"ledgers\": [\n    {\n      \"name\": \"日常开销\",\n      \"fileName\": \"ledgers/日常开销/ledger.json\",\n      \"createdAt\": \"2026-04-12T09:47:00.265Z\",\n      \"lastOpenedAt\": \"2026-04-12T09:47:00.265Z\"\n    },\n    {\n      \"name\": \"测试_旅行\",\n      \"fileName\": \"ledgers/测试_旅行/ledger.json\",\n      \"createdAt\": \"2026-04-16T09:28:48.502Z\",\n      \"lastOpenedAt\": \"2026-04-16T09:28:48.502Z\"\n    }\n  ],\n  \"activeLedger\": \"测试_旅行\"\n}"
+      "data": "{\n  \"ledgers\": [\n    {\n      \"name\": \"日常开销\",\n      \"fileName\": \"ledgers/日常开销/ledger.json\",\n      \"createdAt\": \"2026-04-12T09:47:00.265Z\",\n      \"lastOpenedAt\": \"2026-04-17T17:17:00.964Z\"\n    },\n    {\n      \"name\": \"测试_旅行\",\n      \"fileName\": \"ledgers/测试_旅行/ledger.json\",\n      \"createdAt\": \"2026-04-16T09:28:48.502Z\",\n      \"lastOpenedAt\": \"2026-04-16T09:28:48.502Z\"\n    }\n  ],\n  \"activeLedger\": \"日常开销\"\n}"
     },
     {
       "path": "ledgers/日常开销/budget.json",

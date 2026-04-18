@@ -85,6 +85,26 @@ npm run lint
 - `npm run typecheck` 通过
 - `npm run build` 通过
 
+## Release 快捷入口
+
+```bash
+npm run build:release
+```
+
+稳定约定：
+
+- 该命令会自动刷新 `public/demo-seed-manifest.json`
+- 该命令会自动执行前端构建、`npx cap sync android` 和 Android release 打包
+- release APK 固定输出到 `release/moni-alpha-v{version}.apk`
+- release 签名固定读取 `android/release-signing.properties`
+
+换环境快速复现：
+
+- 保留仓库内已追踪的 `package.json`、`android/app/build.gradle`、`android/release-signing.properties.example`
+- 复制 `android/release-signing.properties.example` 为 `android/release-signing.properties`
+- 准备自己的 `release/moni-release.p12`
+- 运行 `npm run build:release`
+
 ## 稳定测试入口
 
 开发态浏览器启动后，会自动暴露以下稳定调试入口：

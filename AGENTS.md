@@ -71,3 +71,28 @@
 - `ledgers/{ledger}/budget.json` 只承接预算配置
 - `defined_categories` 继续作为账本标签主数据单一信源
 - API Key / 模型 / 提供方 / 主题 / 自述等全局设置不进入 `ai_prefs.json`
+
+## 版本管理规范
+
+遵循语义化版本 `MAJOR.MINOR.PATCH`。
+
+Release 构建固定流程：
+
+0. 迭代编码：通常要求构建前已经完成本轮开发
+1. 改版本号：同步更新 `package.json.version`、`android/app/build.gradle` 的 `versionName` 和 `versionCode`
+2. 构建：执行 `npm run build:release`
+3. 提交：提交代码与文档变动
+
+Release 固定约定：
+
+- 快捷入口：`npm run build:release`
+- APK 命名：`moni-alpha-v{versionName}.apk`
+- APK 输出目录：`release/`
+- Android 签名配置：`android/release-signing.properties`
+- release 构建自动携带 `public/demo-seed-manifest.json`
+
+当前版本：
+
+- `version`：`0.2.1`
+- `versionCode`：`2`
+- 当前 APK：`release/moni-alpha-v0.2.1.apk`
