@@ -1,96 +1,74 @@
 # CLAUDE.md
 
-本文件只记录 Moni 主仓库当前阶段的任务看板、剩余风险、优先级和交接状态。
+本文件记录当前版本迭代的任务看板、风险、优先级、交接状态与阶段性决策。
 
-## 当前阶段目标
+其中任务看板相关历史的保留规则固定为：
 
-当前主线目标是先完成持久化口径迁移与 AI 分类链路收口，再进入后续验收。
+1. 已发布版本的 feature 历史统一收口到 `Release Changelog`
+2. “当前任务看板”只保留当前版本迭代中的进行中 / 待办 / 暂停任务
 
-当前下一轮执行主目标：
+## 当前版本状态
 
-- 优先修复本轮 Android 真机验证反馈的这批 UI 问题
-- 可通过 Playwright MCP 自动验证的页面问题，修复后必须补自动化页面验证
-- 仅在 Android 真机上暴露的问题，修复后需结合代码层实现复核是否真正消除根因，不得只以浏览器表现代替判断
+- 当前已发布稳定版本：`0.2.1`
+- 下一版本：暂未定号，当前按“账单导入增强”推进
+- 当前会话目标：完成账单导入后端逻辑增强，不推进 UI / UX 对接
+- 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
 
-当前新增阶段目标：
+## 当前阶段基线
 
-- 产出一个给评委演示使用的 Android release APK
-- 演示包需内置当前 `virtual_android_filesys/sandbox_path` 全量沙盒数据（含 `secure_config.bin`）
-- 演示包首次安装打开时直接落到正式 `Directory.Data`，不要求评委手工导入
-- Android App Icon 需使用仓库现有 `public/icon.svg` 对应图标，不再走默认自适应裁切图标
-- release 构建链路需固定为低心智负担的一键入口，并在文档中给出简明 SOP
+- 首页与记账页主流程已稳定，设置页主要持久化链路已稳定
+- 当前账单导入增强只动后端逻辑层、Facade 与调试测试入口，不改记账页表现层
+- 表现层后续应基于“先 probe，再 import”的接口决定是否展示密码输入
+- 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
 
-当前已完成主线能力：
+## Release Changelog
 
-- 首页主舞台读模型已接入真实账本数据
-- 随手记逻辑链路、首页展示链路、实例库 D 类映射已接通
-- 预算逻辑链路、首页预算卡和预算提示卡已接通
-- v7 实例库、学习 payload、收编上下文、账本行为配置已落主线
-- 浏览器调试入口 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 已落地
-- Playwright / MCP 浏览器验证链路已固定
-- 记账页（MoniEntry）已集成：导入账单、随手记、分类拖放、记一笔表单
-- 交易详情面板已集成：分类修改、锁定、备注、AI 判断理由展示、边缘滑动返回
-- 设置页已集成：MoniSettings 三页路由、全局配置（AI/自述/账本管理/关于）、账本级配置（标签/记忆/预算/学习/重分类）
-- 参赛文档已按代码现状收口：`docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已修正字段、队列、快照与数据流口径
+### `0.2.1`
 
-## 当前剩余缺口
+- 固化 Android release 构建链路，统一快捷入口为 `npm run build:release`
+- 同步 `package.json`、Android 工程与设置页中的版本口径到 `0.2.1`
+- 移除设置页底部硬编码版本信息，统一 release 签名验证与文档口径
 
-- 浏览器可覆盖的这轮 UI 问题已按 `0.2.0` 收口，仍需回到 Android 真机复核是否完全消除
-- Android 真环境专项验收仍未完成
-- 真实 LLM 配置下的学习 / 收编回归仍未完成
-- 规格文档已移除“代码/规格差异”维护职责，差异清单需转由会话说明与任务看板承接
-- 空沙箱初始化阶段仍会出现一组“可选文件不存在”的 `POST /api/fs 404` 控制台噪音，后续可再单独收敛为静默探测
+### `0.2.0`
 
-## 本轮 UI 问题来源
-
-- 来源：用户基于 Android 真机安装包进行手工验证后的 bug report
-- 说明：这批问题以真机观察结果为准，浏览器开发态只能作为辅助定位工具，不能反向否定真机现象
+- 完成首页、记账页、设置页主流程集成，建立当前浏览器侧 UI 基线
+- 完成持久化目录迁移，收口预算、记忆、分类运行态与账本目录结构
+- 建立 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 浏览器调试入口与 Playwright / MCP 页面验证链路
+- 收口 Android 关键修复，包括账本创建写盘、软键盘稳定画布与主要页面布局问题
 
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| 首页主舞台集成 | Done | `homeDateRange`、`trendCard`、手记首页字段、AI backlog、无预算退化态均已落地 |
-| 随手记逻辑链路 | Done | 录入、删除、实例库联动、首页手记展示链路已接通 |
-| 预算逻辑链路 | Done | 预算配置读写、首页预算卡、预算提示卡、标签联动已接通 |
-| v7 记忆系统核心链路 | Done | 实例库 rich schema、learning payload、收编上下文、账本级 AI 行为配置已落地 |
-| 记账页集成 | Done | MoniEntry 页面、useMoniEntryData hook、AppFacade 记账读模型、导入/随手记/分类拖放/表单均已接通 |
-| 交易详情面板 | Done | TransactionDetailPanel：分类修改、锁定、备注、AI 理由、边缘滑动返回手势 |
-| 设置页集成 | Done | MoniSettings 页面、useMoniSettingsData hook、AppFacade 设置读模型 / actions、三页路由、账本管理 CRUD、AI 记忆/快照、预算设置均已接通 |
-| 参赛技术文档修订 | Done | `docs/report/02_技术研究报告.md` 与 `docs/report/03_开发文档.md` 已按当前代码收口，移除旧的 `classification_source` / 三数组队列等过时口径 |
-| 持久化规格重规划 | Done | 持久化目标结构已收口为“顶层全局文件 + `ledgers/{ledger}/` 单账本目录”；规格文档不再维护代码差异段落 |
-| 预算设置页 UI | Done | 已在设置页集成中完成（BudgetPage 子页面） |
-| 持久化目录迁移 | Done | 账本、自述、记忆、实例库、预算、行为配置、分类运行态已统一到 `Directory.Data` 与 `ledgers/{ledger}/` 新结构 |
-| 自述落盘修复 | Done | 设置页保存自述已接通真实持久化链路，直接写入 `self_description.md` |
-| 分类消费批次收口 | Done | 消费端已按当前 `data range` 过滤，只消费范围内最近日期倒序的最多 3 天；运行态统一写入 `classify_runtime.json` |
-| AI 理由长度收口 | Done | Prompt 与运行时写回已双重限制 `reasoning / ai_reasoning` 不超过 20 字 |
-| 顶部导航与 Header UI 收口 | Done | `0.2.0` 已统一首页/记账页右上角账本选择器为同一组件，固定宽度与对齐；设置页右上角已恢复为普通标题，不再伪装成胶囊按钮；设置页底部导航蓝色遮罩已移除 |
-| 记账页首屏布局压缩 | Done | `0.2.0` 已暂时隐藏“最近流水”区块，并把随手记提示与“记一笔”按钮整体上提；在 `390 x 844` 视口下首屏可见 |
-| 画布铺满与上下黑边收口 | Done | `0.2.0` 已移除原型手机边框与外层黑底漏出来源，`#root / body / 页面根容器` 已统一为全屏暖色画布；Playwright 首屏截图未再出现上下黑边 |
-| 长按拖拽分类间歇异常 | Done | `0.2.0` 已把 `MoniEntry` 的 `pointercancel` 与 `pointerup` 语义拆开：取消只收状态，不再等同于真实松手提交分类 |
-| Playwright MCP 页面 E2E 验证 | Done | `2026-04-18` 已在 `390 x 844` 视口下完成首页 / 记账 / 设置页自动化浏览、截图与 console 复核；已额外验证首页与记账页账本选择器位置宽度一致、设置页标题去胶囊化、趋势看板一次拖动可跨 3 天窗口 |
-| Android 真机账本创建与键盘顶起修复 | Done | `2026-04-18` 已补 native 账本写盘递归建目录；Activity 已固定 `windowSoftInputMode=\"stateHidden|adjustNothing\"`；Web 根层已改为稳定画布锁高，避免软键盘把底部导航整体顶起。浏览器调试入口 `runLedgerCrudTest()` 已复测通过，仍待 Android 真机复核 |
-| Release 构建自动化链路 | Done | `2026-04-18` 已固定快捷入口 `npm run build:release`；自动刷新 demo seed、同步 Capacitor Android、执行 signed release 构建，并把 APK 发布到 `release/` |
-| Android 安装包真机验收 | Ready | 安装包链路已建成；若用户明确要求，再基于安装包补 Android 真机人工验收，不与 Playwright E2E 混称 |
-| Android 真环境专项验收 | Ready | 需补文件系统权限、重启持久化、haptics、生命周期验证 |
-| 真实 LLM 回归 | Ready | 需在可用模型配置下复核学习和收编真实回写 |
-| 默认账本语义收口 | Done | 默认账本初始名称固定为 `日常开销`，且已支持重命名 |
-| 评委演示安装包 | Ready | 当前口径已收敛为：release APK 内置当前 `sandbox_path` 全量数据，首启自动写入 `Directory.Data`，并改用现有 App Icon 静态位图；后续只需按版本号更新后重打包 |
+| 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
+| 账单导入 UI / UX 对接 | Pending | 后续由表现层根据 `probe` 结果决定是否弹密码输入、如何展示文件识别结果 |
+| Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 
 ## 当前优先级
 
-1. Android 安装包真机验收
-2. Android 真环境专项验收
-3. 评委演示安装包
-4. 真实 LLM 回归
-5. 控制台 404 噪音收敛
+1. 账单导入 UI / UX 对接
+2. Android 文件选择器真机验收
+3. 真实 LLM 回归
+4. 控制台 404 噪音收敛
+5. 下一版本号与 release 范围定义
 
 ## 当前阶段风险
 
-- 浏览器 F12 虚拟文件系统是高保真开发替身，但不等价于 Android 真机行为
-- Android “新建账本失败 / 键盘顶起导航”已完成代码修复，但本轮尚未在真机重新回归确认
-- 学习与收编虽然已有浏览器规格测试，但真实模型回写尚未做最终确认
-- 默认账本的旧语义若未完全收口，后续可能继续污染测试链路与产品判断
+- Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
+- 当前仍存在一组“可选文件不存在”的 `POST /api/fs 404` 浏览器开发态噪音，尚未完全收敛
+- 引入 `xlsx` 与 `zip.js` 后，`npm run build` 仍会出现 chunk size warning
+- 真实 LLM 配置下的学习 / 收编回归仍未完成
+
+## 当前验证状态
+
+- `2026-04-24`：`npm run typecheck` 通过
+- `2026-04-24`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-24`：浏览器开发态执行 `window.__MONI_E2E__.tests.runBillImportBackendTest()` 通过
+- 本轮账单导入后端回归覆盖结果：
+  - 微信加密压缩包：未输密码返回 `password_required`，错误密码返回 `invalid`，正确密码后成功导入 `73` 条
+  - 微信非压缩直传文本样本：无需密码，成功导入 `1` 条
+  - 支付宝加密压缩包：正确密码后成功导入 `37` 条
+  - 测试全程使用独立临时账本；结束后已删除临时账本，并恢复激活账本为 `日常开销`
 
 ## 当前已固定口径
 
@@ -115,6 +93,7 @@
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
+- 浏览器开发态文件系统 mock 当前只保留 `Directory.Data -> virtual_android_filesys/sandbox_path`；旧的独立 `Documents_path` 已退出运行时路径
 - 本项目语境中的端到端测试默认指 agent 通过 `Playwright MCP` 在浏览器开发态做自动化页面验证
 - Playwright MCP 默认移动端测试视口以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
 - “一图一测试”只适用于浏览器侧 Playwright 页面验证，不等同于 Android 安装包人工验收
@@ -135,10 +114,8 @@
 
 ## 交接说明
 
-- 本轮 `0.2.0` 已完成浏览器侧 UI 收口与 Playwright 页面验证，后续不要再把这组问题留在下一会话待办里
-- 本轮截图基线为 `moni-home-0.2.0.png / moni-entry-0.2.0.png / moni-settings-0.2.0.png`
-- 能被 Playwright MCP 覆盖的问题已补自动化浏览与截图留档；仍需继续区分“浏览器已过”与“Android 真机已过”
-- 下一会话优先转 Android 安装包真机复核，重点确认安全区、画布贴边和拖拽分类在原生触摸环境下是否与浏览器结论一致
-- 若继续推进功能，优先从 Android 真环境验收开始
-- 若继续做验收，优先用浏览器调试入口和 Playwright 复跑现有 smoke test，再转入 Android 真环境
+- 本轮已完成账单导入后端链路与浏览器开发态真实样本回归，记账页 UI / UX 尚未接入新接口
+- 表现层后续应优先调用 `AppFacade.probeBillImportFiles()`，仅在返回 `password_required` 时再展示密码输入
+- 后续若进入 release 收口，先明确下一版本号与 release 范围，再清理当前任务看板
+- 每次 release 完成后，必须把已交付 feature 归并到 `Release Changelog`，并清理当前任务看板中的已完成项
 - 旧的并行编排版 `CLAUDE.md` 已归档到 `.archive/CLAUDE_parallel_legacy_2026-04-09.md`

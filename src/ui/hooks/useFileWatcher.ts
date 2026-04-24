@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { isNativePlatform } from '@system/filesystem/fs-storage';
+import { getLedgerStorageDirectory, isNativePlatform } from '@system/filesystem/fs-storage';
 import type { StorageHandle, NativeFileHandle } from '@system/filesystem/fs-storage';
 import { FilesystemService } from '@system/adapters/FilesystemService';
-import { AdapterDirectory } from '@system/adapters/IFilesystemAdapter';
 
 export interface FileChangeInfo {
   lastModified: number;
@@ -46,7 +45,7 @@ export function useFileWatcher(
           const fs = FilesystemService.getInstance();
           const info = await fs.stat({
             path: nativeHandle.path,
-            directory: AdapterDirectory.Documents
+            directory: getLedgerStorageDirectory()
           });
           return info.mtime;
         } catch (e) {

@@ -121,7 +121,7 @@ export const getAutoDirectoryHandle = async (): Promise<StorageDirHandle> => {
 
 export const requestDirectoryHandle = async (): Promise<StorageDirHandle> => {
   if (isNativePlatform()) {
-    // Android 默认使用 Documents 目录，先请求权限
+    // 当前正式持久化统一使用 Data 目录，先请求权限
     try {
       const fs = FilesystemService.getInstance();
       if (fs.requestPermissions) {
@@ -131,12 +131,12 @@ export const requestDirectoryHandle = async (): Promise<StorageDirHandle> => {
         }
       }
 
-      const rootPath = ''; // Directory.Documents 的根路径
+      const rootPath = ''; // Directory.Data 的根路径
 
       return {
         kind: 'directory',
         path: rootPath,
-        name: 'Documents'
+        name: 'Data'
       };
     } catch (e) {
       console.error('Failed to request native directory:', e);
@@ -280,7 +280,7 @@ async function scanNativeDir(path: string, fileList: File[]): Promise<File[]> {
     const fs = FilesystemService.getInstance();
     const files = await fs.readdir({
       path: path,
-      directory: AdapterDirectory.Documents
+      directory: getLedgerStorageDirectory()
     });
 
     for (const file of files) {
@@ -291,7 +291,7 @@ async function scanNativeDir(path: string, fileList: File[]): Promise<File[]> {
           // 读取文件内容
           const text = await fs.readFile({
             path: fullPath,
-            directory: AdapterDirectory.Documents
+            directory: getLedgerStorageDirectory()
           });
 
           // Native 真机通常返回 base64；浏览器 mock 返回明文文本。这里做兼容解码。

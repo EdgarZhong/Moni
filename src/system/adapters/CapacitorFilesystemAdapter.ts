@@ -29,7 +29,11 @@ export class CapacitorFilesystemAdapter implements IFilesystemAdapter {
    * 映射适配器目录枚举到 Capacitor Directory 枚举
    */
   private mapDirectory(dir?: AdapterDirectory): Directory {
-    if (!dir) return Directory.Documents;
+    /**
+     * 当前工程已经统一把正式持久化收口到 Directory.Data。
+     * 因此未显式传目录时，默认也落到 Data，避免浏览器 mock 再走回旧的 Documents 口径。
+     */
+    if (!dir) return Directory.Data;
 
     switch (dir) {
       case 'DOCUMENTS':
@@ -39,7 +43,7 @@ export class CapacitorFilesystemAdapter implements IFilesystemAdapter {
       case 'CACHE':
         return Directory.Cache;
       default:
-        return Directory.Documents;
+        return Directory.Data;
     }
   }
 

@@ -148,6 +148,14 @@ export class ClassifyRuntimeStore {
    */
   public static async delete(ledger: string): Promise<void> {
     try {
+      /**
+       * 运行态文件本身就是可选文件。
+       * 删除前先做一次存在性探测，避免“本来就不存在”的正常分支在调试测试中制造 404 噪音。
+       */
+      const exists = await this.exists(ledger);
+      if (!exists) {
+        return;
+      }
       await FilesystemService.getInstance().deleteFile({
         path: getLedgerClassifyRuntimePath(ledger),
         directory: AdapterDirectory.Data,
