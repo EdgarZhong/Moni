@@ -15,6 +15,7 @@
 
 ## App Icon
 
+- svg所在位置：public/icon.svg
 - App Icon 与底部中央按钮共用同一套核心图形语言。
 - 初版允许在中央按钮 SVG 基础上做适配输出 PNG。
 
