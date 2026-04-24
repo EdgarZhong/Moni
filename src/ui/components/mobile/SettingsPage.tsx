@@ -23,8 +23,6 @@ interface SettingsPageProps {
   ledgers: Array<{ name: string; transactionCount: number }>;
   /** 切换账本回调 */
   onSwitchLedger: () => void;
-  /** 版本号 */
-  version?: string;
 }
 
 // 设置项数据结构
@@ -91,7 +89,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   activeLedger,
   ledgers,
   onSwitchLedger,
-  version = 'v1.0.0'
 }) => {
   // 当前显示的面板
   const [currentView, setCurrentView] = useState<PanelView>('main');
@@ -320,12 +317,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               </AnimatePresence>
             </div>
 
-            {/* 底部版本信息 */}
-            <div className="flex-shrink-0 py-3 text-center border-t border-gray-800 bg-card">
-              <div className="text-[10px] font-mono text-dim/60 tracking-wider">
-                PIXELBILL {version} • DESIGNED BY CYBERZEN
-              </div>
-            </div>
           </motion.div>
         </div>
       )}

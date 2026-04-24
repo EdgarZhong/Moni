@@ -1076,7 +1076,6 @@ export function MobileApp() {
         activeLedger={activeLedger}
         ledgers={ledgers.map(l => ({ name: l.name, transactionCount: transactions.length }))}
         onSwitchLedger={handleSwitchLedgerFromSettings}
-        version="v0.2.1"
       />
     </>
   );
