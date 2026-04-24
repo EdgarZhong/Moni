@@ -49,7 +49,6 @@ design/
    - 设计约束
    - 是否需要 prototype
    - 待拍板问题
-   - 角色分工
 3. 该阶段允许不稳定、允许讨论、允许多方案并存。
 
 ### 阶段 2：设计探索
@@ -70,16 +69,17 @@ design/
 
 ### 阶段 4：可视化审查与拍板
 
-1. 启动开发服务器，进入 `http://localhost:{port}/__design`。
+1. 启动开发服务器，进入 `http://localhost:{port}/__design`。给用户提供直达本次审查需要的url。
 2. 按 brief 对应入口审查 prototype。
 3. 用户拍板后，在 brief 中记录最终采用方案与放弃方案。
 4. 通过审查的 brief 从 `briefs/active/` 移入 `briefs/accepted/`。
-5. 放弃方案移入 `briefs/rejected/`。
-6. 禁止存在未分类 brief。
+5. 用户提出修改/微调，在当前活跃brief与prototype上重新执行阶段2 3 4。
+6. 用户要求推倒重做，放弃方案移入 `briefs/rejected/`。
+7. 禁止存在未分类 brief。
 
 ### 阶段 5：固化设计基线
 
-只有在可视化审查通过后，才把稳定结论写入设计基线：
+**只有在可视化审查通过后，才把稳定结论写入设计基线：**
 
 - 新增或改变组件规则：更新 `design/components/{component}.md`
 - 新增或改变用户流程：更新 `design/flows/{flow}.md`

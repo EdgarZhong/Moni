@@ -13,13 +13,6 @@ accepted / superseded / rejected
 
 ## 决策理由
 
-## 角色记录
-- Proposer:
-- Reviewer:
-- Decision Maker:
-- Implementer:
-- Consulted:
-
 ## 影响范围
 
 ## 后续约束
