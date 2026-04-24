@@ -98,12 +98,21 @@ npm run build:release
 - release APK 固定输出到 `release/moni-alpha-v{version}.apk`
 - release 签名固定读取 `android/release-signing.properties`
 
+签名验证口径：
+
+- 统一使用 Android SDK 的 `apksigner verify --verbose --print-certs`
+- 不使用 `jarsigner` 作为本项目 release APK 的签名验收工具
+- 当前 release APK 采用 `APK Signature Scheme v2`
+- 当前工程 `minSdkVersion = 24`，在项目支持范围内，V2 签名可正常安装到真机
+- `jarsigner` 仅检查旧的 V1/JAR 签名；对当前 APK 报 `jar is unsigned` 不代表安装包不可用
+
 换环境快速复现：
 
 - 保留仓库内已追踪的 `package.json`、`android/app/build.gradle`、`android/release-signing.properties.example`
 - 复制 `android/release-signing.properties.example` 为 `android/release-signing.properties`
 - 准备自己的 `release/moni-release.p12`
 - 运行 `npm run build:release`
+- 验证签名时执行：`/opt/android-sdk/build-tools/36.0.0/apksigner verify --verbose --print-certs release/moni-alpha-v{version}.apk`
 
 ## 稳定测试入口
 

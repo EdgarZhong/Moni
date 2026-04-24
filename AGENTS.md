@@ -79,7 +79,10 @@
 Release 构建固定流程：
 
 0. 迭代编码：通常要求构建前已经完成本轮开发
-1. 改版本号：同步更新 `package.json.version`、`android/app/build.gradle` 的 `versionName` 和 `versionCode`
+1. 改版本号：同步更新所有版本号，包括但不限于：
+   - `package.json` 的 `version` 字段
+   - `android/app/build.gradle` 的 `versionName` 和 `versionCode`
+   - UI 硬编码版本：`src/ui/pages/MoniSettings.tsx` 里关于页和关于入口的版本文案
 2. 构建：执行 `npm run build:release`
 3. 提交：提交代码与文档变动
 
@@ -90,6 +93,8 @@ Release 固定约定：
 - APK 输出目录：`release/`
 - Android 签名配置：`android/release-signing.properties`
 - release 构建自动携带 `public/demo-seed-manifest.json`
+- 签名验收统一使用 `apksigner verify --verbose --print-certs`
+- 不使用 `jarsigner` 作为 release APK 验签依据
 
 当前版本：
 
