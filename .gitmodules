@@ -1,7 +1,2 @@
-[submodule "Moni-UI-Prototype"]
-path = Moni-UI-Prototype
-url = git@github.com:EdgarZhong/Moni-UI-Prototype.git
-[submodule "pixel_bill_backend"]
-path = pixel_bill_backend
-url = git@github.com:EdgarZhong/PixelBill.git
-branch = feat/frontend-separation
+# 历史参考子仓库已于 2026-04-24 迁入 `.archive/submodules_2026-04-24/`。
+# 本文件保留为空壳，避免直接删除仓库文件。
