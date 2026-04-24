@@ -41,6 +41,7 @@
 - `prefs.get() / update()`
 - `learning.getDeltaPayload() / getAutoTriggerState()`
 - `home.getReadModel()`
+- `billImport.probe() / import()`
 
 ### 1.2 `window.__MONI_E2E__`
 
@@ -56,6 +57,7 @@
 - `tests.runLearningAutomationSpecTest()`
 - `tests.runCompressionSpecTest()`
 - `tests.runHomeReadModelSmokeTest()`
+- `tests.runBillImportBackendTest()`
 
 ### 1.3 当前已完成的首批逻辑链路验收
 
@@ -68,12 +70,14 @@
 - 学习阶段 delta / full_reconcile payload v7 rich schema
 - 自动学习偏好配置与真实触发判定
 - 收编配置、上下文构造与结果上限校验
+- 账单导入后端探测、密码判定、压缩包解压、微信 Excel 转 CSV 与真实账本导入
 
 当前状态：
 
 - 三条核心测试返回 `ok: true`
-- 测试执行后 browser console 无新增 `error`
+- 测试执行后未出现新的账单导入链路 runtime error；浏览器开发态仍保留既有的可选文件 `404` 噪音
 - 调试临时账本会自动清理，不污染当前人工测试账本
+- 账单导入后端回归会单独创建临时账本，结束后恢复到原激活账本
 
 ### 1.3 返回值约定
 
@@ -223,6 +227,24 @@ await window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()
 - 当前账本
 - 按天流水
 - 趋势窗口基础结构
+
+### 2.8 账单导入后端
+
+使用：
+
+```js
+await window.__MONI_E2E__.tests.runBillImportBackendTest()
+```
+
+当前覆盖：
+
+- 使用 `virtual_android_filesys/Downloads_path/` 下的真实微信 / 支付宝压缩包样本
+- 从 `extract_passwords.txt` 读取对应解压密码，不额外复制测试口令
+- 未知后缀直传文本账单优先走直接解析，不要求输入密码
+- 微信加密压缩包先返回 `password_required`，错误密码返回 `invalid`
+- 微信压缩包内 `xlsx` 自动转 `csv`，再走统一解析链路
+- 支付宝加密压缩包可直接解压并完成导入
+- 全程只写入独立临时账本，结束后删除临时账本并恢复原激活账本
 
 ## 3. MCP 联调用法
 

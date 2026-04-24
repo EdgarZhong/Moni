@@ -23,6 +23,12 @@ import {
   getLedgerMemoryDirectoryPath,
 } from '@system/filesystem/persistence-paths';
 import type {
+  BillImportExecutionResult,
+  BillImportOptions,
+  BillImportProbeResult,
+  BillImportSource,
+} from '@shared/types';
+import type {
   BudgetConfig,
   CategoryBudgetEntry,
   MonthlyBudget,
@@ -117,6 +123,10 @@ interface MoniDebugApi {
       range?: 'all' | { start: string | null; end: string | null };
     }) => Promise<MoniHomeReadModel>;
   };
+  billImport: {
+    probe: (files: File[], options?: BillImportOptions) => Promise<BillImportProbeResult>;
+    import: (files: File[], options?: BillImportOptions) => Promise<BillImportExecutionResult>;
+  };
 }
 
 /**
@@ -134,8 +144,15 @@ interface MoniE2EApi {
     runLearningAutomationSpecTest: () => Promise<DebugTestReport>;
     runCompressionSpecTest: () => Promise<DebugTestReport>;
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
+    runBillImportBackendTest: () => Promise<DebugTestReport>;
   };
 }
+
+const BILL_IMPORT_FIXTURE_PATHS = {
+  passwordFile: '/virtual_android_filesys/Downloads_path/extract_passwords.txt',
+  wechatZip: '/virtual_android_filesys/Downloads_path/微信支付账单流水文件(20260312-20260412)——【解压密码可在微信支付公众号查看】.zip',
+  alipayZip: '/virtual_android_filesys/Downloads_path/支付宝交易明细(20260413-20260424).zip',
+} as const;
 
 function formatNowForRecord(date: Date = new Date()): string {
   const year = date.getFullYear();
@@ -282,6 +299,74 @@ async function pathExists(path: string, directory: AdapterDirectory): Promise<bo
   } catch {
     return false;
   }
+}
+
+/**
+ * 从仓库现有样本目录读取导入测试文件。
+ * 这里统一使用 encodeURI，避免中文路径在浏览器 fetch 时被错误处理。
+ */
+async function loadFixtureFile(path: string): Promise<File> {
+  const response = await fetch(encodeURI(path));
+  if (!response.ok) {
+    throw new Error(`加载测试样本失败：${path}`);
+  }
+
+  const blob = await response.blob();
+  const fileName = decodeURIComponent(path.split('/').pop() ?? 'fixture.bin');
+  return new File([blob], fileName, {
+    type: blob.type || 'application/octet-stream',
+    lastModified: Date.now(),
+  });
+}
+
+/**
+ * 读取用户已经放入样本目录的压缩包密码。
+ * 这样测试脚本始终和当前仓库里的真实样本保持一致，不再额外复制一份口令。
+ */
+async function loadImportFixturePasswords(): Promise<Record<BillImportSource, string>> {
+  const response = await fetch(encodeURI(BILL_IMPORT_FIXTURE_PATHS.passwordFile));
+  if (!response.ok) {
+    throw new Error('加载账单样本密码失败');
+  }
+
+  const text = await response.text();
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const passwords: Partial<Record<BillImportSource, string>> = {};
+
+  for (const line of lines) {
+    if (line.startsWith('微信：')) {
+      passwords.wechat = line.replace('微信：', '').trim();
+    } else if (line.startsWith('支付宝：')) {
+      passwords.alipay = line.replace('支付宝：', '').trim();
+    }
+  }
+
+  if (!passwords.wechat || !passwords.alipay) {
+    throw new Error('测试样本密码文件缺少微信或支付宝密码');
+  }
+
+  return passwords as Record<BillImportSource, string>;
+}
+
+/**
+ * 构造一个“不需要密码的直传文件”样本。
+ * 后缀故意不用 `.csv`，用于验证后端确实会先尝试直接解析，而不是直接逼 UI 走密码分支。
+ */
+function buildDirectWechatFixtureFile(): File {
+  const content = [
+    '微信支付账单明细,,,,,,,,,,',
+    '微信昵称：[调试样本],,,,,,,,,,',
+    '起始时间：[2026-04-01 00:00:00] 终止时间：[2026-04-01 23:59:59],,,,,,,,,,',
+    '导出类型：[全部],,,,,,,,,,',
+    '导出时间：[2026-04-24 20:00:00],,,,,,,,,,',
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,商户单号,备注',
+    '2026-04-01 12:00:00,商户消费,调试商户,测试午餐,支出,12.50,零钱,支付成功,wx_debug_import_plain_001,merchant_debug_001,直传文本账单',
+  ].join('\n');
+
+  return new File([content], 'wechat_plain_fixture.txt', {
+    type: 'text/plain',
+    lastModified: Date.now(),
+  });
 }
 
 async function runLedgerCrudTest(): Promise<DebugTestReport> {
@@ -1226,6 +1311,153 @@ async function runHomeReadModelSmokeTest(): Promise<DebugTestReport> {
   return report;
 }
 
+async function runBillImportBackendTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runBillImportBackendTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('导入测试账本');
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '账单导入后端测试必须先切到独立临时账本');
+    if (!created || getActiveLedgerName() !== tempLedger) {
+      throw new Error('创建临时账本失败，已中止账单导入测试，避免污染当前账本');
+    }
+
+    const passwords = await loadImportFixturePasswords();
+    assertStep(
+      report,
+      'loadFixturePasswords',
+      Boolean(passwords.wechat && passwords.alipay),
+      passwords,
+      '应能从样本目录读取微信和支付宝压缩包密码'
+    );
+
+    const directFile = buildDirectWechatFixtureFile();
+    const directProbe = await appFacade.probeBillImportFiles([directFile], { expectedSource: 'wechat' });
+    assertStep(
+      report,
+      'probeDirectTextFile',
+      directProbe.status === 'ready' && directProbe.transactionCount === 1,
+      directProbe,
+      '未知后缀的直传文本账单应可直接识别，不应要求输入密码'
+    );
+
+    const wechatZip = await loadFixtureFile(BILL_IMPORT_FIXTURE_PATHS.wechatZip);
+    const wechatProbeWithoutPassword = await appFacade.probeBillImportFiles([wechatZip], { expectedSource: 'wechat' });
+    assertStep(
+      report,
+      'probeWechatZipNeedsPassword',
+      wechatProbeWithoutPassword.status === 'password_required' && wechatProbeWithoutPassword.passwordState === 'missing',
+      wechatProbeWithoutPassword,
+      '加密微信压缩包在未提供密码时应明确返回 password_required'
+    );
+
+    const wechatProbeWrongPassword = await appFacade.probeBillImportFiles([wechatZip], {
+      expectedSource: 'wechat',
+      password: 'wrong-password',
+    });
+    assertStep(
+      report,
+      'probeWechatZipInvalidPassword',
+      wechatProbeWrongPassword.status === 'password_required' && wechatProbeWrongPassword.passwordState === 'invalid',
+      wechatProbeWrongPassword,
+      '错误密码不应被吞掉，而应明确返回 invalid password 状态'
+    );
+
+    const wechatProbeReady = await appFacade.probeBillImportFiles([wechatZip], {
+      expectedSource: 'wechat',
+      password: passwords.wechat,
+    });
+    assertStep(
+      report,
+      'probeWechatZipReady',
+      wechatProbeReady.status === 'ready' && (wechatProbeReady.transactionCount ?? 0) > 0,
+      wechatProbeReady,
+      '正确密码下，微信压缩包应能被识别为可直接导入'
+    );
+
+    const beforeWechatImportCount = Object.keys(LedgerService.getInstance().getState().ledgerMemory?.records ?? {}).length;
+    const wechatImport = await appFacade.importBillFiles([wechatZip], {
+      expectedSource: 'wechat',
+      password: passwords.wechat,
+    });
+    const afterWechatImportCount = Object.keys(LedgerService.getInstance().getState().ledgerMemory?.records ?? {}).length;
+    assertStep(
+      report,
+      'importWechatZip',
+      wechatImport.importedCount > 0 && afterWechatImportCount - beforeWechatImportCount === wechatImport.importedCount,
+      {
+        beforeWechatImportCount,
+        afterWechatImportCount,
+        wechatImport,
+      },
+      '微信压缩包导入后，临时账本记录数应按导入条数增长'
+    );
+
+    const beforeDirectImportCount = afterWechatImportCount;
+    const directImport = await appFacade.importBillFiles([directFile], { expectedSource: 'wechat' });
+    const afterDirectImportCount = Object.keys(LedgerService.getInstance().getState().ledgerMemory?.records ?? {}).length;
+    assertStep(
+      report,
+      'importDirectTextFile',
+      directImport.importedCount === 1 && afterDirectImportCount - beforeDirectImportCount === 1,
+      {
+        beforeDirectImportCount,
+        afterDirectImportCount,
+        directImport,
+      },
+      '非压缩直传文本账单也应能完整走通后端导入链路'
+    );
+
+    const alipayZip = await loadFixtureFile(BILL_IMPORT_FIXTURE_PATHS.alipayZip);
+    const alipayProbeWithoutPassword = await appFacade.probeBillImportFiles([alipayZip], { expectedSource: 'alipay' });
+    assertStep(
+      report,
+      'probeAlipayZipNeedsPassword',
+      alipayProbeWithoutPassword.status === 'password_required' && alipayProbeWithoutPassword.passwordState === 'missing',
+      alipayProbeWithoutPassword,
+      '加密支付宝压缩包在未提供密码时也应先返回 password_required'
+    );
+
+    const beforeAlipayImportCount = Object.keys(LedgerService.getInstance().getState().ledgerMemory?.records ?? {}).length;
+    const alipayImport = await appFacade.importBillFiles([alipayZip], {
+      expectedSource: 'alipay',
+      password: passwords.alipay,
+    });
+    const afterAlipayImportCount = Object.keys(LedgerService.getInstance().getState().ledgerMemory?.records ?? {}).length;
+    assertStep(
+      report,
+      'importAlipayZip',
+      alipayImport.importedCount > 0 && afterAlipayImportCount - beforeAlipayImportCount === alipayImport.importedCount,
+      {
+        beforeAlipayImportCount,
+        afterAlipayImportCount,
+        alipayImport,
+      },
+      '支付宝压缩包应能通过后端接口完成导入，并写入独立临时账本'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+    const ledgersAfterCleanup = await ledgerManager.listLedgers({ syncWithFiles: false });
+    report.context = {
+      finalActiveLedger: getActiveLedgerName(),
+      tempLedgerCleaned: !ledgersAfterCleanup.some((ledger) => ledger.name === tempLedger),
+      remainingLedgers: ledgersAfterCleanup.map((ledger) => ledger.name),
+    };
+  }
+
+  return report;
+}
+
 function createDebugApi(): MoniDebugApi {
   return {
     env: {
@@ -1506,6 +1738,16 @@ function createDebugApi(): MoniDebugApi {
     home: {
       getReadModel: getHomeReadModel,
     },
+    billImport: {
+      probe: async (files: File[], options?: BillImportOptions) => {
+        await ensureAppReady();
+        return await appFacade.probeBillImportFiles(files, options);
+      },
+      import: async (files: File[], options?: BillImportOptions) => {
+        await ensureAppReady();
+        return await appFacade.importBillFiles(files, options);
+      },
+    },
   };
 }
 
@@ -1520,6 +1762,7 @@ function createE2EApi(): MoniE2EApi {
       runLearningAutomationSpecTest,
       runCompressionSpecTest,
       runHomeReadModelSmokeTest,
+      runBillImportBackendTest,
     },
   };
 }

@@ -36,8 +36,8 @@ test-img/
 
 # Virtual Filesystem (Sandbox & Mocks)
 virtual_android_filesys/sandbox_path/llm_logs
-!virtual_android_filesys/sandbox_path/.gitkeep
-
+virtual_android_filesys/Downloads_path/
+!virtual_android_filesys/Downloads_path/.gitkeep
 # Security
 public/secure_config.json
 public/demo-seed-manifest.json

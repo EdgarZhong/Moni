@@ -9,7 +9,6 @@ const __dirname = path.dirname(__filename);
 
 // Define Roots (Relative to this file)
 const ROOTS: Record<string, string> = {
-  DOCUMENTS: path.resolve(__dirname, 'virtual_android_filesys/Documents_path'),
   DATA: path.resolve(__dirname, 'virtual_android_filesys/sandbox_path')
 };
 
@@ -51,7 +50,11 @@ export function mockFsMiddleware(): Plugin {
         };
 
         const getAbsPath = (directory: string, relativePath: string) => {
-          const root = ROOTS[directory] || ROOTS['DOCUMENTS']; // Default to Documents
+          /**
+           * 当前浏览器开发态 mock 已不再维护独立的 Documents 根目录。
+           * 所有读写统一收口到 DATA，对齐当前正式持久化口径。
+           */
+          const root = ROOTS[directory] || ROOTS['DATA'];
           return path.join(root, relativePath || '');
         };
 
@@ -60,18 +63,17 @@ export function mockFsMiddleware(): Plugin {
             const body = await getBody();
             const action = typeof body.action === 'string' ? body.action : '';
             const relPath = typeof body.path === 'string' ? body.path : '';
-            const directory = typeof body.directory === 'string' ? body.directory : '';
             const toPath = typeof body.toPath === 'string' ? body.toPath : '';
-            const toDirectory = typeof body.toDirectory === 'string' ? body.toDirectory : '';
             const append = body.append === true;
             const content = typeof body.content === 'string'
               ? body.content
               : (body.content === undefined ? '' : String(body.content));
             
-            // Map 'directory' param to our roots
-            // Capacitor uses 'DOCUMENTS', 'DATA', 'LIBRARY', etc.
-            // We only map DOCUMENTS and DATA (Sandbox) for now.
-            const targetDirKey = directory === 'DATA' ? 'DATA' : 'DOCUMENTS';
+            /**
+             * 开发态 mock 固定把所有目录请求映射到 DATA。
+             * 即便上层仍传 DOCUMENTS，也只作为兼容输入，不再单独落到旧路径。
+             */
+            const targetDirKey = 'DATA';
             const absPath = getAbsPath(targetDirKey, relPath);
 
             // console.log(`[MockFS] ${action} -> ${relPath} (Dir: ${targetDirKey})`);
@@ -124,7 +126,7 @@ export function mockFsMiddleware(): Plugin {
                 res.end(JSON.stringify({ error: 'File not found' }));
               }
             } else if (action === 'rename') {
-              const toDirKey = toDirectory === 'DATA' ? 'DATA' : 'DOCUMENTS';
+              const toDirKey = 'DATA';
               const toAbsPath = getAbsPath(toDirKey, toPath);
               
               if (fs.existsSync(absPath)) {

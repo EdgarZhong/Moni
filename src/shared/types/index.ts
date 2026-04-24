@@ -2,6 +2,7 @@ import { type TransactionBase, type TransactionMeta } from './metadata';
 export * from './metadata';
 export * from './application';
 export * from './budget';
+export * from './bill-import';
 export * from './ledger-preferences';
 
 // 运行时交易数据结构

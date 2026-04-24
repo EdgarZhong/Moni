@@ -11,6 +11,7 @@ import { MemoryManager } from '@logic/application/services/MemoryManager';
 import { SelfDescriptionManager } from '@system/config/SelfDescriptionManager';
 import { SnapshotManager } from '@logic/application/services/SnapshotManager';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
+import { BillImportManager } from '@logic/application/services/BillImportManager';
 import { LedgerManager } from '@logic/application/services/LedgerManager';
 import { LedgerService } from '@logic/application/services/LedgerService';
 import { ManualEntryManager } from '@logic/application/services/ManualEntryManager';
@@ -19,6 +20,9 @@ import { ConfigManager } from '@system/config/ConfigManager';
 import { LLMClient } from '@logic/application/llm/LLMClient';
 import { DemoSeedInstaller } from '@system/filesystem/DemoSeedInstaller';
 import type {
+  BillImportExecutionResult,
+  BillImportOptions,
+  BillImportProbeResult,
   EntryPageReadModel,
   EntryRecentReference,
   HomeAiEngineUiState,
@@ -162,6 +166,7 @@ export class AppFacade {
   private readonly ledgerService = LedgerService.getInstance();
   private readonly ledgerManager = LedgerManager.getInstance();
   private readonly budgetManager = BudgetManager.getInstance();
+  private readonly billImportManager = BillImportManager.getInstance();
   private readonly batchProcessor = BatchProcessor.getInstance();
   private readonly manualEntryManager = ManualEntryManager.getInstance();
   private readonly listeners = new Set<() => void>();
@@ -397,6 +402,28 @@ export class AppFacade {
 
   public async importRawData(parsedData: LedgerFacadeState['rawTransactions']): Promise<void> {
     await this.ledgerService.ingestRawData(parsedData);
+  }
+
+  /**
+   * 账单导入预探测接口。
+   * 表现层应先调用这个接口，再决定是否展示密码输入和导入确认。
+   */
+  public async probeBillImportFiles(
+    files: File[],
+    options: BillImportOptions = {},
+  ): Promise<BillImportProbeResult> {
+    return await this.billImportManager.probeFiles(files, options);
+  }
+
+  /**
+   * 账单文件导入接口。
+   * 内部默认写入当前激活账本，并返回结构化导入结果给表现层 / 调试工具。
+   */
+  public async importBillFiles(
+    files: File[],
+    options: BillImportOptions = {},
+  ): Promise<BillImportExecutionResult> {
+    return await this.billImportManager.importFiles(files, options);
   }
 
   public updateTransactionCategory(id: string, category: string, reasoning?: string): void {
