@@ -33,7 +33,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"],
+  "include": ["src", "design/**/*.ts", "design/**/*.tsx"],
   "exclude": [
     "src/app",
     "src/core",

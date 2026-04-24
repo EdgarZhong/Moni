@@ -17,7 +17,7 @@
 |------|--------------|-----------|
 | `Moni_Requirements_v2.md` A2～A5 | 需求定义 | 继承并细化 |
 | `AI_SELF_LEARNING_DESIGN_v7.md` §2.1.2 | 实例库字段与注入规则 | 本文确认共用实例库；注入差异化逻辑属 v7 |
-| `DESIGN.md` §18.1 | 随手记页面结构边界 | 本文不重复，表现层仅讨论条目渲染 |
+| `design/flows/manual-entry.md` | 随手记页面结构边界 | 本文不重复，表现层仅讨论条目渲染 |
 | `Moni_Budget_System_Spec_v2.md` | 预算计算 | 手记条目与导入条目无差异，自然参与 |
 
 ---
@@ -271,7 +271,7 @@ B 是最强学习信号（含错误-纠正对照），A 次之（正向确认）
 | **分类标签**（仅"全部"视图） | 有 `user_category` 时显示；否则显示 `ai_category`（含"AI 暂定"样式） | 显示 `user_category`（始终确定，无"AI 暂定"状态） |
 | **AI reasoning 槽位** | 无 `user_category` 时显示 `ai_reasoning`；有则隐藏 | 显示 `user_note`（description）；为空则整行隐藏 |
 
-**AI reasoning 槽位的视觉区分**：CSV 条目在此位置的内容带有"AI 暂定"语义的视觉处理（DESIGN.md §14.4）；手记条目在同一位置显示 `user_note` 时，去掉 AI 图标，改用中性说明样式，避免误认为是 AI 写的。具体视觉待随手记页面原型阶段确认。
+**AI reasoning 槽位的视觉区分**：CSV 条目在此位置的内容带有“AI 暂定”语义的视觉处理；手记条目在同一位置显示 `user_note` 时，去掉 AI 图标，改用中性说明样式，避免误认为是 AI 写的。具体视觉以后续 `design/briefs/` 与对应原型拍板为准。
 
 ### 4.2 条目详情页
 

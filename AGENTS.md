@@ -10,7 +10,7 @@
 ## 基本边界
 
 - 主仓库是唯一运行时代码来源
-- `Moni-UI-Prototype/` 与 `pixel_bill_backend/` 仅作只读参考，不得接入运行时
+- 历史参考子仓库已迁入 `.archive/submodules_2026-04-24/`，仅供追溯，不得接入运行时
 - 目标运行环境是 Android Capacitor，浏览器 F12 仅作高保真开发替身，不可等价替代真机验收
 - 稳定事实进 `README.md`，动态编排进 `CLAUDE.md`，禁止混写
 
@@ -21,6 +21,9 @@
 - 禁止顺手重构无关模块、批量改名、跨层随意下潜
 - UI 不得绕过 facade 深入访问底层 service 细节
 - 预算配置、账本行为配置、账本主数据必须继续分层，禁止混塞到同一文件
+- 涉及 UI/UX 任务时，先查看 `design/README.md` 与相关 `brief / brand / components / flows / standards / decisions`
+- 没有 accepted brief 或明确 design baseline 引用的 UI 改动，不直接进入正式代码
+- 若实现发现 design 不可落地，先回 `design/` 修改设计资产，再继续编码
 
 ## 文件操作
 
@@ -64,6 +67,12 @@
   - 关键设计决策
   - 剩余风险
   - 未覆盖项
+
+## UI/UX 工作流入口
+
+- 详细设计工作流与目录组织写在 `design/README.md`
+- 核心文档只保留入口，不复制完整设计手册
+- 开发态局部原型统一从 `__design` 审查
 
 ## 当前长期有效约束
 

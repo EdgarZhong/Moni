@@ -11,7 +11,7 @@
 
 - 当前已发布稳定版本：`0.2.1`
 - 下一版本：暂未定号，当前按“账单导入增强”推进
-- 当前会话目标：完成账单导入后端逻辑增强，不推进 UI / UX 对接
+- 当前会话目标：建立主仓库 `design/` 设计工作台与开发态 `__design` 入口，并同步核心文档口径
 - 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
 
 ## 当前阶段基线
@@ -20,6 +20,9 @@
 - 当前账单导入增强只动后端逻辑层、Facade 与调试测试入口，不改记账页表现层
 - 表现层后续应基于“先 probe，再 import”的接口决定是否展示密码输入
 - 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
+- 主仓库已建立 `design/` 作为唯一设计工作台；后续 UI/UX 任务需先从 `design/briefs/active/` 发起
+- 开发态 `__design` 已作为局部原型预览入口落地，正式产物不暴露该入口
+- 两个历史参考子仓库已迁入 `.archive/submodules_2026-04-24/`，主仓库后续不再保留 submodule 依赖
 
 ## Release Changelog
 
@@ -41,6 +44,7 @@
 | 任务 | 状态 | 说明 |
 |------|------|------|
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
+| design 工作台落地 | Done | 已新增 `design/` 目录、brief / baseline / DDR 模板、示例 prototype 与开发态 `__design` 入口，并同步核心文档入口规则 |
 | 账单导入 UI / UX 对接 | Pending | 后续由表现层根据 `probe` 结果决定是否弹密码输入、如何展示文件识别结果 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 
@@ -93,6 +97,8 @@
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
+- UI/UX 设计源头当前固定为主仓库 `design/`；核心文档只保留入口，完整工作流与基线维护在 `design/`
+- 开发态设计原型统一经由 `__design` 入口预览；prototype 只服务设计审查，不作为生产组件
 - 浏览器开发态文件系统 mock 当前只保留 `Directory.Data -> virtual_android_filesys/sandbox_path`；旧的独立 `Documents_path` 已退出运行时路径
 - 本项目语境中的端到端测试默认指 agent 通过 `Playwright MCP` 在浏览器开发态做自动化页面验证
 - Playwright MCP 默认移动端测试视口以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`

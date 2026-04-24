@@ -4,10 +4,19 @@ import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
 import { useAppViewportLock } from '@ui/hooks/useAppViewportLock';
+import { DesignWorkbench } from '@ui/devtools/DesignWorkbench';
 
 type Page = 'home' | 'entry' | 'settings';
 
 function App() {
+  /**
+   * `__design` 是开发态专用的轻量设计工作台入口。
+   * 正式产物不暴露该入口，避免 prototype 进入生产环境。
+   */
+  if (import.meta.env.DEV && window.location.pathname === '/__design') {
+    return <DesignWorkbench />;
+  }
+
   /**
    * 在应用根层锁定稳定画布高度。
    * 这样页面容器就不会在 Android 软键盘弹出时跟着 viewport 一起缩短。
