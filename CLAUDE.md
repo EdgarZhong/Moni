@@ -11,16 +11,17 @@
 
 - 当前已发布稳定版本：`0.2.1`
 - 下一版本：暂未定号，当前按“账单导入增强”推进
-- 当前会话目标：建立主仓库 `design/` 设计工作台与开发态 `__design` 入口，并同步核心文档口径
+- 当前会话目标：收口账单导入 UI / UX 对接口径，明确不重做记账页现有导入入口
 - 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
 
 ## 当前阶段基线
 
 - 首页与记账页主流程已稳定，设置页主要持久化链路已稳定
-- 当前账单导入增强只动后端逻辑层、Facade 与调试测试入口，不改记账页表现层
-- 表现层后续应基于“先 probe，再 import”的接口决定是否展示密码输入
+- 当前账单导入增强已进入记账页表现层对接；入口仍保持现有两个按钮，不重做记账页表面结构
+- 表现层已基于“先 probe，再 import”的接口决定是否展示密码输入；微信 / 支付宝两个按钮只传入不同 `expectedSource` 与对应密码文案
 - 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
 - 主仓库已建立 `design/` 作为唯一设计工作台；后续 UI/UX 任务需先从 `design/briefs/active/` 发起
+- 原型工作流当前已明确拆分为 `mirror / sandbox` 双模式：小范围高保真验证优先 `mirror`，新页面或大改版探索允许 `sandbox`
 - 开发态 `__design` 已作为局部原型预览入口落地，正式产物不暴露该入口
 - 两个历史参考子仓库已迁入 `.archive/submodules_2026-04-24/`，主仓库后续不再保留 submodule 依赖
 
@@ -45,16 +46,15 @@
 |------|------|------|
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
 | design 工作台落地 | Done | 已新增 `design/` 目录、brief / baseline / DDR 模板、示例 prototype 与开发态 `__design` 入口，并同步核心文档入口规则 |
-| 账单导入 UI / UX 对接 | Pending | 后续由表现层根据 `probe` 结果决定是否弹密码输入、如何展示文件识别结果 |
+| 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 
 ## 当前优先级
 
-1. 账单导入 UI / UX 对接
-2. Android 文件选择器真机验收
-3. 真实 LLM 回归
-4. 控制台 404 噪音收敛
-5. 下一版本号与 release 范围定义
+1. Android 文件选择器真机验收
+2. 真实 LLM 回归
+3. 控制台 404 噪音收敛
+4. 下一版本号与 release 范围定义
 
 ## 当前阶段风险
 
@@ -65,6 +65,10 @@
 
 ## 当前验证状态
 
+- `2026-04-26`：`npm run typecheck` 通过
+- `2026-04-26`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-26`：Playwright 打开 `http://127.0.0.1:5174/` 并进入记账页，确认“微信账单 / 支付宝账单”入口存在且 console error 为 0；未用 UI 真实上传样本，避免污染当前账本
+- `2026-04-26`：Playwright 通过支付宝 zip 样本触发正式密码页，确认密码页覆盖层定位为整页、截图输出 `/tmp/moni-password-page-v3.png`；console 中仍有既有文件系统 404 噪音
 - `2026-04-24`：`npm run typecheck` 通过
 - `2026-04-24`：`npm run build` 通过，存在既有 chunk size warning
 - `2026-04-24`：浏览器开发态执行 `window.__MONI_E2E__.tests.runBillImportBackendTest()` 通过
@@ -99,6 +103,9 @@
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
 - UI/UX 设计源头当前固定为主仓库 `design/`；核心文档只保留入口，完整工作流与基线维护在 `design/`
 - 开发态设计原型统一经由 `__design` 入口预览；prototype 只服务设计审查，不作为生产组件
+- 账单导入入口当前固定为记账页现有“微信账单 / 支付宝账单”两个按钮，不新增导入舱或重做表面结构
+- 账单导入两个按钮的实现差异仅为 `expectedSource` 与平台化密码提示文案，后续统一走 `probeBillImportFiles()` 与 `importBillFiles()`
+- 记账一级页中的账单解析中、导入中、导入成功提示统一复用导入卡片底部提示条；这些提示出现时，默认“查看导入指南”提示需要让位
 - 浏览器开发态文件系统 mock 当前只保留 `Directory.Data -> virtual_android_filesys/sandbox_path`；旧的独立 `Documents_path` 已退出运行时路径
 - 本项目语境中的端到端测试默认指 agent 通过 `Playwright MCP` 在浏览器开发态做自动化页面验证
 - Playwright MCP 默认移动端测试视口以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
@@ -120,8 +127,8 @@
 
 ## 交接说明
 
-- 本轮已完成账单导入后端链路与浏览器开发态真实样本回归，记账页 UI / UX 尚未接入新接口
-- 表现层后续应优先调用 `AppFacade.probeBillImportFiles()`，仅在返回 `password_required` 时再展示密码输入
+- 本轮已完成账单导入后端链路与浏览器开发态真实样本回归，记账页 UI / UX 已开始接入新接口
+- 表现层当前已调用 `AppFacade.probeBillImportFiles()`，仅在返回 `password_required` 时展示对应平台密码输入
 - 后续若进入 release 收口，先明确下一版本号与 release 范围，再清理当前任务看板
 - 每次 release 完成后，必须把已交付 feature 归并到 `Release Changelog`，并清理当前任务看板中的已完成项
 - 旧的并行编排版 `CLAUDE.md` 已归档到 `.archive/CLAUDE_parallel_legacy_2026-04-09.md`
