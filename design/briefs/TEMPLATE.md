@@ -23,6 +23,11 @@ active / accepted / rejected
 - 成功态
 - AI 运行态，如适用
 
+## 原型模式
+mirror / sandbox / none
+
+## 选择原因
+
 ## 设计约束
 引用相关 brand / component / flow / standard 文件。
 
