@@ -9,8 +9,12 @@
 
 ## 基本边界
 
-- 主仓库是唯一运行时代码来源
+- 主仓库是正式产品的唯一运行时代码来源
 - 历史参考子仓库已迁入 `.archive/submodules_2026-04-24/`，仅供追溯，不得接入运行时
+- `Moni-UI-Prototype` 是独立 UI 原型仓库，只作为表现层 source of truth 与信息参考源
+- 主仓库与原型仓库必须各自独立安装依赖、独立启动、独立构建，禁止运行时耦合
+- 禁止主仓库通过 `import`、`require`、Vite alias、TypeScript paths、npm workspace、npm link、submodule 指针、构建脚本或相对路径直接引用原型仓库代码
+- 允许复制原型仓库中已确认的代码或规格到主仓库；复制后代码属于主仓库，必须在主仓库内独立接线
 - 目标运行环境是 Android Capacitor，浏览器 F12 仅作高保真开发替身，不可等价替代真机验收
 - 稳定事实进 `README.md`，动态编排进 `CLAUDE.md`，禁止混写
 
@@ -21,9 +25,11 @@
 - 禁止顺手重构无关模块、批量改名、跨层随意下潜
 - UI 不得绕过 facade 深入访问底层 service 细节
 - 预算配置、账本行为配置、账本主数据必须继续分层，禁止混塞到同一文件
-- 涉及 UI/UX 任务时，先查看 `design/README.md` 与相关 `brief / brand / components / flows / standards / decisions`
-- 没有 accepted brief 或明确 design baseline 引用的 UI 改动，不直接进入正式代码
-- 若实现发现 design 不可落地，先回 `design/` 修改设计资产，再继续编码
+- 涉及 UI/UX 任务时，先查看 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 与独立原型仓库 `Moni-UI-Prototype`
+- 任何表现层变更必须先在原型仓库完成探索和确认，再进入主仓库实现
+- 未经用户明确授权进入实现阶段，原型结论不得写入主仓库正式代码
+- 若主仓库实现发现原型设计不可落地，先回原型仓库修正并重新确认，再继续主仓库编码
+- 本项目当前暂不启用 v3 第五章 Design Scope 导航脚手架；原型仓库继续使用与主仓库一致的状态驱动导航
 
 ## 文件操作
 
@@ -68,11 +74,15 @@
   - 剩余风险
   - 未覆盖项
 
-## UI/UX 工作流入口
+## UI/UX 原型驱动工作流
 
-- 详细设计工作流与目录组织写在 `design/README.md`
-- 核心文档只保留入口，不复制完整设计手册
-- 开发态局部原型统一从 `__design` 审查
+- 详细工作流以 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 为准
+- 独立原型仓库 `Moni-UI-Prototype` 是 UI 表现层唯一上游依据
+- 旧主仓库 `design/` 工作台与 `/__design` 开发态入口已废弃，不再作为设计入口
+- 原型仓库必须使用与主仓库一致的 TypeScript / React / Vite / 样式与依赖约束
+- 原型仓库必须通过本地 mock / fixtures 层提供数据，组件不得直接硬编码业务数据
+- 原型审查交付必须说明启动方式、状态路径清单、范围边界和未覆盖项
+- 规格单向流动：原型仓库确认后复制/迁移到主仓库；主仓库不得反向改写原型结论
 
 ## 当前长期有效约束
 
