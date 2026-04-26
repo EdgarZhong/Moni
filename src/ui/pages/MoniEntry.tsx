@@ -21,9 +21,9 @@ import {
 import { Decor, GearIcon, LedgerHeaderControl, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { useKeyboard } from "@ui/hooks/useKeyboard";
-import { parseFiles } from "@shared/utils/parser";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
+import type { BillImportSource } from "@shared/types";
 
 // ──────────────────────────────────────────────
 // 子组件
@@ -40,7 +40,30 @@ interface DecorShape {
   rotation?: number;
 }
 
-function ImportCard({ onImport }: { onImport: () => void }) {
+interface ImportNotice {
+  kind: "probing" | "importing" | "success" | "error";
+  message: string;
+}
+
+interface PendingPasswordImport {
+  source: BillImportSource;
+  files: File[];
+  password: string;
+  state: "idle" | "invalid" | "submitting";
+}
+
+const BILL_IMPORT_SOURCE_LABEL: Record<BillImportSource, string> = {
+  wechat: "微信",
+  alipay: "支付宝",
+};
+
+function ImportCard({
+  onImport,
+  notice,
+}: {
+  onImport: (source: BillImportSource) => void;
+  notice: ImportNotice | null;
+}) {
   const decorShapes: DecorShape[] = useMemo(
     () => [
       { id: "c1", type: "circle", x: 36, y: 28, size: 10, color: C.coral, opacity: 0.14 },
@@ -134,7 +157,7 @@ function ImportCard({ onImport }: { onImport: () => void }) {
 
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div
-            onClick={onImport}
+            onClick={() => onImport("wechat")}
             style={{
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               padding: "12px 14px", borderRadius: 12, background: "#F0FFF0",
@@ -146,7 +169,7 @@ function ImportCard({ onImport }: { onImport: () => void }) {
             微信账单
           </div>
           <div
-            onClick={onImport}
+            onClick={() => onImport("alipay")}
             style={{
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               padding: "12px 14px", borderRadius: 12, background: "#F0F5FF",
@@ -159,18 +182,211 @@ function ImportCard({ onImport }: { onImport: () => void }) {
           </div>
         </div>
 
-        <div
+        {notice ? (
+          <ImportCardNotice notice={notice} />
+        ) : (
+          <div
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "8px 0", borderRadius: 8, background: C.warmBg,
+              color: "#8B5E2B", fontSize: 12, fontWeight: 600,
+            }}
+          >
+            <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1.5px solid ${C.amber}`, color: C.amber, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>i</span>
+            不知道怎么导出账单？查看导入指南
+            <span style={{ color: "#CBA870" }}>›</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImportCardNotice({ notice }: { notice: ImportNotice }) {
+  const tone = notice.kind === "success"
+    ? { background: C.greenBg, color: C.greenText, accent: C.mint, symbol: "✓" }
+    : notice.kind === "error"
+      ? { background: C.orangeBg, color: "#A35316", accent: C.amber, symbol: "!" }
+      : { background: C.blueBg, color: "#2D5EA7", accent: C.blue, symbol: "…" };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        padding: "8px 10px",
+        borderRadius: 8,
+        background: tone.background,
+        color: tone.color,
+        fontSize: 12,
+        fontWeight: 600,
+        minHeight: 32,
+      }}
+    >
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: "50%",
+          border: `1.5px solid ${tone.accent}`,
+          color: tone.accent,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 10,
+          flexShrink: 0,
+        }}
+      >
+        {tone.symbol}
+      </span>
+      <span style={{ textAlign: "center", lineHeight: 1.35 }}>{notice.message}</span>
+    </div>
+  );
+}
+
+function ImportPasswordPage({
+  pending,
+  onBack,
+  onChangePassword,
+}: {
+  pending: PendingPasswordImport;
+  onBack: () => void;
+  onChangePassword: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const platformName = BILL_IMPORT_SOURCE_LABEL[pending.source];
+
+  useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 60,
+        background: C.bg,
+        display: "flex",
+        flexDirection: "column",
+        animation: "billImportSlideIn 220ms ease-out",
+      }}
+    >
+      <style>{`
+        @keyframes billImportSlideIn {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+
+      <header style={{ padding: "18px 16px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="返回记账页"
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            padding: "8px 0", borderRadius: 8, background: C.warmBg,
-            color: "#8B5E2B", fontSize: 12, fontWeight: 600,
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            border: `1.5px solid ${C.border}`,
+            background: C.white,
+            color: C.dark,
+            fontSize: 18,
+            fontWeight: 900,
           }}
         >
-          <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1.5px solid ${C.amber}`, color: C.amber, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>i</span>
-          不知道怎么导出账单？查看导入指南
-          <span style={{ color: "#CBA870" }}>›</span>
+          ‹
+        </button>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: C.dark, fontFamily: "'Nunito',sans-serif" }}>{platformName}账单密码</div>
+          <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>输入导出压缩包里的 6 位数字密码</div>
         </div>
-      </div>
+      </header>
+
+      <main style={{ flex: 1, padding: "10px 18px 18px" }}>
+        <section
+          style={{
+            background: C.white,
+            border: `2px solid ${pending.state === "invalid" ? C.amber : C.dark}`,
+            borderRadius: 22,
+            padding: "22px 18px 18px",
+            boxShadow: "0 8px 0 rgba(31, 36, 48, 0.08)",
+          }}
+        >
+          <div style={{ width: 72, height: 72, borderRadius: 22, background: C.blueBg, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 44, border: `2px solid ${C.dark}`, borderRadius: 8, background: C.white, position: "relative" }}>
+              <div style={{ position: "absolute", left: 7, right: 7, top: 12, height: 2, background: C.border, borderRadius: 2 }} />
+              <div style={{ position: "absolute", left: 7, right: 11, top: 21, height: 2, background: C.border, borderRadius: 2 }} />
+              <div style={{ position: "absolute", right: -12, bottom: -10, width: 26, height: 26, borderRadius: 13, background: C.mint, display: "flex", alignItems: "center", justifyContent: "center", color: C.white, fontWeight: 900 }}>
+                #
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", fontSize: 15, fontWeight: 900, marginBottom: 6, color: C.dark }}>{platformName}账单压缩包已识别</div>
+          <div style={{ textAlign: "center", fontSize: 11, lineHeight: 1.55, color: C.sub, marginBottom: 18 }}>
+            请输入导出账单时获得的 6 位数字密码。
+          </div>
+
+          <label style={{ display: "block", position: "relative", marginBottom: 10 }}>
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              value={pending.password}
+              maxLength={6}
+              aria-label={`${platformName}账单压缩包密码`}
+              onChange={(event) => onChangePassword(event.target.value)}
+              disabled={pending.state === "submitting"}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                opacity: 0,
+                border: 0,
+                padding: 0,
+                cursor: "text",
+              }}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  style={{
+                    height: 42,
+                    borderRadius: 12,
+                    border: `1.5px solid ${pending.state === "invalid" ? "#D85F4A" : C.border}`,
+                    background: C.warmBg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: C.dark,
+                    fontSize: 18,
+                    fontWeight: 900,
+                    fontFamily: "'Space Mono', monospace",
+                    transition: "border-color 160ms ease",
+                  }}
+                >
+                  {pending.password[index] ?? ""}
+                </div>
+              ))}
+            </div>
+          </label>
+
+          <div style={{ minHeight: 18, textAlign: "center", fontSize: 11, fontWeight: 800, color: pending.state === "invalid" ? "#C94632" : C.muted }}>
+            {pending.state === "submitting"
+              ? "正在验证密码..."
+              : pending.state === "invalid"
+                ? "密码不正确，请重新输入"
+                : " "}
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
@@ -715,7 +931,9 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const [savedCount, setSavedCount] = useState(0);
   const [toastEntry, setToastEntry] = useState<SuccessToastEntry | null>(null);
   const [showToast, setShowToast] = useState(false);
-  const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
+  const [selectedImportSource, setSelectedImportSource] = useState<BillImportSource | null>(null);
+  const [pendingPasswordImport, setPendingPasswordImport] = useState<PendingPasswordImport | null>(null);
 
   /**
    * 本轮 Android 真机修复要求首屏优先露出“记一笔”入口。
@@ -730,36 +948,157 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const hoverCatRef = useRef<string | null>(null);
   const directionRef = useRef<"in" | "out">("out");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleImportClick = useCallback(async () => {
+  const setImportNoticeWithTimer = useCallback((nextNotice: ImportNotice | null, autoHideMs?: number) => {
+    if (importNoticeTimerRef.current) {
+      clearTimeout(importNoticeTimerRef.current);
+      importNoticeTimerRef.current = null;
+    }
+
+    setImportNotice(nextNotice);
+
+    if (nextNotice && autoHideMs) {
+      importNoticeTimerRef.current = setTimeout(() => {
+        setImportNotice(null);
+        importNoticeTimerRef.current = null;
+      }, autoHideMs);
+    }
+  }, []);
+
+  const buildSourceNotice = useCallback((source: BillImportSource, action: string): ImportNotice => ({
+    kind: action === "导入成功" ? "success" : action === "导入失败" ? "error" : action === "正在导入" ? "importing" : "probing",
+    message: `${action}${BILL_IMPORT_SOURCE_LABEL[source]}账单`,
+  }), []);
+
+  const runBillImport = useCallback(async (files: File[], source: BillImportSource, password?: string) => {
+    setImportNoticeWithTimer(buildSourceNotice(source, "正在导入"));
+    try {
+      const result = await appFacade.importBillFiles(files, { expectedSource: source, password });
+      setImportNoticeWithTimer({
+        kind: "success",
+        message: `已导入 ${result.importedCount} 条${BILL_IMPORT_SOURCE_LABEL[source]}账单`,
+      }, 3000);
+    } catch (err) {
+      console.error("[MoniEntry] Bill import failed:", err);
+      setImportNoticeWithTimer({
+        kind: "error",
+        message: err instanceof Error ? err.message : "导入失败，请重新选择",
+      }, 4500);
+    }
+  }, [buildSourceNotice, setImportNoticeWithTimer]);
+
+  const probeAndImport = useCallback(async (files: File[], source: BillImportSource, password?: string) => {
+    setImportNoticeWithTimer(buildSourceNotice(source, "正在识别"));
+    const probe = await appFacade.probeBillImportFiles(files, { expectedSource: source, password });
+
+    if (probe.status === "ready") {
+      await runBillImport(files, source, password);
+      return;
+    }
+
+    if (probe.status === "password_required") {
+      setImportNoticeWithTimer(null);
+      setPendingPasswordImport({
+        source,
+        files,
+        password: "",
+        state: probe.passwordState === "invalid" ? "invalid" : "idle",
+      });
+      return;
+    }
+
+    setImportNoticeWithTimer({
+      kind: "error",
+      message: `${probe.message}，请重新选择`,
+    }, 4500);
+  }, [buildSourceNotice, runBillImport, setImportNoticeWithTimer]);
+
+  const handleImportClick = useCallback(async (source: BillImportSource) => {
+    setSelectedImportSource(source);
+    setPendingPasswordImport(null);
+    setImportNoticeWithTimer(null);
     // 统一使用原生文件选择器 (Capacitor 会在 Android 上自动调起系统 Picker)
     fileInputRef.current?.click();
-  }, []);
+  }, [setImportNoticeWithTimer]);
 
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || !selectedImportSource) return;
 
-    setImportNotice("正在解析账单...");
     try {
-      const parsed = await parseFiles(Array.from(files));
-      if (parsed.length === 0) {
-        setImportNotice("未识别到有效的账单记录，请检查文件格式");
-        setTimeout(() => setImportNotice(null), 3000);
-        return;
-      }
-      await appFacade.importRawData(parsed);
-      setImportNotice(`成功导入 ${parsed.length} 条记录`);
-      setTimeout(() => setImportNotice(null), 3000);
+      await probeAndImport(Array.from(files), selectedImportSource);
     } catch (err) {
-      console.error("[MoniEntry] Import failed:", err);
-      setImportNotice("导入失败，请重试");
-      setTimeout(() => setImportNotice(null), 3000);
+      console.error("[MoniEntry] Bill import probe failed:", err);
+      setImportNoticeWithTimer({
+        kind: "error",
+        message: err instanceof Error ? err.message : "导入失败，请重新选择",
+      }, 4500);
     } finally {
       // reset so same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, []);
+  }, [probeAndImport, selectedImportSource, setImportNoticeWithTimer]);
+
+  const closeImportPasswordPage = useCallback(() => {
+    setPendingPasswordImport(null);
+    setImportNoticeWithTimer(null);
+  }, [setImportNoticeWithTimer]);
+
+  const handleImportPasswordChange = useCallback((nextValue: string) => {
+    const sanitizedValue = nextValue.replace(/\D/g, "").slice(0, 6);
+
+    setPendingPasswordImport((current) => current ? {
+      ...current,
+      password: sanitizedValue,
+      state: "idle",
+    } : current);
+
+    if (sanitizedValue.length !== 6) return;
+
+    setPendingPasswordImport((current) => current ? { ...current, password: sanitizedValue, state: "submitting" } : current);
+
+    void (async () => {
+      const current = pendingPasswordImport;
+      if (!current) return;
+
+      try {
+        const probe = await appFacade.probeBillImportFiles(current.files, {
+          expectedSource: current.source,
+          password: sanitizedValue,
+        });
+
+        if (probe.status === "password_required") {
+          setPendingPasswordImport({
+            source: current.source,
+            files: current.files,
+            password: "",
+            state: "invalid",
+          });
+          return;
+        }
+
+        if (probe.status === "unsupported") {
+          setPendingPasswordImport(null);
+          setImportNoticeWithTimer({
+            kind: "error",
+            message: `${probe.message}，请重新选择`,
+          }, 4500);
+          return;
+        }
+
+        setPendingPasswordImport(null);
+        await runBillImport(current.files, current.source, sanitizedValue);
+      } catch (err) {
+        console.error("[MoniEntry] Bill import password failed:", err);
+        setPendingPasswordImport(null);
+        setImportNoticeWithTimer({
+          kind: "error",
+          message: err instanceof Error ? err.message : "导入失败，请重新选择",
+        }, 4500);
+      }
+    })();
+  }, [pendingPasswordImport, runBillImport, setImportNoticeWithTimer]);
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -872,7 +1211,12 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
     };
   }, [phase]);
 
-  useEffect(() => () => { clearLongPressTimer(); }, [clearLongPressTimer]);
+  useEffect(() => () => {
+    clearLongPressTimer();
+    if (importNoticeTimerRef.current) {
+      clearTimeout(importNoticeTimerRef.current);
+    }
+  }, [clearLongPressTimer]);
 
   const handleButtonPointerEnd = useCallback(() => {
     isPointerDownRef.current = false;
@@ -969,7 +1313,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         </div>
 
         <div style={{ padding: "6px 0" }}>
-          <ImportCard onImport={handleImportClick} />
+          <ImportCard onImport={handleImportClick} notice={importNotice} />
         </div>
 
         <input
@@ -977,16 +1321,9 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
           ref={fileInputRef}
           onChange={handleFileChange}
           style={{ display: "none" }}
-          accept=".csv,text/csv,application/vnd.ms-excel,*/*"
+          accept=".csv,.txt,.xls,.xlsx,.zip,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,*/*"
           multiple
         />
-
-        {importNotice && (
-          <div style={{ margin: "0 16px 8px", padding: "10px 14px", borderRadius: 10, background: C.blueBg, border: `1.5px solid ${C.blue}30`, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14 }}>📥</span>
-            <span style={{ fontSize: 12, color: C.dark, fontWeight: 600 }}>{importNotice}</span>
-          </div>
-        )}
 
         <div style={{ padding: "12px 16px 6px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: C.dark, fontFamily: "'Nunito',sans-serif" }}>随手记</div>
@@ -1036,6 +1373,13 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
 
       <EntryFormPanel visible={phase === "form"} category={selectedCat} directionRef={directionRef} onSave={handleSave} onClose={closeOverlay} />
       <SuccessToast visible={showToast} entry={toastEntry} />
+      {pendingPasswordImport ? (
+        <ImportPasswordPage
+          pending={pendingPasswordImport}
+          onBack={closeImportPasswordPage}
+          onChangePassword={handleImportPasswordChange}
+        />
+      ) : null}
     </div>
   );
 }
