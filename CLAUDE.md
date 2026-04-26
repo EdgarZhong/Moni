@@ -11,7 +11,7 @@
 
 - 当前已发布稳定版本：`0.2.1`
 - 下一版本：暂未定号，当前按“账单导入增强”推进
-- 当前会话目标：收口账单导入 UI / UX 对接口径，明确不重做记账页现有导入入口
+- 当前会话目标：废弃旧 `design/` 工作台，按 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 重建独立原型驱动开发工作流
 - 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
 
 ## 当前阶段基线
@@ -20,10 +20,12 @@
 - 当前账单导入增强已进入记账页表现层对接；入口仍保持现有两个按钮，不重做记账页表面结构
 - 表现层已基于“先 probe，再 import”的接口决定是否展示密码输入；微信 / 支付宝两个按钮只传入不同 `expectedSource` 与对应密码文案
 - 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
-- 主仓库已建立 `design/` 作为唯一设计工作台；后续 UI/UX 任务需先从 `design/briefs/active/` 发起
-- 原型工作流当前已明确拆分为 `mirror / sandbox` 双模式：小范围高保真验证优先 `mirror`，新页面或大改版探索允许 `sandbox`
-- 开发态 `__design` 已作为局部原型预览入口落地，正式产物不暴露该入口
-- 两个历史参考子仓库已迁入 `.archive/submodules_2026-04-24/`，主仓库后续不再保留 submodule 依赖
+- 旧主仓库 `design/` 工作台已判定废弃，`/__design` 不再作为开发态原型入口
+- 旧主仓库 `design/` 工作台源码与 `DesignWorkbench` 运行入口已移入 `.archive/design_workbench_2026-04-26/`，不再留在正式源码树
+- UI/UX 表现层工作流切回独立原型仓库驱动，规范以 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 为准
+- `Moni-UI-Prototype` 重新作为长期 UI 表现层 source of truth；主仓库只消费确认后的原型规格与复制后的代码
+- 主仓库与原型仓库禁止任何运行时代码耦合；只能信息参考和复制迁移
+- 本项目当前暂不启用 v3 第五章 Design Scope 导航脚手架，原型仓库维持与主仓库一致的状态驱动导航
 
 ## Release Changelog
 
@@ -45,9 +47,9 @@
 | 任务 | 状态 | 说明 |
 |------|------|------|
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
-| design 工作台落地 | Done | 已新增 `design/` 目录、brief / baseline / DDR 模板、示例 prototype 与开发态 `__design` 入口，并同步核心文档入口规则 |
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
+| 原型驱动工作流 v3 重建 | Done | 独立原型仓库已拉取到 `Moni-UI-Prototype/`，已同步主仓库当前表现层、补 mock 层、清理旧 `design` 工作台入口并更新核心文档 |
 
 ## 当前优先级
 
@@ -67,6 +69,10 @@
 
 - `2026-04-26`：`npm run typecheck` 通过
 - `2026-04-26`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-26`：`Moni-UI-Prototype` 执行 `npm run typecheck`、`npm run build` 通过
+- `2026-04-26`：Playwright 隔离 Chromium 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，确认原型首页可渲染、console error 为 0，截图 `/tmp/moni-ui-prototype-smoke.png`
+- `2026-04-26`：修正原型仓库表现层对齐问题；旧 JSX 手机边框版源码移入原型仓库 `.archive/legacy-js-prototype-2026-04-26/`；首页 fixture 改为主仓库 `window.__MONI_DEBUG__.home.getReadModel()` 导出快照；Playwright 对比主仓库与原型仓库首页、设置页、记账页、真实支付宝 zip 密码页，console error 为 0
+- `2026-04-26`：主仓库旧 `design/` 工作台目录与 `src/ui/devtools/DesignWorkbench.tsx` 已移入 `.archive/design_workbench_2026-04-26/`；运行源码树仅保留正式应用入口与独立原型仓库文档索引
 - `2026-04-26`：Playwright 打开 `http://127.0.0.1:5174/` 并进入记账页，确认“微信账单 / 支付宝账单”入口存在且 console error 为 0；未用 UI 真实上传样本，避免污染当前账本
 - `2026-04-26`：Playwright 通过支付宝 zip 样本触发正式密码页，确认密码页覆盖层定位为整页、截图输出 `/tmp/moni-password-page-v3.png`；console 中仍有既有文件系统 404 噪音
 - `2026-04-24`：`npm run typecheck` 通过
@@ -101,8 +107,10 @@
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
-- UI/UX 设计源头当前固定为主仓库 `design/`；核心文档只保留入口，完整工作流与基线维护在 `design/`
-- 开发态设计原型统一经由 `__design` 入口预览；prototype 只服务设计审查，不作为生产组件
+- UI/UX 设计源头当前固定为独立原型仓库 `Moni-UI-Prototype`，主仓库 `design/` 工作台与 `/__design` 入口废弃
+- 主仓库与原型仓库各自独立运行、独立构建；禁止通过 `import`、alias、submodule、npm link 或构建脚本建立运行时耦合
+- 原型仓库允许复制主仓库当前表现层代码作为同步基线，但复制后必须属于原型仓库自身代码，并通过原型本地 mock / fixtures 层供数
+- 原型到主仓库的迁移只能在用户确认进入实现阶段后进行，且除 mock import 替换为真实 service import 外，不做静默重构
 - 账单导入入口当前固定为记账页现有“微信账单 / 支付宝账单”两个按钮，不新增导入舱或重做表面结构
 - 账单导入两个按钮的实现差异仅为 `expectedSource` 与平台化密码提示文案，后续统一走 `probeBillImportFiles()` 与 `importBillFiles()`
 - 记账一级页中的账单解析中、导入中、导入成功提示统一复用导入卡片底部提示条；这些提示出现时，默认“查看导入指南”提示需要让位

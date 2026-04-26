@@ -45,3 +45,6 @@ approval_mode = "approve"
 
 [mcp_servers.playwright.tools.browser_run_code]
 approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_tabs]
+approval_mode = "approve"
