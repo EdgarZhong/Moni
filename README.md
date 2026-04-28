@@ -170,7 +170,7 @@ npm run build:release
 
 ## 浏览器 F12 测试系统
 
-仓库保留并继续使用 Pixel Bill 时代验证过的虚拟文件系统方案，用于在浏览器 F12 移动端模式下复刻 Android Capacitor 的主要文件读写路径。
+仓库保留并继续使用当前 Moni 工程验证过的虚拟文件系统方案，用于在浏览器 F12 移动端模式下复刻 Android Capacitor 的主要文件读写路径。
 
 ### 设计目标
 

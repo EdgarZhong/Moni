@@ -4,14 +4,12 @@
  * Handles:
  *  (a) speaker notes — reads <script type="application/json" id="speaker-notes">
  *      and posts {slideIndexChanged: N} to the parent window on nav.
- *  (b) keyboard navigation — ←/→, PgUp/PgDn, Space, Home/End, number keys.
- *  (c) press R to reset to slide 0 (with a tasteful keyboard hint).
- *  (d) bottom-center overlay showing slide count + hints, fades out on idle.
- *  (e) auto-scaling — inner canvas is a fixed design size (default 1920×1080)
+ *  (b) keyboard navigation — presentation mode currently only keeps ↑/↓.
+ *  (c) auto-scaling — inner canvas is a fixed design size (default 1920×1080)
  *      scaled with `transform: scale()` to fit the viewport, letterboxed.
  *      Set the `noscale` attribute to render at authored size (1:1) — the
  *      PPTX exporter sets this so its DOM capture sees unscaled geometry.
- *  (f) print — `@media print` lays every slide out as its own page at the
+ *  (d) print — `@media print` lays every slide out as its own page at the
  *      design size, so the browser's Print → Save as PDF produces a clean
  *      one-page-per-slide PDF with no extra setup.
  *
@@ -52,7 +50,6 @@
 (() => {
   const DESIGN_W_DEFAULT = 1920;
   const DESIGN_H_DEFAULT = 1080;
-  const OVERLAY_HIDE_MS = 1800;
   const VALIDATE_ATTR = 'no_overflowing_text,no_overlapping_text,slide_sized_text';
 
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -103,123 +100,6 @@
       visibility: visible;
     }
 
-    /* Tap zones for mobile — back/forward thirds like Stories.
-       Transparent, no visible UI, don't block the overlay. */
-    .tapzones {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      z-index: 2147482000;
-      pointer-events: none;
-    }
-    .tapzone {
-      flex: 1;
-      pointer-events: auto;
-      -webkit-tap-highlight-color: transparent;
-    }
-    /* Only activate tap zones on coarse pointers (touch devices). */
-    @media (hover: hover) and (pointer: fine) {
-      .tapzones { display: none; }
-    }
-
-    .overlay {
-      position: fixed;
-      left: 50%;
-      bottom: 22px;
-      transform: translate(-50%, 6px) scale(0.92);
-      filter: blur(6px);
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px;
-      background: #000;
-      color: #fff;
-      border-radius: 999px;
-      font-size: 12px;
-      font-feature-settings: "tnum" 1;
-      letter-spacing: 0.01em;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 260ms ease, transform 260ms cubic-bezier(.2,.8,.2,1), filter 260ms ease;
-      transform-origin: center bottom;
-      z-index: 2147483000;
-      user-select: none;
-    }
-    .overlay[data-visible] {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translate(-50%, 0) scale(1);
-      filter: blur(0);
-    }
-
-    .btn {
-      appearance: none;
-      -webkit-appearance: none;
-      background: transparent;
-      border: 0;
-      margin: 0;
-      padding: 0;
-      color: inherit;
-      font: inherit;
-      cursor: default;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      height: 28px;
-      min-width: 28px;
-      border-radius: 999px;
-      color: rgba(255,255,255,0.72);
-      transition: background 140ms ease, color 140ms ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
-    .btn:active { background: rgba(255,255,255,0.18); }
-    .btn:focus { outline: none; }
-    .btn:focus-visible { outline: none; }
-    .btn::-moz-focus-inner { border: 0; }
-    .btn svg { width: 14px; height: 14px; display: block; }
-    .btn.reset {
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.02em;
-      padding: 0 10px 0 12px;
-      gap: 6px;
-      color: rgba(255,255,255,0.72);
-    }
-    .btn.reset .kbd {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 16px;
-      height: 16px;
-      padding: 0 4px;
-      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 10px;
-      line-height: 1;
-      color: rgba(255,255,255,0.88);
-      background: rgba(255,255,255,0.12);
-      border-radius: 4px;
-    }
-
-    .count {
-      font-variant-numeric: tabular-nums;
-      color: #fff;
-      font-weight: 500;
-      padding: 0 8px;
-      min-width: 42px;
-      text-align: center;
-      font-size: 12px;
-    }
-    .count .sep { color: rgba(255,255,255,0.45); margin: 0 3px; font-weight: 400; }
-    .count .total { color: rgba(255,255,255,0.55); }
-
-    .divider {
-      width: 1px;
-      height: 14px;
-      background: rgba(255,255,255,0.18);
-      margin: 0 2px;
-    }
-
     /* ── Print: one page per slide, no chrome ────────────────────────────
        The screen layout stacks every slide at inset:0 inside a scaled
        canvas; for print we want them in document flow at the authored
@@ -261,7 +141,6 @@
         break-after: auto;
         page-break-after: auto;
       }
-      .overlay, .tapzones { display: none !important; }
     }
   `;
 
@@ -274,15 +153,10 @@
       this._index = 0;
       this._slides = [];
       this._notes = [];
-      this._hideTimer = null;
-      this._mouseIdleTimer = null;
 
       this._onKey = this._onKey.bind(this);
       this._onResize = this._onResize.bind(this);
       this._onSlotChange = this._onSlotChange.bind(this);
-      this._onMouseMove = this._onMouseMove.bind(this);
-      this._onTapBack = this._onTapBack.bind(this);
-      this._onTapForward = this._onTapForward.bind(this);
     }
 
     get designWidth() {
@@ -298,16 +172,12 @@
       this._syncPrintPageRule();
       window.addEventListener('keydown', this._onKey);
       window.addEventListener('resize', this._onResize);
-      window.addEventListener('mousemove', this._onMouseMove, { passive: true });
       // Initial collection + layout happens via slotchange, which fires on mount.
     }
 
     disconnectedCallback() {
       window.removeEventListener('keydown', this._onKey);
       window.removeEventListener('resize', this._onResize);
-      window.removeEventListener('mousemove', this._onMouseMove);
-      if (this._hideTimer) clearTimeout(this._hideTimer);
-      if (this._mouseIdleTimer) clearTimeout(this._mouseIdleTimer);
     }
 
     attributeChangedCallback() {
@@ -340,50 +210,12 @@
       canvas.appendChild(slot);
       stage.appendChild(canvas);
 
-      // Tap zones (mobile): left third = back, right third = forward.
-      const tapzones = document.createElement('div');
-      tapzones.className = 'tapzones export-hidden';
-      tapzones.setAttribute('aria-hidden', 'true');
-      tapzones.setAttribute('data-noncommentable', '');
-      const tzBack = document.createElement('div');
-      tzBack.className = 'tapzone tapzone--back';
-      const tzMid = document.createElement('div');
-      tzMid.className = 'tapzone tapzone--mid';
-      tzMid.style.pointerEvents = 'none';
-      const tzFwd = document.createElement('div');
-      tzFwd.className = 'tapzone tapzone--fwd';
-      tzBack.addEventListener('click', this._onTapBack);
-      tzFwd.addEventListener('click', this._onTapForward);
-      tapzones.append(tzBack, tzMid, tzFwd);
-
-      // Overlay: compact, solid black, with clickable controls.
-      const overlay = document.createElement('div');
-      overlay.className = 'overlay export-hidden';
-      overlay.setAttribute('role', 'toolbar');
-      overlay.setAttribute('aria-label', 'Deck controls');
-      overlay.setAttribute('data-noncommentable', '');
-      overlay.innerHTML = `
-        <button class="btn prev" type="button" aria-label="Previous slide" title="Previous (←)">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg>
-        </button>
-        <span class="count" aria-live="polite"><span class="current">1</span><span class="sep">/</span><span class="total">1</span></span>
-        <button class="btn next" type="button" aria-label="Next slide" title="Next (→)">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
-        </button>
-        <span class="divider"></span>
-        <button class="btn reset" type="button" aria-label="Reset to first slide" title="Reset (R)">Reset<span class="kbd">R</span></button>
-      `;
-
-      overlay.querySelector('.prev').addEventListener('click', () => this._go(this._index - 1, 'click'));
-      overlay.querySelector('.next').addEventListener('click', () => this._go(this._index + 1, 'click'));
-      overlay.querySelector('.reset').addEventListener('click', () => this._go(0, 'click'));
-
-      this._root.append(style, stage, tapzones, overlay);
+      this._root.append(style, stage);
       this._canvas = canvas;
       this._slot = slot;
-      this._overlay = overlay;
-      this._countEl = overlay.querySelector('.current');
-      this._totalEl = overlay.querySelector('.total');
+      this._overlay = null;
+      this._countEl = null;
+      this._totalEl = null;
     }
 
     /** @page must live in the document stylesheet — it's a no-op inside
@@ -407,7 +239,7 @@
     _onSlotChange() {
       this._collectSlides();
       this._restoreIndex();
-      this._applyIndex({ showOverlay: false, broadcast: true, reason: 'init' });
+      this._applyIndex({ broadcast: true, reason: 'init' });
       this._fit();
     }
 
@@ -473,7 +305,7 @@
       }
     }
 
-    _applyIndex({ showOverlay = true, broadcast = true, reason = 'init' } = {}) {
+    _applyIndex({ broadcast = true, reason = 'init' } = {}) {
       if (!this._slides.length) return;
       const prev = this._prevIndex == null ? -1 : this._prevIndex;
       const curr = this._index;
@@ -512,16 +344,11 @@
       }
 
       this._prevIndex = curr;
-      if (showOverlay) this._flashOverlay();
     }
 
     _flashOverlay() {
-      if (!this._overlay) return;
-      this._overlay.setAttribute('data-visible', '');
-      if (this._hideTimer) clearTimeout(this._hideTimer);
-      this._hideTimer = setTimeout(() => {
-        this._overlay.removeAttribute('data-visible');
-      }, OVERLAY_HIDE_MS);
+      // 中文说明：录屏/演讲模式下不再渲染浏览器内控件，此处保留空实现，
+      // 仅为了不改动其余导航调用链，避免额外引入行为回归。
     }
 
     _fit() {
@@ -541,21 +368,6 @@
 
     _onResize() { this._fit(); }
 
-    _onMouseMove() {
-      // Keep overlay visible while mouse moves; hide after idle.
-      this._flashOverlay();
-    }
-
-    _onTapBack(e) {
-      e.preventDefault();
-      this._go(this._index - 1, 'tap');
-    }
-
-    _onTapForward(e) {
-      e.preventDefault();
-      this._go(this._index + 1, 'tap');
-    }
-
     _onKey(e) {
       // Ignore when the user is typing.
       const t = e.target;
@@ -565,39 +377,23 @@
       const key = e.key;
       let handled = true;
 
-      if (key === 'ArrowRight' || key === 'PageDown' || key === ' ' || key === 'Spacebar') {
+      if (key === 'ArrowDown') {
         this._go(this._index + 1, 'keyboard');
-      } else if (key === 'ArrowLeft' || key === 'PageUp') {
+      } else if (key === 'ArrowUp') {
         this._go(this._index - 1, 'keyboard');
-      } else if (key === 'Home') {
-        this._go(0, 'keyboard');
-      } else if (key === 'End') {
-        this._go(this._slides.length - 1, 'keyboard');
-      } else if (key === 'r' || key === 'R') {
-        this._go(0, 'keyboard');
-      } else if (/^[0-9]$/.test(key)) {
-        // 1..9 jump to that slide; 0 jumps to 10.
-        const n = key === '0' ? 9 : parseInt(key, 10) - 1;
-        if (n < this._slides.length) this._go(n, 'keyboard');
       } else {
         handled = false;
       }
 
-      if (handled) {
-        e.preventDefault();
-        this._flashOverlay();
-      }
+      if (handled) e.preventDefault();
     }
 
     _go(i, reason = 'api') {
       if (!this._slides.length) return;
       const clamped = Math.max(0, Math.min(this._slides.length - 1, i));
-      if (clamped === this._index) {
-        this._flashOverlay();
-        return;
-      }
+      if (clamped === this._index) return;
       this._index = clamped;
-      this._applyIndex({ showOverlay: true, broadcast: true, reason });
+      this._applyIndex({ broadcast: true, reason });
     }
 
     // Public API ------------------------------------------------------------

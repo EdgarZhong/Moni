@@ -5,6 +5,8 @@
 <title>Moni · 越用越聪明的 AI 记账助手</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- 中文说明：演示稿品牌标题需要与主应用当前在用的 Moni 字标保持一致，
+     因此这里继续使用主应用同源的 Nunito / Space Mono 字体组合。 -->
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="deck-stage.js"></script>
 <style>
@@ -29,9 +31,11 @@
     --pad-x: 140px;
     --pad-t: 110px;
     --pad-b: 100px;
+    --deck-w:1920px;
+    --deck-h:1080px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
-  html, body { background:#0c0c0c; }
+  html, body { width:100%; height:100%; background:#0c0c0c; }
   body{
     font-family:'Inter','PingFang SC','Microsoft Yahei',sans-serif;
     color:var(--ink);
@@ -42,7 +46,9 @@
 
   /* ---- Slide base ---- */
   .slide{
-    width:1920px; height:1080px;
+    /* 中文说明：录屏与导出都强制锁定为 16:9 画布，避免浏览器窗口比例影响页面 authored size。 */
+    width:var(--deck-w); height:var(--deck-h);
+    aspect-ratio:16 / 9;
     position:relative;
     overflow:hidden;
     background:var(--paper);
@@ -94,34 +100,45 @@
   }
   .dark .pageno{ opacity:.45; }
   .brandmark{
-    position:absolute; right:var(--pad-x); bottom:50px;
-    font-family:'Nunito',sans-serif; font-weight:800;
-    font-size:22px; letter-spacing:-.01em; opacity:.55;
-  }
-
-  /* ---- Brand triad cluster ---- */
-  .triad{ position:relative; display:inline-block; }
-
-  /* ---- Moni wordmark ---- */
-  .moni-mark{
-    font-family:'Nunito',sans-serif;
-    font-weight:900;
-    letter-spacing:-.045em;
-    color:var(--ink);
-    display:inline-flex; align-items:flex-end;
-    line-height:1;
-    position:relative;
-  }
-  .dark .moni-mark{ color:var(--paper); }
-  .moni-mark .dot{
-    width:.18em; height:.18em; border-radius:50%;
-    background:var(--coral);
-    margin:0 .04em .12em .02em;
-  }
-  .moni-mark .triad-on-m{
     position:absolute;
+    right:var(--pad-x);
+    bottom:36px;
+    width:52px;
+    height:52px;
+    display:block;
+  }
+  .brandmark img{
+    display:block;
+    width:100%;
+    height:100%;
   }
 
+  /* ---- App logo lockup ---- */
+  .app-logo-lockup{
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    gap:22px;
+  }
+  .app-logo-svg{
+    display:block;
+    width:100%;
+    height:auto;
+    overflow:visible;
+    --logo-text:var(--ink);
+  }
+  /* 中文说明：字标本身改用更紧的画布，消除右侧多余留白，避免“容器居中但视觉仍偏左”。 */
+  .wordmark-svg{
+    width:100%;
+    max-width:100%;
+  }
+  .app-logo-lockup.light{ --logo-text:var(--paper); }
+  .app-logo-svg .logo-text{
+    fill:var(--logo-text);
+    font-family:'Nunito',sans-serif;
+    font-weight:800;
+    letter-spacing:-1px;
+  }
   /* ---- Memphis floating decor (page-level) ---- */
   .memphis{
     position:absolute; inset:0; pointer-events:none; z-index:0;
@@ -155,10 +172,15 @@
     flex:1; display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center;
   }
-  #s1 .moni-mark{ font-size:var(--t-display); padding-top:140px; }
-  #s1 .moni-mark .triad-on-m{ top:-90px; left:calc(100% - 60px); right:auto; transform:scale(.9); transform-origin:left top; pointer-events:none; }
+  #s1 .cover-brand{
+    width:620px;
+    padding-top:48px;
+  }
+  #s1 .cover-brand .wordmark-svg{
+    transform:translateX(18px);
+  }
   #s1 .tagline{
-    margin-top:60px;
+    margin-top:44px;
     font-family:'Nunito',sans-serif; font-weight:700;
     font-size:var(--t-lead);
     letter-spacing:-.005em;
@@ -189,16 +211,19 @@
   .pain-card{
     padding:56px 48px 64px;
     border-radius:28px;
-    background:#EFE7DA;
     position:relative;
     min-height:380px;
     display:flex; flex-direction:column;
-    transition: opacity .6s ease, filter .6s ease;
+    transition: opacity .6s ease, filter .6s ease, transform .6s ease;
+    border:2px solid transparent;
   }
+  .pain-card.dim-1{ background:linear-gradient(180deg, #FFE4E1 0%, #FFD8D4 100%); border-color:#F2B2AA; color:#5F2D28; }
+  .pain-card.dim-2{ background:linear-gradient(180deg, #E5F5FB 0%, #D6EEF8 100%); border-color:#B6DBEC; color:#214F5F; }
+  .pain-card.dim-3{ background:linear-gradient(180deg, #FFF1C9 0%, #FBE7A1 100%); border-color:#E8CF73; color:#6C5621; }
   .pain-card .num{
     font-family:'Space Mono',monospace;
     font-size:24px;
-    color:#999;
+    color:rgba(34,34,34,.52);
     letter-spacing:.18em;
     margin-bottom:36px;
   }
@@ -207,7 +232,7 @@
     font-size:64px; line-height:1; letter-spacing:-.02em;
     margin-bottom:28px;
   }
-  .pain-card p{ font-size:28px; line-height:1.5; color:#555; }
+  .pain-card p{ font-size:28px; line-height:1.5; color:rgba(34,34,34,.72); }
   .pain-card .strike{
     position:absolute; left:40px; right:40px; top:50%;
     height:6px; background:var(--ink);
@@ -215,11 +240,11 @@
     transition: transform 1s ease .2s;
     border-radius:3px;
   }
-  /* progressive dimming when active */
-  .slide.is-active .pain-card.dim-1{ opacity:.7; }
-  .slide.is-active .pain-card.dim-2{ opacity:.5; filter:grayscale(.4); }
-  .slide.is-active .pain-card.dim-3{ opacity:.32; filter:grayscale(.7); }
-  .slide.is-active .pain-card.dim-3 .strike{ transform:scaleX(.85); }
+  /* 中文说明：保留三个痛点的递进差异，但不再把第 03 张压到接近不可见。 */
+  .slide.is-active .pain-card.dim-1{ opacity:1; filter:saturate(1); transform:translateY(0); }
+  .slide.is-active .pain-card.dim-2{ opacity:.9; filter:saturate(.94); transform:translateY(4px); }
+  .slide.is-active .pain-card.dim-3{ opacity:.82; filter:saturate(.88); transform:translateY(8px); }
+  .slide.is-active .pain-card.dim-3 .strike{ transform:scaleX(0); }
 
   /* ============================================================
      PAGE 3 — Triangle dilemma
@@ -229,9 +254,9 @@
   #s3 .top-row .right{ text-align:right; max-width:560px; }
   #s3 .triangle-wrap{
     flex:1; display:flex; align-items:center; justify-content:center;
-    margin-top:10px;
+    margin-top:0;
   }
-  #s3 svg.tri{ width:1100px; height:760px; overflow:visible; }
+  #s3 svg.tri{ width:980px; height:660px; overflow:visible; transform:translateY(-56px); }
   #s3 .vertex-label{
     font-family:'Nunito',sans-serif; font-weight:900;
     font-size:36px; letter-spacing:-.01em;
@@ -241,11 +266,20 @@
     font-size:22px; fill:#666;
   }
   #s3 .edge-label{
-    font-family:'Inter',sans-serif; font-weight:600;
-    font-size:22px; fill:#333;
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:28px; fill:#333;
   }
   #s3 .edge-sub{
-    font-family:'Space Mono',monospace; font-size:18px; fill:#888;
+    font-family:'Inter',sans-serif; font-size:20px; fill:#707070;
+  }
+  #s3 .triangle-caption{
+    margin-top:-48px;
+    text-align:center;
+    font-family:'Nunito',sans-serif;
+    font-weight:800;
+    font-size:28px;
+    color:#2A2A2A;
+    letter-spacing:-.01em;
   }
 
   /* ============================================================
@@ -255,21 +289,21 @@
   #s4 .slide-title{ font-size:96px; }
   #s4 .sub{ margin-top:18px; font-size:32px; color:#666; max-width:1200px; }
   .cmp-table{
-    margin-top:54px;
+    margin-top:42px;
     width:100%;
     border-collapse:separate;
     border-spacing:0;
-    font-size:24px;
+    font-size:22px;
   }
   .cmp-table th, .cmp-table td{
-    padding:24px 22px;
+    padding:20px 18px;
     text-align:left;
     vertical-align:middle;
     border-bottom:1px solid #DDD3C4;
   }
   .cmp-table thead th{
     font-family:'Nunito',sans-serif; font-weight:800;
-    font-size:26px;
+    font-size:24px;
     color:#888;
     border-bottom:2px solid #C9BEA9;
     padding-top:10px;
@@ -282,8 +316,8 @@
   }
   .cmp-table tbody tr td:first-child{
     font-family:'Nunito',sans-serif; font-weight:800;
-    font-size:24px; color:#444;
-    width:240px;
+    font-size:22px; color:#444;
+    width:210px;
   }
   .cmp-table td.moni-col{
     background:rgba(78,205,196,.14);
@@ -304,13 +338,12 @@
   .cmp-table .pill.free{ background:rgba(78,205,196,.2); color:#1f8c83; }
 
   #s4 .conclusion{
-    margin-top:28px;
-    margin-bottom:30px;
+    margin-top:22px;
+    margin-bottom:0;
     font-family:'Nunito',sans-serif; font-weight:800;
-    font-size:30px; letter-spacing:-.005em;
+    font-size:28px; letter-spacing:-.005em;
     color:var(--ink);
   }
-  #s4 .pageno, #s4 .brandmark{ bottom:30px; }
   #s4 .conclusion .hi{
     background:var(--sun); padding:0 14px; border-radius:8px;
   }
@@ -328,18 +361,18 @@
   #s5 .slide-inner{
     align-items:center; justify-content:center; text-align:center;
   }
-  #s5 .moni-big{
-    font-family:'Nunito',sans-serif; font-weight:900;
-    font-size:200px; letter-spacing:-.05em; line-height:1;
-    color:var(--paper);
-    position:relative;
-    white-space:nowrap;
+  #s5 .reveal-brand{
+    width:620px;
     margin-top:30px;
-    padding-top:130px;
+    padding-top:64px;
+    position:relative;
+    z-index:2;
   }
-  #s5 .moni-big .triad-on-m{
-    position:absolute; top:-100px; left:calc(100% - 60px); right:auto; transform:scale(1.0); transform-origin:left top;
+  #s5 .reveal-brand .wordmark-svg{
+    transform:translateX(18px);
   }
+  /* 中文说明：黑底页的 Moni 字标必须明确反白，避免依赖继承结果产生灰字。 */
+  #s5 .reveal-brand .logo-text{ fill:var(--paper); }
   #s5 .glow{
     position:absolute; inset:auto;
     width:1100px; height:1100px;
@@ -358,13 +391,14 @@
     text-align:center;
   }
   #s5 .cap .k{
-    font-family:'Nunito',sans-serif; font-weight:900;
-    font-size:48px; color:var(--paper); letter-spacing:-.01em;
+    font-family:'Inter','PingFang SC','Microsoft Yahei',sans-serif;
+    font-weight:800;
+    font-size:42px; color:var(--paper); letter-spacing:-.03em;
   }
   #s5 .cap .v{
     margin-top:14px;
-    font-size:24px; color:rgba(245,240,235,.6);
-    font-family:'Space Mono',monospace; letter-spacing:.04em;
+    font-size:22px; color:rgba(245,240,235,.72);
+    font-family:'Inter','PingFang SC','Microsoft Yahei',sans-serif; letter-spacing:0;
   }
   #s5 .cap.c1 .k::before{ content:''; display:block; width:18px; height:18px; border-radius:50%; background:var(--coral); margin:0 auto 22px; }
   #s5 .cap.c2 .k::before{ content:''; display:block; width:18px; height:18px; border-radius:50%; background:var(--sky); margin:0 auto 22px; }
@@ -391,57 +425,58 @@
   #s6 .grid{
     margin-top:50px;
     display:grid;
-    grid-template-columns: 1.05fr 1fr;
-    gap:80px;
+    grid-template-columns: 1.16fr .94fr;
+    gap:54px;
     flex:1;
     padding-bottom:40px;
   }
   /* four classes */
   .classes{
     display:grid;
-    grid-template-columns: 1.15fr 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap:16px;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1.12fr .94fr;
+    gap:18px;
   }
-  .classes .cls.b{ grid-column: 1; grid-row: 1 / 3; }
-  .classes .cls.a{ grid-column: 2; grid-row: 1; }
-  .classes .cls.c{ grid-column: 3; grid-row: 1; }
+  .classes .cls.b{ grid-column: 1 / 3; grid-row: 1; }
+  .classes .cls.a{ grid-column: 3; grid-row: 1; }
+  .classes .cls.c{ grid-column: 1; grid-row: 2; }
   .classes .cls.d{ grid-column: 2 / 4; grid-row: 2; }
   .cls{
     background:#EFE7DA;
     border-radius:22px;
-    padding:28px 28px 32px;
+    padding:24px 24px 26px;
     position:relative;
   }
   .cls .tag{
     font-family:'Space Mono',monospace;
-    font-size:20px; letter-spacing:.18em;
+    font-size:18px; letter-spacing:.18em;
     color:#999;
   }
   .cls h4{
     font-family:'Nunito',sans-serif; font-weight:900;
-    font-size:34px; margin-top:14px; line-height:1.1;
+    font-size:32px; margin-top:12px; line-height:1.08;
     letter-spacing:-.01em;
   }
-  .cls p{ margin-top:10px; font-size:22px; color:#666; line-height:1.4;}
+  .cls p{ margin-top:10px; font-size:20px; color:#666; line-height:1.38;}
   .cls .badge{
-    display:inline-block; margin-top:14px;
+    display:inline-block; margin-top:12px;
     font-family:'Space Mono',monospace; font-size:18px;
     padding:5px 12px; border-radius:999px;
     background:#fff; color:#666;
   }
   .cls.b{
-    grid-row: 1 / 3;
     background:linear-gradient(150deg, #FFE0E0 0%, #FFCFCF 100%);
-    padding:36px 36px 36px;
+    padding:28px 28px 28px;
     border:none;
   }
   .cls.b .tag{ color:var(--coral); }
-  .cls.b h4{ font-size:46px; }
-  .cls.b p{ color:#7a3a3a; font-size:24px; }
+  .cls.b h4{ font-size:42px; }
+  .cls.b p{ color:#7a3a3a; font-size:22px; max-width:540px; }
   .cls.b .pipe{
-    margin-top:24px;
-    display:flex; flex-direction:column; gap:10px;
+    margin-top:18px;
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:10px;
     font-family:'Space Mono',monospace; font-size:18px;
   }
   .cls.b .pipe .step{
@@ -450,16 +485,39 @@
     color:#5a2a2a;
   }
   .cls.b .star{
-    position:absolute; top:22px; right:24px;
+    position:absolute; top:18px; right:18px;
     font-family:'Space Mono',monospace; font-size:14px;
     color:var(--coral); letter-spacing:.1em;
     background:rgba(255,255,255,.7); padding:4px 10px; border-radius:999px;
   }
-  .cls.b .tag{ margin-top:36px; }
+  .cls-copy{
+    margin-top:10px;
+    font-size:20px;
+    line-height:1.4;
+    color:#6A645C;
+  }
 
   /* loop */
   .loop-wrap{ position:relative; }
-  .loop-wrap svg{ width:100%; height:auto; }
+  .loop-wrap svg{ width:100%; height:auto; transform:translateY(-92px); }
+  .loop-head{
+    margin-bottom:-78px;
+    transform:translateY(-96px);
+  }
+  .loop-head .k{
+    font-family:'Space Mono',monospace;
+    font-size:18px;
+    letter-spacing:.18em;
+    color:#90857A;
+  }
+  .loop-head .v{
+    margin-top:10px;
+    font-family:'Nunito',sans-serif;
+    font-weight:800;
+    font-size:26px;
+    line-height:1.22;
+    color:var(--ink);
+  }
   .loop-node{
     font-family:'Nunito',sans-serif; font-weight:800;
     font-size:18px; letter-spacing:-.005em; fill:var(--ink);
@@ -469,13 +527,15 @@
     text-align:center;
   }
   .loop-cap .pct{
-    font-family:'Space Mono',monospace; font-weight:700; font-size:48px;
+    font-family:'Nunito',sans-serif; font-weight:900; font-size:34px;
     color:var(--ink);
+    letter-spacing:-.02em;
+    line-height:1.08;
   }
   .loop-cap .lbl{
-    font-family:'Nunito',sans-serif; font-weight:700;
-    font-size:18px; color:#666; letter-spacing:.06em;
-    text-transform:uppercase; margin-top:4px;
+    font-family:'Space Mono',monospace; font-weight:700;
+    font-size:14px; color:#7D7770; letter-spacing:.12em;
+    text-transform:uppercase; margin-top:10px;
   }
 
   /* ============================================================
@@ -708,13 +768,12 @@
     color:#888;
     display:flex; align-items:center; justify-content:center; gap:18px;
   }
-  #s9 .sig .moni-mark{ font-size:42px; padding-top:14px; }
-  #s9 .sig .moni-mark .triad-on-m{
-    position:absolute; top:-4px; left:auto; right:-32px; transform:scale(.42); transform-origin:left top;
-  }
   #s9 .sig .dotsep{
     width:6px; height:6px; border-radius:50%;
     background:var(--coral); display:inline-block;
+  }
+  #s9 .sig .app-logo-mini{
+    width:98px;
   }
 
   /* ============================================================
@@ -729,33 +788,6 @@
   .anim.scale{ transform: scale(.94); }
   .anim.left{ transform: translateX(-40px); }
   .slide.is-active .anim{ opacity:1; transform:none; }
-
-  /* ---- triad cluster ---- */
-  .triad-cluster{
-    position:relative; width:60px; height:60px; display:inline-block;
-  }
-  .triad-cluster .c-coral{
-    position:absolute; right:0; top:18px;
-    width:28px; height:28px; border-radius:50%;
-    background:var(--coral); opacity:.92;
-  }
-  .triad-cluster .c-sky{
-    position:absolute; left:6px; top:8px;
-    width:20px; height:20px; border-radius:50%;
-    background:var(--sky); opacity:.85;
-  }
-  .triad-cluster .c-sun{
-    position:absolute; left:24px; top:0;
-    width:18px; height:18px; border-radius:3px;
-    background:var(--sun); opacity:.85;
-    transform: rotate(18deg);
-  }
-
-  /* big triad for cover */
-  .triad-cluster.big{ width:120px; height:90px; }
-  .triad-cluster.big .c-coral{ width:48px; height:48px; top:40px; right:8px;}
-  .triad-cluster.big .c-sky{ width:34px; height:34px; top:18px; right:46px;}
-  .triad-cluster.big .c-sun{ width:32px; height:32px; top:2px; right:18px; border-radius:6px; }
 
   /* memphis particle floats */
   @keyframes float1{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-14px); } }
@@ -798,8 +830,17 @@
 
   <div class="slide-inner">
     <div class="center">
-      <div class="moni-mark anim scale" style="--d:200ms;">
-        <span style="position:relative; display:inline-block;">M<span class="triad-on-m"><span class="triad-cluster big"><span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span></span></span></span><span class="dot"></span>oni
+      <!-- 中文说明：封面只保留脚本指定的 Moni logo，本页不额外添加任何品牌副标。 -->
+      <div class="app-logo-lockup cover-brand anim scale" style="--d:200ms;">
+        <svg class="app-logo-svg wordmark-svg" viewBox="0 0 82 42" aria-label="Moni">
+          <text x="4" y="32" class="logo-text" font-size="28">M</text>
+          <circle cx="25" cy="32" r="1.8" fill="#FF6B6B" opacity=".75"></circle>
+          <text x="30" y="32" class="logo-text" font-size="28">oni</text>
+          <circle cx="27" cy="9" r="3.6" fill="#FF6B6B" opacity=".72"></circle>
+          <circle cx="20" cy="5" r="2.4" fill="#7EC8E3" opacity=".62"></circle>
+          <rect x="23" y="2.5" width="4" height="4" rx=".8" fill="#F9D56E" opacity=".55" transform="rotate(20 25 4.5)"></rect>
+          <line x1="68" y1="7" x2="75" y2="7" stroke="#4ECDC4" stroke-width="1.8" stroke-linecap="round" opacity=".35"></line>
+        </svg>
       </div>
       <div class="tagline anim" style="--d:700ms;">
         越用越聪明的 <span class="accent">AI 记账助手</span>
@@ -809,6 +850,7 @@
       财智随行 — 基于 AI 原生的个人财务全维追踪平台
     </div>
   </div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -851,7 +893,7 @@
   </div>
 
   <div class="pageno">02 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -896,67 +938,66 @@
 
         <!-- edges with labels -->
         <g class="anim" style="--d:600ms;">
-          <line x1="550" y1="120" x2="160" y2="660" stroke="url(#edge1)" stroke-width="3"/>
-          <line x1="550" y1="120" x2="940" y2="660" stroke="url(#edge2)" stroke-width="3"/>
-          <line x1="160" y1="660" x2="940" y2="660" stroke="url(#edge3)" stroke-width="3"/>
+          <line x1="550" y1="150" x2="220" y2="575" stroke="url(#edge1)" stroke-width="3"/>
+          <line x1="550" y1="150" x2="880" y2="575" stroke="url(#edge2)" stroke-width="3"/>
+          <line x1="220" y1="575" x2="880" y2="575" stroke="url(#edge3)" stroke-width="3"/>
         </g>
 
         <!-- vertex 1: 低维护负担 (top) -->
         <g class="anim" style="--d:300ms;">
-          <circle cx="550" cy="120" r="14" fill="#FF6B6B"/>
-          <text x="550" y="78" text-anchor="middle" class="vertex-label">低维护负担</text>
-          <text x="550" y="105" text-anchor="middle" class="vertex-sub">不需要逐笔手录</text>
+          <circle cx="550" cy="150" r="14" fill="#FF6B6B"/>
+          <text x="550" y="108" text-anchor="middle" class="vertex-label">低维护负担</text>
+          <text x="550" y="135" text-anchor="middle" class="vertex-sub">不需要逐笔手录</text>
         </g>
 
         <!-- vertex 2: 数据隐私 (bottom-left) -->
         <g class="anim" style="--d:450ms;">
-          <circle cx="160" cy="660" r="14" fill="#7EC8E3"/>
-          <text x="160" y="710" text-anchor="middle" class="vertex-label">数据隐私</text>
-          <text x="160" y="738" text-anchor="middle" class="vertex-sub">财务数据不离开设备</text>
+          <circle cx="220" cy="575" r="14" fill="#7EC8E3"/>
+          <text x="220" y="630" text-anchor="middle" class="vertex-label">数据隐私</text>
+          <text x="220" y="658" text-anchor="middle" class="vertex-sub">财务数据不离开设备</text>
         </g>
 
         <!-- vertex 3: 个性化 AI (bottom-right) -->
         <g class="anim" style="--d:550ms;">
-          <circle cx="940" cy="660" r="14" fill="#F9D56E"/>
-          <text x="940" y="710" text-anchor="middle" class="vertex-label">个性化 AI</text>
-          <text x="940" y="738" text-anchor="middle" class="vertex-sub">理解并适应每个具体用户</text>
+          <circle cx="880" cy="575" r="14" fill="#F9D56E"/>
+          <text x="880" y="630" text-anchor="middle" class="vertex-label">个性化 AI</text>
+          <text x="880" y="658" text-anchor="middle" class="vertex-sub">理解并适应每个具体用户</text>
         </g>
 
-        <!-- edge solutions (existing competitors) -->
-        <!-- left edge: 隐私+负担轴 -> 本地手工记账 (牺牲低负担) -->
-        <g class="anim" style="--d:850ms;">
-          <rect x="110" y="290" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
-          <text x="230" y="322" text-anchor="middle" class="edge-label">本地手工记账</text>
-          <text x="230" y="348" text-anchor="middle" class="edge-sub">隐私 ✓ 个性化 ✓ · 负担 ✗</text>
+        <!-- 边上说明：只讲取舍，不再放竞品卡片。 -->
+        <g class="anim" style="--d:820ms;">
+          <text x="314" y="314" text-anchor="middle" class="edge-label">保隐私 + 保个性化</text>
+          <text x="314" y="344" text-anchor="middle" class="edge-sub">通常就会回到高维护</text>
         </g>
-        <!-- right edge: 负担+个性化 -> 云端 AI 记账 (牺牲隐私) -->
-        <g class="anim" style="--d:1000ms;">
-          <rect x="750" y="290" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
-          <text x="870" y="322" text-anchor="middle" class="edge-label">云端 AI 记账</text>
-          <text x="870" y="348" text-anchor="middle" class="edge-sub">负担 ✓ · 隐私 ✗ 平均化模型</text>
+        <g class="anim" style="--d:980ms;">
+          <text x="786" y="314" text-anchor="middle" class="edge-label">低负担 + 个性化</text>
+          <text x="786" y="344" text-anchor="middle" class="edge-sub">往往意味着必须上云</text>
         </g>
-        <!-- bottom edge: 隐私+个性化轴 -> 对话式 AI (个性化不成立) -->
-        <g class="anim" style="--d:1150ms;">
-          <rect x="430" y="616" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
-          <text x="550" y="648" text-anchor="middle" class="edge-label">对话式 AI · Cleo</text>
-          <text x="550" y="674" text-anchor="middle" class="edge-sub">无跨会话记忆 · 个性化空</text>
+        <g class="anim" style="--d:1140ms;">
+          <text x="550" y="540" text-anchor="middle" class="edge-label">低负担 + 隐私</text>
+          <text x="550" y="568" text-anchor="middle" class="edge-sub">却很难形成长期个性化</text>
         </g>
 
-        <!-- center: Moni mark -->
+        <!-- center: 基于真实 app icon 直接去壳缩放，只保留黑色 M 与三色装饰。 -->
         <g class="anim scale" style="--d:1400ms;">
-          <circle cx="550" cy="430" r="78" fill="#222"/>
-          <text x="550" y="446" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="56" fill="#F5F0EB" letter-spacing="-2">M</text>
-          <circle cx="600" cy="385" r="13" fill="#FF6B6B" opacity=".95"/>
-          <circle cx="582" cy="368" r="9" fill="#7EC8E3" opacity=".9"/>
-          <rect x="601" y="360" width="13" height="13" rx="2" fill="#F9D56E" opacity=".9" transform="rotate(18 607 366)"/>
-          <text x="550" y="540" text-anchor="middle" font-family="Nunito" font-weight="800" font-size="22" fill="#222">三者兼得</text>
+          <g transform="translate(462 308) scale(4.6)">
+            <path d="M12.7 38 C12.7 38 12.7 18 15 14.5 C16.7 13 17.8 13.5 23 25 C23 25 23.9 27 24.7 25 C25.5 23 29.3 13.5 31 14.5 C32.8 15.5 33.4 38 33.4 38"
+              stroke="#222222" stroke-width="3.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="37" cy="14" r="4" fill="#FF6B6B" opacity=".82"/>
+            <circle cx="31" cy="9" r="2.6" fill="#7EC8E3" opacity=".74"/>
+            <rect x="34" y="7" width="4" height="4" rx="0.8" fill="#F9D56E" opacity=".68" transform="rotate(18 36 9)"/>
+          </g>
         </g>
       </svg>
+    </div>
+
+    <div class="triangle-caption anim" style="--d:1550ms;">
+      传统方案最多占住两个角，Moni 解决的是“三者同时成立”。
     </div>
   </div>
 
   <div class="pageno">03 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1027,7 +1068,7 @@
   </div>
 
   <div class="pageno">04 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1042,11 +1083,17 @@
 
   <div class="slide-inner">
     <div class="glow"></div>
-    <div class="moni-big anim scale" style="--d:200ms;">
-      <span style="position:relative; display:inline-block;">M<span class="triad-on-m">
-        <span class="triad-cluster big">
-          <span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span>
-        </span></span></span><span style="display:inline-block; width:.16em; height:.16em; border-radius:50%; background:var(--coral); margin:0 .08em .15em .08em; vertical-align:bottom;"></span>oni
+    <!-- 中文说明：Moni 发布页只保留 logo 本体与三条能力描述，不追加脚本未要求的品牌副标。 -->
+    <div class="app-logo-lockup light reveal-brand anim scale" style="--d:200ms;">
+      <svg class="app-logo-svg wordmark-svg" viewBox="0 0 82 42" aria-label="Moni">
+        <text x="4" y="32" class="logo-text" font-size="28">M</text>
+        <circle cx="25" cy="32" r="1.8" fill="#FF6B6B" opacity=".75"></circle>
+        <text x="30" y="32" class="logo-text" font-size="28">oni</text>
+        <circle cx="27" cy="9" r="3.6" fill="#FF6B6B" opacity=".72"></circle>
+        <circle cx="20" cy="5" r="2.4" fill="#7EC8E3" opacity=".62"></circle>
+        <rect x="23" y="2.5" width="4" height="4" rx=".8" fill="#F9D56E" opacity=".55" transform="rotate(20 25 4.5)"></rect>
+        <line x1="68" y1="7" x2="75" y2="7" stroke="#4ECDC4" stroke-width="1.8" stroke-linecap="round" opacity=".35"></line>
+      </svg>
     </div>
 
     <div class="caps">
@@ -1070,7 +1117,7 @@
   </div>
 
   <div class="pageno" style="color:rgba(245,240,235,.45);">05 / 09</div>
-  <div class="brandmark" style="color:rgba(245,240,235,.45);">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1094,8 +1141,8 @@
         <div class="cls b anim" style="--d:500ms;">
           <div class="star">★ MOST VALUE</div>
           <div class="tag">B 类</div>
-          <h4>AI 错误<br/>+ 用户纠正</h4>
-          <p>学习价值最高的信号。错误推理被特殊处理，作为反例独立注入。</p>
+          <h4>AI 错误 + 用户纠正</h4>
+          <p>最有价值，因为它直接告诉系统：这次为什么错、下次该如何避开。</p>
           <div class="pipe">
             <div class="step">① 加上「错误判断」前缀</div>
             <div class="step">② 独立区块注入</div>
@@ -1105,22 +1152,29 @@
         <div class="cls a anim" style="--d:650ms;">
           <div class="tag">A 类</div>
           <h4>AI 正确<br/>+ 用户确认</h4>
+          <div class="cls-copy">告诉系统这条判断可以继续保留。</div>
           <span class="badge">正向信号</span>
         </div>
         <div class="cls c anim" style="--d:800ms;">
           <div class="tag">C 类</div>
           <h4>用户直接<br/>分类</h4>
+          <div class="cls-copy">补足 AI 还没见过的新模式、新商户。</div>
           <span class="badge">补盲</span>
         </div>
         <div class="cls d anim" style="--d:950ms;">
           <div class="tag">D 类</div>
-          <h4 style="font-size:30px;">随手记 · 主动意图</h4>
+          <h4 style="font-size:30px;">随手记 + 主动意图</h4>
+          <div class="cls-copy">用户在录入当下暴露的真实意图，天然带语义。</div>
           <span class="badge">用户主动信号</span>
         </div>
       </div>
 
       <!-- RIGHT: closed loop -->
       <div class="loop-wrap anim" style="--d:900ms;">
+        <div class="loop-head">
+          <div class="k">LEARNING LOOP</div>
+          <div class="v">纠错不会被浪费，<br/>而是进入下一轮分类上下文。</div>
+        </div>
         <svg viewBox="0 0 600 600">
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -1158,23 +1212,17 @@
 
           <!-- center label -->
           <g text-anchor="middle">
-            <text x="300" y="296" font-family="Nunito" font-weight="900" font-size="32" fill="#222">闭环</text>
-            <text x="300" y="328" font-family="Space Mono" font-size="14" fill="#888" letter-spacing="2">AUTO &amp; LOCAL</text>
+            <text x="300" y="286" font-family="Nunito" font-weight="900" font-size="32" fill="#222">越改越准</text>
+            <text x="300" y="320" font-family="Nunito" font-weight="800" font-size="20" fill="#555">不是一次纠错</text>
+            <text x="300" y="346" font-family="Nunito" font-weight="800" font-size="20" fill="#555">而是下一轮记忆</text>
           </g>
         </svg>
       </div>
     </div>
-
-    <div style="position:absolute; left:var(--pad-x); bottom:120px; right:var(--pad-x); display:none;"></div>
-  </div>
-
-  <!-- D class card placed at bottom-left of grid intentionally is in classes block; need 4th -->
-  <div style="display:none">
-    <!-- D class moved next; see below -->
   </div>
 
   <div class="pageno">06 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1245,7 +1293,7 @@
   </div>
 
   <div class="pageno">07 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1338,7 +1386,7 @@
   </div>
 
   <div class="pageno">08 / 09</div>
-  <div class="brandmark">Moni</div>
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 
@@ -1363,11 +1411,19 @@
     <div class="sig anim fade-only" style="--d:1500ms;">
       <span>财智随行</span>
       <span class="dotsep"></span>
-      <span class="moni-mark">
-        <span style="position:relative; display:inline-block;">M<span class="triad-on-m"><span class="triad-cluster"><span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span></span></span></span><span class="dot"></span>oni
-      </span>
+      <svg class="app-logo-svg app-logo-mini wordmark-svg" viewBox="0 0 82 42" aria-label="Moni">
+        <text x="4" y="32" class="logo-text" font-size="28">M</text>
+        <circle cx="25" cy="32" r="1.8" fill="#FF6B6B" opacity=".75"></circle>
+        <text x="30" y="32" class="logo-text" font-size="28">oni</text>
+        <circle cx="27" cy="9" r="3.6" fill="#FF6B6B" opacity=".72"></circle>
+        <circle cx="20" cy="5" r="2.4" fill="#7EC8E3" opacity=".62"></circle>
+        <rect x="23" y="2.5" width="4" height="4" rx=".8" fill="#F9D56E" opacity=".55" transform="rotate(20 25 4.5)"></rect>
+        <line x1="68" y1="7" x2="75" y2="7" stroke="#4ECDC4" stroke-width="1.8" stroke-linecap="round" opacity=".35"></line>
+      </svg>
     </div>
   </div>
+
+  <div class="brandmark"><img src="uploads/icon.svg" alt="Moni App Icon" /></div>
 </section>
 
 </deck-stage>
