@@ -1,0 +1,1444 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Moni · 越用越聪明的 AI 记账助手</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800;900&family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="deck-stage.js"></script>
+<style>
+  :root{
+    --ink:#222222;
+    --paper:#F5F0EB;
+    --white:#FFFFFF;
+    --coral:#FF6B6B;
+    --sky:#7EC8E3;
+    --sun:#F9D56E;
+    --mint:#4ECDC4;
+    --amber:#E88B4D;
+
+    --t-display: 220px;
+    --t-title: 96px;
+    --t-subtitle: 56px;
+    --t-lead: 44px;
+    --t-body: 34px;
+    --t-small: 28px;
+    --t-micro: 22px;
+
+    --pad-x: 140px;
+    --pad-t: 110px;
+    --pad-b: 100px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html, body { background:#0c0c0c; }
+  body{
+    font-family:'Inter','PingFang SC','Microsoft Yahei',sans-serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  deck-stage{ background:#0c0c0c; }
+
+  /* ---- Slide base ---- */
+  .slide{
+    width:1920px; height:1080px;
+    position:relative;
+    overflow:hidden;
+    background:var(--paper);
+    color:var(--ink);
+    padding:var(--pad-t) var(--pad-x) var(--pad-b);
+    display:flex;
+    flex-direction:column;
+  }
+  .slide.dark{ background:var(--ink); color:var(--paper); }
+  .slide.cream{ background:#EFE8DF; }
+  .slide.warm-white{ background:var(--paper); }
+
+  /* eyebrow page tag */
+  .eyebrow{
+    font-family:'Space Mono',monospace;
+    font-size:var(--t-micro);
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    opacity:.55;
+  }
+  .eyebrow .num{ color:var(--coral); margin-right:14px; }
+
+  .slide-title{
+    font-family:'Nunito',sans-serif;
+    font-weight:900;
+    font-size:var(--t-title);
+    line-height:1.02;
+    letter-spacing:-.02em;
+    color:var(--ink);
+  }
+  .dark .slide-title{ color:var(--paper); }
+
+  .lead{
+    font-family:'Nunito',sans-serif;
+    font-weight:700;
+    font-size:var(--t-lead);
+    line-height:1.18;
+    letter-spacing:-.01em;
+  }
+  .body{ font-size:var(--t-body); line-height:1.45; font-weight:400; }
+  .small{ font-size:var(--t-small); line-height:1.45; }
+  .mono{ font-family:'Space Mono',monospace; }
+
+  /* page footer label */
+  .pageno{
+    position:absolute; left:var(--pad-x); bottom:50px;
+    font-family:'Space Mono',monospace; font-size:18px;
+    letter-spacing:.2em; opacity:.4;
+  }
+  .dark .pageno{ opacity:.45; }
+  .brandmark{
+    position:absolute; right:var(--pad-x); bottom:50px;
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:22px; letter-spacing:-.01em; opacity:.55;
+  }
+
+  /* ---- Brand triad cluster ---- */
+  .triad{ position:relative; display:inline-block; }
+
+  /* ---- Moni wordmark ---- */
+  .moni-mark{
+    font-family:'Nunito',sans-serif;
+    font-weight:900;
+    letter-spacing:-.045em;
+    color:var(--ink);
+    display:inline-flex; align-items:flex-end;
+    line-height:1;
+    position:relative;
+  }
+  .dark .moni-mark{ color:var(--paper); }
+  .moni-mark .dot{
+    width:.18em; height:.18em; border-radius:50%;
+    background:var(--coral);
+    margin:0 .04em .12em .02em;
+  }
+  .moni-mark .triad-on-m{
+    position:absolute;
+  }
+
+  /* ---- Memphis floating decor (page-level) ---- */
+  .memphis{
+    position:absolute; inset:0; pointer-events:none; z-index:0;
+  }
+  .memphis > *{ position:absolute; }
+  .m-dot{ border-radius:50%; }
+  .m-square{ border-radius:6px; }
+  .m-tri{
+    width:0; height:0;
+    border-left:14px solid transparent;
+    border-right:14px solid transparent;
+    border-bottom:24px solid currentColor;
+  }
+  .m-wave{
+    width:140px; height:30px;
+    background:
+      radial-gradient(circle at 20px 20px, transparent 16px, currentColor 16px 19px, transparent 19px),
+      radial-gradient(circle at 60px 10px, transparent 16px, currentColor 16px 19px, transparent 19px),
+      radial-gradient(circle at 100px 20px, transparent 16px, currentColor 16px 19px, transparent 19px);
+    -webkit-mask: linear-gradient(black,black);
+    opacity:.3;
+  }
+
+  .slide-inner{ position:relative; z-index:2; flex:1; display:flex; flex-direction:column; }
+
+  /* ============================================================
+     PAGE 1 — Cover
+  ============================================================ */
+  #s1{ background: radial-gradient(ellipse at 30% 20%, #FBF6F0 0%, var(--paper) 55%, #ECE4D8 100%); }
+  #s1 .center{
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+  }
+  #s1 .moni-mark{ font-size:var(--t-display); padding-top:140px; }
+  #s1 .moni-mark .triad-on-m{ top:-90px; left:calc(100% - 60px); right:auto; transform:scale(.9); transform-origin:left top; pointer-events:none; }
+  #s1 .tagline{
+    margin-top:60px;
+    font-family:'Nunito',sans-serif; font-weight:700;
+    font-size:var(--t-lead);
+    letter-spacing:-.005em;
+    color:#3a3a3a;
+  }
+  #s1 .tagline .accent{ color:var(--coral); }
+  #s1 .footnote{
+    position:absolute; left:0; right:0; bottom:90px;
+    text-align:center;
+    font-family:'Space Mono',monospace; font-size:24px;
+    letter-spacing:.04em; color:#888;
+  }
+
+  /* ============================================================
+     PAGE 2 — Pain
+  ============================================================ */
+  #s2{ background:var(--paper); }
+  #s2 .head{ margin-bottom:80px; }
+  #s2 .slide-title{
+    font-size:108px; max-width:1500px;
+  }
+  #s2 .pain-row{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:40px;
+    margin-top:60px;
+  }
+  .pain-card{
+    padding:56px 48px 64px;
+    border-radius:28px;
+    background:#EFE7DA;
+    position:relative;
+    min-height:380px;
+    display:flex; flex-direction:column;
+    transition: opacity .6s ease, filter .6s ease;
+  }
+  .pain-card .num{
+    font-family:'Space Mono',monospace;
+    font-size:24px;
+    color:#999;
+    letter-spacing:.18em;
+    margin-bottom:36px;
+  }
+  .pain-card h3{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:64px; line-height:1; letter-spacing:-.02em;
+    margin-bottom:28px;
+  }
+  .pain-card p{ font-size:28px; line-height:1.5; color:#555; }
+  .pain-card .strike{
+    position:absolute; left:40px; right:40px; top:50%;
+    height:6px; background:var(--ink);
+    transform: scaleX(0); transform-origin:left;
+    transition: transform 1s ease .2s;
+    border-radius:3px;
+  }
+  /* progressive dimming when active */
+  .slide.is-active .pain-card.dim-1{ opacity:.7; }
+  .slide.is-active .pain-card.dim-2{ opacity:.5; filter:grayscale(.4); }
+  .slide.is-active .pain-card.dim-3{ opacity:.32; filter:grayscale(.7); }
+  .slide.is-active .pain-card.dim-3 .strike{ transform:scaleX(.85); }
+
+  /* ============================================================
+     PAGE 3 — Triangle dilemma
+  ============================================================ */
+  #s3{ background:var(--paper); }
+  #s3 .top-row{ display:flex; align-items:flex-end; justify-content:space-between; }
+  #s3 .top-row .right{ text-align:right; max-width:560px; }
+  #s3 .triangle-wrap{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    margin-top:10px;
+  }
+  #s3 svg.tri{ width:1100px; height:760px; overflow:visible; }
+  #s3 .vertex-label{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:36px; letter-spacing:-.01em;
+  }
+  #s3 .vertex-sub{
+    font-family:'Inter',sans-serif; font-weight:400;
+    font-size:22px; fill:#666;
+  }
+  #s3 .edge-label{
+    font-family:'Inter',sans-serif; font-weight:600;
+    font-size:22px; fill:#333;
+  }
+  #s3 .edge-sub{
+    font-family:'Space Mono',monospace; font-size:18px; fill:#888;
+  }
+
+  /* ============================================================
+     PAGE 4 — Comparison table
+  ============================================================ */
+  #s4{ background:var(--paper); }
+  #s4 .slide-title{ font-size:96px; }
+  #s4 .sub{ margin-top:18px; font-size:32px; color:#666; max-width:1200px; }
+  .cmp-table{
+    margin-top:54px;
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    font-size:24px;
+  }
+  .cmp-table th, .cmp-table td{
+    padding:24px 22px;
+    text-align:left;
+    vertical-align:middle;
+    border-bottom:1px solid #DDD3C4;
+  }
+  .cmp-table thead th{
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:26px;
+    color:#888;
+    border-bottom:2px solid #C9BEA9;
+    padding-top:10px;
+  }
+  .cmp-table thead th.moni-col{
+    color:var(--ink);
+    background:linear-gradient(180deg, rgba(78,205,196,.0), rgba(78,205,196,.18));
+    border-radius:18px 18px 0 0;
+    font-size:30px;
+  }
+  .cmp-table tbody tr td:first-child{
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:24px; color:#444;
+    width:240px;
+  }
+  .cmp-table td.moni-col{
+    background:rgba(78,205,196,.14);
+    font-weight:700;
+    color:var(--ink);
+  }
+  .cmp-table tbody tr:last-child td.moni-col{
+    border-radius:0 0 18px 18px;
+  }
+  .cmp-table .yes{ color:var(--mint); font-weight:800; }
+  .cmp-table .no{ color:var(--coral); font-weight:800; }
+  .cmp-table .mid{ color:var(--amber); font-weight:800; }
+  .cmp-table .pill{
+    display:inline-block; padding:4px 14px; border-radius:999px;
+    font-family:'Space Mono',monospace; font-size:18px;
+    background:#E8DECB; color:#666;
+  }
+  .cmp-table .pill.free{ background:rgba(78,205,196,.2); color:#1f8c83; }
+
+  #s4 .conclusion{
+    margin-top:28px;
+    margin-bottom:30px;
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:30px; letter-spacing:-.005em;
+    color:var(--ink);
+  }
+  #s4 .pageno, #s4 .brandmark{ bottom:30px; }
+  #s4 .conclusion .hi{
+    background:var(--sun); padding:0 14px; border-radius:8px;
+  }
+
+  /* ============================================================
+     PAGE 5 — Reveal (dark)
+  ============================================================ */
+  #s5{
+    background: radial-gradient(ellipse at 50% 40%, #2c2c2c 0%, var(--ink) 60%, #161616 100%);
+    color:var(--paper);
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+  #s5 .slide-inner{
+    align-items:center; justify-content:center; text-align:center;
+  }
+  #s5 .moni-big{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:200px; letter-spacing:-.05em; line-height:1;
+    color:var(--paper);
+    position:relative;
+    white-space:nowrap;
+    margin-top:30px;
+    padding-top:130px;
+  }
+  #s5 .moni-big .triad-on-m{
+    position:absolute; top:-100px; left:calc(100% - 60px); right:auto; transform:scale(1.0); transform-origin:left top;
+  }
+  #s5 .glow{
+    position:absolute; inset:auto;
+    width:1100px; height:1100px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(255,107,107,.18) 0%, rgba(126,200,227,.08) 30%, transparent 60%);
+    z-index:0;
+    pointer-events:none;
+  }
+  #s5 .caps{
+    margin-top:90px;
+    display:flex; gap:120px;
+    justify-content:center;
+    z-index:2; position:relative;
+  }
+  #s5 .cap{
+    text-align:center;
+  }
+  #s5 .cap .k{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:48px; color:var(--paper); letter-spacing:-.01em;
+  }
+  #s5 .cap .v{
+    margin-top:14px;
+    font-size:24px; color:rgba(245,240,235,.6);
+    font-family:'Space Mono',monospace; letter-spacing:.04em;
+  }
+  #s5 .cap.c1 .k::before{ content:''; display:block; width:18px; height:18px; border-radius:50%; background:var(--coral); margin:0 auto 22px; }
+  #s5 .cap.c2 .k::before{ content:''; display:block; width:18px; height:18px; border-radius:50%; background:var(--sky); margin:0 auto 22px; }
+  #s5 .cap.c3 .k::before{ content:''; display:block; width:20px; height:20px; background:var(--sun); margin:0 auto 22px; transform:rotate(45deg); }
+  #s5 .punchline{
+    margin-top:60px;
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:36px; color:var(--paper);
+    letter-spacing:-.005em;
+    z-index:2; position:relative;
+    white-space:nowrap;
+  }
+  #s5 .punchline .underline{
+    background:linear-gradient(180deg, transparent 60%, rgba(249,213,110,.45) 60%);
+    padding:0 6px;
+  }
+
+  /* ============================================================
+     PAGE 6 — AI self-learning loop
+  ============================================================ */
+  #s6{ background:var(--paper); }
+  #s6 .slide-title{ font-size:80px; }
+  #s6 .sub{ margin-top:14px; font-family:'Nunito',sans-serif; font-weight:700; font-size:32px; color:#888; font-style:italic; }
+  #s6 .grid{
+    margin-top:50px;
+    display:grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap:80px;
+    flex:1;
+    padding-bottom:40px;
+  }
+  /* four classes */
+  .classes{
+    display:grid;
+    grid-template-columns: 1.15fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap:16px;
+  }
+  .classes .cls.b{ grid-column: 1; grid-row: 1 / 3; }
+  .classes .cls.a{ grid-column: 2; grid-row: 1; }
+  .classes .cls.c{ grid-column: 3; grid-row: 1; }
+  .classes .cls.d{ grid-column: 2 / 4; grid-row: 2; }
+  .cls{
+    background:#EFE7DA;
+    border-radius:22px;
+    padding:28px 28px 32px;
+    position:relative;
+  }
+  .cls .tag{
+    font-family:'Space Mono',monospace;
+    font-size:20px; letter-spacing:.18em;
+    color:#999;
+  }
+  .cls h4{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:34px; margin-top:14px; line-height:1.1;
+    letter-spacing:-.01em;
+  }
+  .cls p{ margin-top:10px; font-size:22px; color:#666; line-height:1.4;}
+  .cls .badge{
+    display:inline-block; margin-top:14px;
+    font-family:'Space Mono',monospace; font-size:18px;
+    padding:5px 12px; border-radius:999px;
+    background:#fff; color:#666;
+  }
+  .cls.b{
+    grid-row: 1 / 3;
+    background:linear-gradient(150deg, #FFE0E0 0%, #FFCFCF 100%);
+    padding:36px 36px 36px;
+    border:none;
+  }
+  .cls.b .tag{ color:var(--coral); }
+  .cls.b h4{ font-size:46px; }
+  .cls.b p{ color:#7a3a3a; font-size:24px; }
+  .cls.b .pipe{
+    margin-top:24px;
+    display:flex; flex-direction:column; gap:10px;
+    font-family:'Space Mono',monospace; font-size:18px;
+  }
+  .cls.b .pipe .step{
+    background:rgba(255,255,255,.6);
+    padding:10px 14px; border-radius:10px;
+    color:#5a2a2a;
+  }
+  .cls.b .star{
+    position:absolute; top:22px; right:24px;
+    font-family:'Space Mono',monospace; font-size:14px;
+    color:var(--coral); letter-spacing:.1em;
+    background:rgba(255,255,255,.7); padding:4px 10px; border-radius:999px;
+  }
+  .cls.b .tag{ margin-top:36px; }
+
+  /* loop */
+  .loop-wrap{ position:relative; }
+  .loop-wrap svg{ width:100%; height:auto; }
+  .loop-node{
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:18px; letter-spacing:-.005em; fill:var(--ink);
+  }
+  .loop-cap{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    text-align:center;
+  }
+  .loop-cap .pct{
+    font-family:'Space Mono',monospace; font-weight:700; font-size:48px;
+    color:var(--ink);
+  }
+  .loop-cap .lbl{
+    font-family:'Nunito',sans-serif; font-weight:700;
+    font-size:18px; color:#666; letter-spacing:.06em;
+    text-transform:uppercase; margin-top:4px;
+  }
+
+  /* ============================================================
+     PAGE 7 — Local-first + injection
+  ============================================================ */
+  #s7{ background:var(--paper); }
+  #s7 .slide-title{ font-size:80px; }
+  #s7 .grid{
+    margin-top:60px;
+    display:grid;
+    grid-template-columns: 1.25fr 1fr;
+    gap:70px;
+    flex:1;
+  }
+  /* device diagram */
+  .device{
+    position:relative;
+    background:var(--ink);
+    border-radius:48px;
+    padding:42px 38px 50px;
+    color:var(--paper);
+    height:100%;
+    min-height:540px;
+  }
+  .device .badge{
+    position:absolute; top:24px; right:30px;
+    font-family:'Space Mono',monospace; font-size:18px;
+    color:rgba(245,240,235,.55); letter-spacing:.16em;
+  }
+  .device h4{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:30px; margin-bottom:30px; letter-spacing:-.005em;
+  }
+  .device .flow{
+    display:flex; flex-wrap:wrap; gap:10px;
+    align-items:center;
+  }
+  .device .node{
+    background:rgba(245,240,235,.06);
+    border:1px solid rgba(245,240,235,.18);
+    border-radius:14px;
+    padding:14px 18px;
+    font-family:'Inter',sans-serif; font-weight:500;
+    font-size:20px;
+  }
+  .device .node.engine{
+    background:rgba(126,200,227,.18);
+    border-color:rgba(126,200,227,.5);
+    color:#bce4f1;
+  }
+  .device .node.store{
+    background:rgba(78,205,196,.16);
+    border-color:rgba(78,205,196,.5);
+    color:#9be4dd;
+  }
+  .device .arrow{ color:rgba(245,240,235,.45); font-family:'Space Mono',monospace; }
+
+  .device .stores{
+    margin-top:26px;
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .device .stores .node{ font-size:18px; padding:12px 16px; }
+
+  .device .api-line{
+    margin-top:38px;
+    border-top:1px dashed rgba(245,240,235,.3);
+    padding-top:22px;
+    display:flex; align-items:center; gap:18px;
+  }
+  .device .api-pill{
+    background:rgba(255,107,107,.15);
+    border:1px solid rgba(255,107,107,.5);
+    color:#ffb4b4;
+    border-radius:14px;
+    padding:14px 18px;
+    font-size:19px;
+  }
+  .device .api-note{
+    flex:1;
+    font-family:'Space Mono',monospace; font-size:17px;
+    color:rgba(245,240,235,.65);
+    line-height:1.55;
+  }
+
+  /* injection panel */
+  .injection{ display:flex; flex-direction:column; gap:24px; }
+  .inject-head{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:30px; letter-spacing:-.005em;
+  }
+  .weight-list{ display:flex; flex-direction:column; gap:18px; }
+  .weight-row{
+    display:grid;
+    grid-template-columns: 220px 1fr 80px;
+    gap:18px;
+    align-items:center;
+    font-size:20px;
+  }
+  .weight-row .name{ font-family:'Nunito',sans-serif; font-weight:700; }
+  .weight-row .bar{
+    height:14px; border-radius:7px; background:#E8DECB; position:relative; overflow:hidden;
+  }
+  .weight-row .bar::after{
+    content:''; position:absolute; left:0; top:0; bottom:0;
+    width:var(--w,50%);
+    background:linear-gradient(90deg, var(--sky), var(--mint));
+    border-radius:7px;
+    transform-origin:left;
+    transform:scaleX(0);
+    transition: transform 1s cubic-bezier(.2,.7,.2,1);
+  }
+  .slide.is-active .weight-row .bar::after{ transform:scaleX(1); }
+  .weight-row .val{
+    font-family:'Space Mono',monospace; font-weight:700;
+    color:var(--ink); text-align:right;
+  }
+
+  .inject-pipeline{
+    background:#fff; border-radius:18px;
+    padding:22px 24px;
+    font-family:'Space Mono',monospace; font-size:18px;
+    color:#444; line-height:1.6;
+    border-left:6px solid var(--sun);
+  }
+  .inject-pipeline b{ color:var(--ink); }
+
+  .override-note{
+    margin-top:auto;
+    font-family:'Nunito',sans-serif; font-weight:700;
+    font-size:24px; line-height:1.4;
+    color:var(--ink);
+    background:rgba(255,107,107,.12);
+    padding:18px 22px; border-radius:14px;
+    border-left:6px solid var(--coral);
+  }
+
+  /* ============================================================
+     PAGE 8 — Completion
+  ============================================================ */
+  #s8{ background:var(--paper); }
+  #s8 .slide-title{ font-size:88px; }
+  #s8 .sub{ margin-top:14px; font-size:30px; color:#666; }
+  .module-grid{
+    margin-top:60px;
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap:24px;
+    flex:1;
+    max-height:540px;
+  }
+  .module{
+    background:#fff;
+    border-radius:22px;
+    padding:30px 28px 28px;
+    position:relative;
+    display:flex; flex-direction:column; justify-content:space-between;
+    min-height:200px;
+  }
+  .module .icon{
+    width:54px; height:54px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:18px;
+    font-family:'Space Mono',monospace;
+    font-weight:700; font-size:22px;
+  }
+  .module h5{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:26px; line-height:1.15; letter-spacing:-.005em;
+  }
+  .module .tick{
+    position:absolute; top:24px; right:24px;
+    width:34px; height:34px; border-radius:50%;
+    background:var(--mint); color:#fff;
+    font-weight:900; font-size:20px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .module .meta{
+    margin-top:10px;
+    font-family:'Space Mono',monospace; font-size:16px;
+    color:#888; letter-spacing:.04em;
+  }
+
+  .improvements{
+    margin-top:30px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:24px;
+  }
+  .imp{
+    background:#EFE7DA;
+    border-radius:16px;
+    padding:22px 26px;
+    display:flex; gap:16px;
+    align-items:flex-start;
+  }
+  .imp .plus{
+    font-family:'Space Mono',monospace;
+    font-weight:700; font-size:22px;
+    color:var(--mint);
+    flex:0 0 auto;
+  }
+  .imp .text{
+    font-size:20px; line-height:1.4; color:#444;
+  }
+
+  /* ============================================================
+     PAGE 9 — Closer
+  ============================================================ */
+  #s9{
+    background:var(--paper);
+    align-items:center; justify-content:center;
+  }
+  #s9 .slide-inner{
+    align-items:center; justify-content:center; text-align:center;
+  }
+  #s9 .quote{
+    font-family:'Nunito',sans-serif; font-weight:900;
+    font-size:96px; line-height:1.18;
+    letter-spacing:-.025em;
+    color:var(--ink);
+    max-width:1500px;
+  }
+  #s9 .quote .em{ color:var(--coral); }
+  #s9 .sig{
+    margin-top:120px;
+    font-family:'Nunito',sans-serif; font-weight:800;
+    font-size:32px; letter-spacing:-.005em;
+    color:#888;
+    display:flex; align-items:center; justify-content:center; gap:18px;
+  }
+  #s9 .sig .moni-mark{ font-size:42px; padding-top:14px; }
+  #s9 .sig .moni-mark .triad-on-m{
+    position:absolute; top:-4px; left:auto; right:-32px; transform:scale(.42); transform-origin:left top;
+  }
+  #s9 .sig .dotsep{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--coral); display:inline-block;
+  }
+
+  /* ============================================================
+     ENTRANCE ANIMATIONS
+  ============================================================ */
+  .anim{
+    opacity:0; transform: translateY(28px);
+    transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1);
+    transition-delay: var(--d, 0ms);
+  }
+  .anim.fade-only{ transform:none; }
+  .anim.scale{ transform: scale(.94); }
+  .anim.left{ transform: translateX(-40px); }
+  .slide.is-active .anim{ opacity:1; transform:none; }
+
+  /* ---- triad cluster ---- */
+  .triad-cluster{
+    position:relative; width:60px; height:60px; display:inline-block;
+  }
+  .triad-cluster .c-coral{
+    position:absolute; right:0; top:18px;
+    width:28px; height:28px; border-radius:50%;
+    background:var(--coral); opacity:.92;
+  }
+  .triad-cluster .c-sky{
+    position:absolute; left:6px; top:8px;
+    width:20px; height:20px; border-radius:50%;
+    background:var(--sky); opacity:.85;
+  }
+  .triad-cluster .c-sun{
+    position:absolute; left:24px; top:0;
+    width:18px; height:18px; border-radius:3px;
+    background:var(--sun); opacity:.85;
+    transform: rotate(18deg);
+  }
+
+  /* big triad for cover */
+  .triad-cluster.big{ width:120px; height:90px; }
+  .triad-cluster.big .c-coral{ width:48px; height:48px; top:40px; right:8px;}
+  .triad-cluster.big .c-sky{ width:34px; height:34px; top:18px; right:46px;}
+  .triad-cluster.big .c-sun{ width:32px; height:32px; top:2px; right:18px; border-radius:6px; }
+
+  /* memphis particle floats */
+  @keyframes float1{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-14px); } }
+  @keyframes float2{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(10px); } }
+  .float-a{ animation: float1 7s ease-in-out infinite; }
+  .float-b{ animation: float2 9s ease-in-out infinite; }
+
+</style>
+</head>
+<body>
+
+<script type="application/json" id="speaker-notes">
+[
+"大家好，这是财智随行——Moni，一款越用越聪明的 AI 记账助手。",
+"记账这件事，人人都觉得应该做，但很少有人真的坚持下来。不是因为没有意愿——而是因为现有的工具给用户造成了太多摩擦。你需要逐笔手动输入每一笔消费，手动给每一笔贴上分类标签，而 AI 给出的建议呢——它不认识你这个人，改了也白改，下次还是错。两周之后，大多数人就放弃了。",
+"为什么会这样？因为个人财务工具面临一个结构性的三角困境。三个目标：低维护负担——不需要用户逐笔手动录入；数据隐私——财务数据不离开用户设备；个性化——AI 能够理解并适应这个具体用户的消费习惯。这三件事，从来没有被同时做到过。本地手工记账保护了隐私，也允许用户自由定义分类，但维护负担极高。云端 AI 记账降低了录入负担，但数据必须托管给第三方，而且它的 AI 训练在所有用户的共享数据上——它理解的是统计意义上的平均用户，不是你。对话式 AI 记账工具，比如 Cleo，它的每一次对话都是无状态的，关闭对话窗口的瞬间，AI 对你的了解就归零了。",
+"看这张对比表。在「账单导入加 AI 自动分类加 AI 自学习」这个组合方式下，目前市面上没有任何同类产品。Moni 是唯一的。",
+"Moni 的答案是三件事的组合：账单导入取代逐笔手录，AI 批量自动分类取代手动贴标签，持续学习让 AI 逐步内化这个人的消费习惯。首次在完全本地的架构下，同时满足三个目标。",
+"下面讲 Moni 最核心的创新——AI 自学习系统。我们把用户和 AI 之间的所有交互归纳为四类学习实例。A 类，AI 分类正确、用户确认——正向信号。B 类，AI 分类错误、用户纠正——学习价值最高的信号。C 类，用户直接手动分类——补盲。D 类，随手记录入时带上的意图信息。其中 B 类有特殊处理：错误推理会加上「错误判断」前缀，放进独立区块注入给 AI，让它以反例学习的方式消化，而非与正确案例混在一起。完整的学习闭环是：用户纠错产生实例，变更达到阈值触发学习会话，大语言模型分析增量修正，生成新的记忆快照，下次分类注入最新记忆——精度提升，纠错越来越少。整个闭环自动运行。",
+"Moni 采用完全的本地优先架构。所有数据——账本、学习实例库、AI 记忆快照——全部存储在用户手机上，没有服务器后端。AI 推理通过用户自行配置的大模型 API 完成，调用是无状态的——只接收 Prompt 上下文，不持有用户数据。个性化靠本地积累的上下文在每次推理时注入，而非云端训练。注入时并不是把全部历史都塞进去。我们按商户名、关键词、金额、消费时段四个维度打分，只取最相关的几条案例注入。token 成本不随实例库增长膨胀，系统可以长期积累。同时，用户的手动覆盖永久优先于 AI 判断，确保用户始终拥有最终控制权。",
+"Moni 目前已完成全部核心功能模块的开发。账单导入、AI 自动分类、自学习系统、拖拽纠错、随手记、预算管理、完整的 Memphis 风格界面设计，以及 Android 平台交付。省赛以来，我们进一步优化了数据导入流程——现在支持直接上传微信和支付宝发送的加密压缩包，在应用内输入密码即可解压并导入；拖拽分类时，屏幕底部会实时显示当前条目的交易细则，帮助用户更快做出判断。",
+"AI 的边界，不在于云端算力——在于是否真正理解每一个具体的人。这是 Moni 正在做的事。谢谢。"
+]
+</script>
+
+<deck-stage width="1920" height="1080">
+
+<!-- =================== SLIDE 1 · COVER =================== -->
+<section id="s1" class="slide" data-label="01 Cover">
+  <div class="memphis">
+    <span class="m-dot float-a" style="left:8%; top:18%; width:24px; height:24px; background:var(--sky); opacity:.45;"></span>
+    <span class="m-square float-b" style="right:10%; top:14%; width:28px; height:28px; background:var(--sun); opacity:.5; transform:rotate(20deg);"></span>
+    <span class="m-dot float-a" style="left:14%; bottom:22%; width:14px; height:14px; background:var(--coral); opacity:.35;"></span>
+    <span class="m-dot float-b" style="right:18%; bottom:30%; width:18px; height:18px; background:var(--mint); opacity:.32;"></span>
+    <span class="float-a" style="right:8%; bottom:18%; color:var(--coral); opacity:.18;"><span class="m-tri"></span></span>
+    <span class="float-b" style="left:6%; top:48%; color:var(--sky); opacity:.16;"><span class="m-tri"></span></span>
+    <span class="m-square float-a" style="left:24%; top:8%; width:14px; height:14px; background:var(--mint); opacity:.4;"></span>
+    <span class="m-dot float-b" style="right:24%; top:6%; width:10px; height:10px; background:var(--amber); opacity:.45;"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div class="center">
+      <div class="moni-mark anim scale" style="--d:200ms;">
+        <span style="position:relative; display:inline-block;">M<span class="triad-on-m"><span class="triad-cluster big"><span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span></span></span></span><span class="dot"></span>oni
+      </div>
+      <div class="tagline anim" style="--d:700ms;">
+        越用越聪明的 <span class="accent">AI 记账助手</span>
+      </div>
+    </div>
+    <div class="footnote anim fade-only" style="--d:1100ms;">
+      财智随行 — 基于 AI 原生的个人财务全维追踪平台
+    </div>
+  </div>
+</section>
+
+
+<!-- =================== SLIDE 2 · PAIN =================== -->
+<section id="s2" class="slide" data-label="02 Pain">
+  <div class="memphis">
+    <span class="m-dot float-a" style="right:6%; top:8%; width:60px; height:60px; background:var(--coral); opacity:.12;"></span>
+    <span class="m-square float-b" style="left:5%; bottom:14%; width:34px; height:34px; background:var(--sun); opacity:.18; transform:rotate(20deg);"></span>
+    <span class="m-dot float-b" style="left:46%; top:9%; width:12px; height:12px; background:var(--sky); opacity:.4;"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div class="head">
+      <div class="eyebrow anim fade-only"><span class="num">02</span>痛点</div>
+      <h1 class="slide-title anim" style="--d:200ms; margin-top:30px;">
+        记账，人人想做，<br/>很少人坚持。
+      </h1>
+    </div>
+
+    <div class="pain-row">
+      <div class="pain-card dim-1 anim" style="--d:500ms;">
+        <div class="num">01 / FRICTION</div>
+        <h3>逐笔手录</h3>
+        <p>每一笔消费都要手动输入，<br/>摩擦极高。</p>
+        <div class="strike"></div>
+      </div>
+      <div class="pain-card dim-2 anim" style="--d:750ms;">
+        <div class="num">02 / WRONG GUESS</div>
+        <h3>分类靠猜</h3>
+        <p>AI 给出的建议不认识你，<br/>改了也不会记住。</p>
+        <div class="strike"></div>
+      </div>
+      <div class="pain-card dim-3 anim" style="--d:1000ms;">
+        <div class="num">03 / GIVE UP</div>
+        <h3>两周放弃</h3>
+        <p>维护负担大于认知价值，<br/>用户自然流失。</p>
+        <div class="strike"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pageno">02 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 3 · TRIANGLE =================== -->
+<section id="s3" class="slide" data-label="03 Triangle">
+  <div class="memphis">
+    <span class="m-dot float-a" style="left:5%; top:46%; width:14px; height:14px; background:var(--sun); opacity:.5;"></span>
+    <span class="m-square float-b" style="right:7%; top:40%; width:16px; height:16px; background:var(--mint); opacity:.45; transform:rotate(20deg);"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div class="top-row">
+      <div>
+        <div class="eyebrow anim fade-only"><span class="num">03</span>结构性困境</div>
+        <h1 class="slide-title anim" style="--d:150ms; margin-top:24px; font-size:88px;">三角困境</h1>
+      </div>
+      <div class="right anim left" style="--d:350ms;">
+        <p class="body" style="font-size:28px; line-height:1.55; color:#555;">
+          个人财务工具有三个目标。<br/>
+          至今为止，<b style="color:var(--ink)">从未被同时实现</b>。
+        </p>
+      </div>
+    </div>
+
+    <div class="triangle-wrap">
+      <svg class="tri" viewBox="0 0 1100 760">
+        <!-- Triangle frame -->
+        <defs>
+          <linearGradient id="edge1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FF6B6B"/>
+            <stop offset="1" stop-color="#7EC8E3"/>
+          </linearGradient>
+          <linearGradient id="edge2" x1="1" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#7EC8E3"/>
+            <stop offset="1" stop-color="#F9D56E"/>
+          </linearGradient>
+          <linearGradient id="edge3" x1="0" y1="1" x2="1" y2="1">
+            <stop offset="0" stop-color="#F9D56E"/>
+            <stop offset="1" stop-color="#FF6B6B"/>
+          </linearGradient>
+        </defs>
+
+        <!-- edges with labels -->
+        <g class="anim" style="--d:600ms;">
+          <line x1="550" y1="120" x2="160" y2="660" stroke="url(#edge1)" stroke-width="3"/>
+          <line x1="550" y1="120" x2="940" y2="660" stroke="url(#edge2)" stroke-width="3"/>
+          <line x1="160" y1="660" x2="940" y2="660" stroke="url(#edge3)" stroke-width="3"/>
+        </g>
+
+        <!-- vertex 1: 低维护负担 (top) -->
+        <g class="anim" style="--d:300ms;">
+          <circle cx="550" cy="120" r="14" fill="#FF6B6B"/>
+          <text x="550" y="78" text-anchor="middle" class="vertex-label">低维护负担</text>
+          <text x="550" y="105" text-anchor="middle" class="vertex-sub">不需要逐笔手录</text>
+        </g>
+
+        <!-- vertex 2: 数据隐私 (bottom-left) -->
+        <g class="anim" style="--d:450ms;">
+          <circle cx="160" cy="660" r="14" fill="#7EC8E3"/>
+          <text x="160" y="710" text-anchor="middle" class="vertex-label">数据隐私</text>
+          <text x="160" y="738" text-anchor="middle" class="vertex-sub">财务数据不离开设备</text>
+        </g>
+
+        <!-- vertex 3: 个性化 AI (bottom-right) -->
+        <g class="anim" style="--d:550ms;">
+          <circle cx="940" cy="660" r="14" fill="#F9D56E"/>
+          <text x="940" y="710" text-anchor="middle" class="vertex-label">个性化 AI</text>
+          <text x="940" y="738" text-anchor="middle" class="vertex-sub">理解并适应每个具体用户</text>
+        </g>
+
+        <!-- edge solutions (existing competitors) -->
+        <!-- left edge: 隐私+负担轴 -> 本地手工记账 (牺牲低负担) -->
+        <g class="anim" style="--d:850ms;">
+          <rect x="110" y="290" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
+          <text x="230" y="322" text-anchor="middle" class="edge-label">本地手工记账</text>
+          <text x="230" y="348" text-anchor="middle" class="edge-sub">隐私 ✓ 个性化 ✓ · 负担 ✗</text>
+        </g>
+        <!-- right edge: 负担+个性化 -> 云端 AI 记账 (牺牲隐私) -->
+        <g class="anim" style="--d:1000ms;">
+          <rect x="750" y="290" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
+          <text x="870" y="322" text-anchor="middle" class="edge-label">云端 AI 记账</text>
+          <text x="870" y="348" text-anchor="middle" class="edge-sub">负担 ✓ · 隐私 ✗ 平均化模型</text>
+        </g>
+        <!-- bottom edge: 隐私+个性化轴 -> 对话式 AI (个性化不成立) -->
+        <g class="anim" style="--d:1150ms;">
+          <rect x="430" y="616" width="240" height="78" rx="14" fill="#fff" stroke="#E2D8C5"/>
+          <text x="550" y="648" text-anchor="middle" class="edge-label">对话式 AI · Cleo</text>
+          <text x="550" y="674" text-anchor="middle" class="edge-sub">无跨会话记忆 · 个性化空</text>
+        </g>
+
+        <!-- center: Moni mark -->
+        <g class="anim scale" style="--d:1400ms;">
+          <circle cx="550" cy="430" r="78" fill="#222"/>
+          <text x="550" y="446" text-anchor="middle" font-family="Nunito" font-weight="900" font-size="56" fill="#F5F0EB" letter-spacing="-2">M</text>
+          <circle cx="600" cy="385" r="13" fill="#FF6B6B" opacity=".95"/>
+          <circle cx="582" cy="368" r="9" fill="#7EC8E3" opacity=".9"/>
+          <rect x="601" y="360" width="13" height="13" rx="2" fill="#F9D56E" opacity=".9" transform="rotate(18 607 366)"/>
+          <text x="550" y="540" text-anchor="middle" font-family="Nunito" font-weight="800" font-size="22" fill="#222">三者兼得</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="pageno">03 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 4 · COMPARISON TABLE =================== -->
+<section id="s4" class="slide" data-label="04 Comparison">
+  <div class="memphis">
+    <span class="m-dot float-a" style="right:5%; top:12%; width:36px; height:36px; background:var(--mint); opacity:.18;"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div>
+      <div class="eyebrow anim fade-only"><span class="num">03b</span>竞品对比</div>
+      <h1 class="slide-title anim" style="--d:150ms; margin-top:18px;">在这条路线上，<br/>没有同类产品。</h1>
+    </div>
+
+    <table class="cmp-table anim" style="--d:450ms;">
+      <thead>
+        <tr>
+          <th></th>
+          <th>手工记账</th>
+          <th>云端 AI 记账</th>
+          <th>对话式 AI</th>
+          <th class="moni-col">Moni</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>维护负担</td>
+          <td><span class="no">高</span> · 逐笔手录</td>
+          <td><span class="yes">低</span> · 银行直连</td>
+          <td><span class="yes">低</span> · 对话式</td>
+          <td class="moni-col"><span class="yes">低</span> · 账单导入</td>
+        </tr>
+        <tr>
+          <td>数据隐私</td>
+          <td><span class="yes">本地</span></td>
+          <td><span class="no">托管第三方</span></td>
+          <td><span class="no">云端</span></td>
+          <td class="moni-col"><span class="yes">完全本地</span></td>
+        </tr>
+        <tr>
+          <td>个性化 AI</td>
+          <td><span class="no">无 AI</span></td>
+          <td><span class="mid">共享模型</span></td>
+          <td><span class="no">无记忆</span></td>
+          <td class="moni-col"><span class="yes">持续学习</span></td>
+        </tr>
+        <tr>
+          <td>纠错可学习</td>
+          <td>—</td>
+          <td><span class="no">入全量训练</span></td>
+          <td>—</td>
+          <td class="moni-col"><span class="yes">立即生效</span></td>
+        </tr>
+        <tr>
+          <td>费用</td>
+          <td><span class="pill free">免费</span></td>
+          <td><span class="pill">¥50–100 / 月</span></td>
+          <td><span class="pill">¥20–100 / 月</span></td>
+          <td class="moni-col"><span class="pill free">免费</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="conclusion anim" style="--d:1100ms;">
+      在 <span class="hi">账单导入 + 自动分类 + 自学习</span> 的组合下，Moni 是<span class="hi" style="background:rgba(255,107,107,.25);">唯一</span>的。
+    </div>
+  </div>
+
+  <div class="pageno">04 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 5 · MONI REVEAL (DARK) =================== -->
+<section id="s5" class="slide dark" data-label="05 Reveal">
+  <div class="memphis">
+    <span class="m-dot float-a" style="left:8%; top:18%; width:18px; height:18px; background:var(--sky); opacity:.5;"></span>
+    <span class="m-square float-b" style="right:10%; top:14%; width:22px; height:22px; background:var(--sun); opacity:.55; transform:rotate(20deg);"></span>
+    <span class="m-dot float-b" style="left:12%; bottom:22%; width:12px; height:12px; background:var(--coral); opacity:.7;"></span>
+    <span class="m-dot float-a" style="right:14%; bottom:24%; width:14px; height:14px; background:var(--mint); opacity:.5;"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div class="glow"></div>
+    <div class="moni-big anim scale" style="--d:200ms;">
+      <span style="position:relative; display:inline-block;">M<span class="triad-on-m">
+        <span class="triad-cluster big">
+          <span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span>
+        </span></span></span><span style="display:inline-block; width:.16em; height:.16em; border-radius:50%; background:var(--coral); margin:0 .08em .15em .08em; vertical-align:bottom;"></span>oni
+    </div>
+
+    <div class="caps">
+      <div class="cap c1 anim" style="--d:700ms;">
+        <div class="k">账单导入</div>
+        <div class="v">零逐笔录入</div>
+      </div>
+      <div class="cap c2 anim" style="--d:900ms;">
+        <div class="k">AI 批量分类</div>
+        <div class="v">零手动标签</div>
+      </div>
+      <div class="cap c3 anim" style="--d:1100ms;">
+        <div class="k">持续学习</div>
+        <div class="v">越用越懂你</div>
+      </div>
+    </div>
+
+    <div class="punchline anim" style="--d:1500ms;">
+      首次在<span class="underline">完全本地架构</span>下，同时满足三个目标。
+    </div>
+  </div>
+
+  <div class="pageno" style="color:rgba(245,240,235,.45);">05 / 09</div>
+  <div class="brandmark" style="color:rgba(245,240,235,.45);">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 6 · SELF-LEARNING LOOP =================== -->
+<section id="s6" class="slide" data-label="06 Self-Learning">
+  <div class="memphis">
+    <span class="m-dot float-a" style="right:5%; top:10%; width:18px; height:18px; background:var(--coral); opacity:.3;"></span>
+    <span class="m-square float-b" style="left:4%; bottom:8%; width:20px; height:20px; background:var(--sun); opacity:.35; transform:rotate(20deg);"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div>
+      <div class="eyebrow anim fade-only"><span class="num">05</span>核心创新</div>
+      <h1 class="slide-title anim" style="--d:150ms; margin-top:14px;">AI 自学习系统</h1>
+      <div class="sub anim" style="--d:300ms;">每一次纠错，都是一堂课。</div>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: four classes -->
+      <div class="classes">
+        <div class="cls b anim" style="--d:500ms;">
+          <div class="star">★ MOST VALUE</div>
+          <div class="tag">B 类</div>
+          <h4>AI 错误<br/>+ 用户纠正</h4>
+          <p>学习价值最高的信号。错误推理被特殊处理，作为反例独立注入。</p>
+          <div class="pipe">
+            <div class="step">① 加上「错误判断」前缀</div>
+            <div class="step">② 独立区块注入</div>
+            <div class="step">③ 反例学习消化</div>
+          </div>
+        </div>
+        <div class="cls a anim" style="--d:650ms;">
+          <div class="tag">A 类</div>
+          <h4>AI 正确<br/>+ 用户确认</h4>
+          <span class="badge">正向信号</span>
+        </div>
+        <div class="cls c anim" style="--d:800ms;">
+          <div class="tag">C 类</div>
+          <h4>用户直接<br/>分类</h4>
+          <span class="badge">补盲</span>
+        </div>
+        <div class="cls d anim" style="--d:950ms;">
+          <div class="tag">D 类</div>
+          <h4 style="font-size:30px;">随手记 · 主动意图</h4>
+          <span class="badge">用户主动信号</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: closed loop -->
+      <div class="loop-wrap anim" style="--d:900ms;">
+        <svg viewBox="0 0 600 600">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#222"/>
+            </marker>
+            <linearGradient id="loopg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#FF6B6B"/>
+              <stop offset=".5" stop-color="#F9D56E"/>
+              <stop offset="1" stop-color="#7EC8E3"/>
+            </linearGradient>
+          </defs>
+
+          <!-- big circle path -->
+          <circle cx="300" cy="300" r="220" fill="none" stroke="url(#loopg)" stroke-width="2.5" stroke-dasharray="4 8"/>
+
+          <!-- nodes -->
+          <g font-family="Nunito" font-weight="800" font-size="18" fill="#222" text-anchor="middle">
+            <!-- node 1: 用户纠错 (top) -->
+            <g><circle cx="300" cy="80" r="44" fill="#FFE0E0"/><text x="300" y="76">用户</text><text x="300" y="98">纠错</text></g>
+            <!-- node 2: 实例入库 (top-right) -->
+            <g><circle cx="455" cy="145" r="38" fill="#FFF"/><text x="455" y="142">实例</text><text x="455" y="162">入库</text></g>
+            <!-- node 3: 阈值触发 (right) -->
+            <g><circle cx="520" cy="300" r="44" fill="#F9D56E" opacity=".75"/><text x="520" y="296">阈值</text><text x="520" y="316">触发</text></g>
+            <!-- node 4: LLM 分析 (bottom-right) -->
+            <g><circle cx="455" cy="455" r="44" fill="#222"/><text x="455" y="452" fill="#F5F0EB">LLM</text><text x="455" y="472" fill="#F5F0EB">分析</text></g>
+            <!-- node 5: 记忆快照 (bottom) -->
+            <g><circle cx="300" cy="520" r="44" fill="#7EC8E3" opacity=".85"/><text x="300" y="516">记忆</text><text x="300" y="536">快照</text></g>
+            <!-- node 6: 注入新上下文 (bottom-left) -->
+            <g><circle cx="145" cy="455" r="38" fill="#FFF"/><text x="145" y="452">注入</text><text x="145" y="472">上下文</text></g>
+            <!-- node 7: 精度提升 (left) -->
+            <g><circle cx="80" cy="300" r="44" fill="#4ECDC4" opacity=".75"/><text x="80" y="296">精度</text><text x="80" y="316">提升</text></g>
+            <!-- node 8: 纠错变少 (top-left) -->
+            <g><circle cx="145" cy="145" r="38" fill="#FFF"/><text x="145" y="142">纠错</text><text x="145" y="162">变少</text></g>
+          </g>
+
+          <!-- center label -->
+          <g text-anchor="middle">
+            <text x="300" y="296" font-family="Nunito" font-weight="900" font-size="32" fill="#222">闭环</text>
+            <text x="300" y="328" font-family="Space Mono" font-size="14" fill="#888" letter-spacing="2">AUTO &amp; LOCAL</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div style="position:absolute; left:var(--pad-x); bottom:120px; right:var(--pad-x); display:none;"></div>
+  </div>
+
+  <!-- D class card placed at bottom-left of grid intentionally is in classes block; need 4th -->
+  <div style="display:none">
+    <!-- D class moved next; see below -->
+  </div>
+
+  <div class="pageno">06 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 7 · LOCAL-FIRST =================== -->
+<section id="s7" class="slide" data-label="07 Local-First">
+  <div class="memphis">
+    <span class="m-dot float-a" style="right:6%; top:8%; width:14px; height:14px; background:var(--sky); opacity:.5;"></span>
+    <span class="m-square float-b" style="left:4%; bottom:8%; width:18px; height:18px; background:var(--coral); opacity:.3; transform:rotate(20deg);"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div>
+      <div class="eyebrow anim fade-only"><span class="num">06</span>架构与注入</div>
+      <h1 class="slide-title anim" style="--d:150ms; margin-top:14px;">本地优先 · 个性化注入</h1>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: device diagram -->
+      <div class="device anim scale" style="--d:400ms;">
+        <div class="badge">USER DEVICE</div>
+        <h4>账本 · 学习实例库 · 记忆快照 · 全部本地存储</h4>
+
+        <div class="flow">
+          <div class="node">账单文件</div>
+          <span class="arrow">→</span>
+          <div class="node">分类队列</div>
+          <span class="arrow">→</span>
+          <div class="node engine">AI 批处理引擎</div>
+          <span class="arrow">→</span>
+          <div class="node store">本地账本</div>
+        </div>
+
+        <div class="stores">
+          <div class="node">学习实例库</div>
+          <div class="node">AI 记忆快照</div>
+        </div>
+
+        <div class="api-line">
+          <div class="api-pill">LLM API</div>
+          <div class="api-note">
+            无状态调用 · 只传 Prompt 上下文<br/>
+            不持有用户数据 · 用户自配
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: injection -->
+      <div class="injection">
+        <div class="anim" style="--d:600ms;">
+          <div class="inject-head">四维评分检索</div>
+          <div class="weight-list" style="margin-top:24px;">
+            <div class="weight-row"><span class="name">商户匹配</span><span class="bar" style="--w:100%"></span><span class="val">+50</span></div>
+            <div class="weight-row"><span class="name">关键词重叠</span><span class="bar" style="--w:40%"></span><span class="val">+20</span></div>
+            <div class="weight-row"><span class="name">金额接近度</span><span class="bar" style="--w:30%"></span><span class="val">+15</span></div>
+            <div class="weight-row"><span class="name">餐时匹配</span><span class="bar" style="--w:30%"></span><span class="val">+15</span></div>
+          </div>
+        </div>
+
+        <div class="inject-pipeline anim" style="--d:850ms;">
+          每笔交易 → 检索 <b>Top 3</b> 案例 → 跨交易去重 → 分 <b>正例 / 反例</b> 两区块注入
+        </div>
+
+        <div class="override-note anim" style="--d:1050ms;">
+          用户的手动覆盖 <b>永久优先</b> 于 AI 判断。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pageno">07 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 8 · COMPLETION =================== -->
+<section id="s8" class="slide" data-label="08 Completion">
+  <div class="memphis">
+    <span class="m-dot float-a" style="right:6%; top:9%; width:24px; height:24px; background:var(--mint); opacity:.25;"></span>
+    <span class="m-square float-b" style="left:5%; top:10%; width:16px; height:16px; background:var(--sun); opacity:.4; transform:rotate(20deg);"></span>
+  </div>
+
+  <div class="slide-inner">
+    <div>
+      <div class="eyebrow anim fade-only"><span class="num">07</span>当前状态</div>
+      <h1 class="slide-title anim" style="--d:150ms; margin-top:14px;">当前完成度</h1>
+      <div class="sub anim" style="--d:300ms;">全部核心模块已交付，省赛后持续打磨。</div>
+    </div>
+
+    <div class="module-grid">
+      <div class="module anim" style="--d:450ms;">
+        <div>
+          <div class="icon" style="background:#FFE0E0; color:var(--coral);">01</div>
+          <h5>账单导入</h5>
+          <div class="meta">微信 · 支付宝</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:550ms;">
+        <div>
+          <div class="icon" style="background:#D5EEF7; color:#3892b0;">02</div>
+          <h5>AI 自动分类</h5>
+          <div class="meta">批量推理</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:650ms;">
+        <div>
+          <div class="icon" style="background:#FCEFC4; color:#a48417;">03</div>
+          <h5>AI 自学习系统</h5>
+          <div class="meta">记忆闭环</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:750ms;">
+        <div>
+          <div class="icon" style="background:#D2F1EE; color:#1f8c83;">04</div>
+          <h5>拖拽纠错</h5>
+          <div class="meta">实时反馈</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:850ms;">
+        <div>
+          <div class="icon" style="background:#FFE0E0; color:var(--coral);">05</div>
+          <h5>随手记</h5>
+          <div class="meta">主动意图</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:950ms;">
+        <div>
+          <div class="icon" style="background:#FCEFC4; color:#a48417;">06</div>
+          <h5>预算管理</h5>
+          <div class="meta">月度预算</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:1050ms;">
+        <div>
+          <div class="icon" style="background:#D5EEF7; color:#3892b0;">07</div>
+          <h5>Memphis UI</h5>
+          <div class="meta">完整设计语言</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+      <div class="module anim" style="--d:1150ms;">
+        <div>
+          <div class="icon" style="background:#222; color:var(--paper);">08</div>
+          <h5>Android 交付</h5>
+          <div class="meta">已可安装</div>
+        </div>
+        <div class="tick">✓</div>
+      </div>
+    </div>
+
+    <div class="improvements">
+      <div class="imp anim" style="--d:1250ms;"><span class="plus">+</span><span class="text">支持 微信 / 支付宝 加密压缩包直接导入</span></div>
+      <div class="imp anim" style="--d:1350ms;"><span class="plus">+</span><span class="text">拖拽分类时实时展示交易细则</span></div>
+      <div class="imp anim" style="--d:1450ms;"><span class="plus">+</span><span class="text">交易详情页重构，展示完整原始数据</span></div>
+    </div>
+  </div>
+
+  <div class="pageno">08 / 09</div>
+  <div class="brandmark">Moni</div>
+</section>
+
+
+<!-- =================== SLIDE 9 · CLOSER =================== -->
+<section id="s9" class="slide" data-label="09 Closer">
+  <div class="memphis">
+    <span class="m-dot float-a" style="left:10%; top:18%; width:18px; height:18px; background:var(--sky); opacity:.4;"></span>
+    <span class="m-square float-b" style="right:12%; top:16%; width:22px; height:22px; background:var(--sun); opacity:.45; transform:rotate(20deg);"></span>
+    <span class="m-dot float-b" style="left:14%; bottom:22%; width:14px; height:14px; background:var(--coral); opacity:.5;"></span>
+    <span class="m-dot float-a" style="right:14%; bottom:20%; width:12px; height:12px; background:var(--mint); opacity:.4;"></span>
+    <span class="float-a" style="left:20%; top:30%; color:var(--coral); opacity:.18;"><span class="m-tri"></span></span>
+    <span class="float-b" style="right:18%; bottom:30%; color:var(--sky); opacity:.16;"><span class="m-tri"></span></span>
+  </div>
+
+  <div class="slide-inner">
+    <div class="quote">
+      <div class="anim" style="--d:200ms;">AI 的边界，</div>
+      <div class="anim" style="--d:500ms;">不在于<span class="em">云端算力</span>——</div>
+      <div class="anim" style="--d:900ms;">在于是否真正<br/>理解每一个具体的人。</div>
+    </div>
+
+    <div class="sig anim fade-only" style="--d:1500ms;">
+      <span>财智随行</span>
+      <span class="dotsep"></span>
+      <span class="moni-mark">
+        <span style="position:relative; display:inline-block;">M<span class="triad-on-m"><span class="triad-cluster"><span class="c-coral"></span><span class="c-sky"></span><span class="c-sun"></span></span></span></span><span class="dot"></span>oni
+      </span>
+    </div>
+  </div>
+</section>
+
+</deck-stage>
+
+<script>
+// ---- entrance animation orchestrator ----
+function setActive(idx){
+  document.querySelectorAll('.slide').forEach((s,i)=>{
+    s.classList.toggle('is-active', i===idx);
+  });
+}
+
+// initial
+window.addEventListener('load', ()=>{
+  setActive(0);
+  try{ window.parent.postMessage({slideIndexChanged: 0}, '*'); }catch(e){}
+});
+
+// listen to deck-stage navigation by polling the slide-count attribute / use messages
+window.addEventListener('message', (e)=>{
+  if(e.data && typeof e.data.slideIndexChanged === 'number'){
+    setActive(e.data.slideIndexChanged);
+  }
+});
+
+// hook into deck-stage's nav: re-trigger animations on slide change
+// deck-stage emits via postMessage already; also observe DOM if needed.
+const stage = document.querySelector('deck-stage');
+if(stage){
+  // patch goTo to refresh animations
+  const origGoTo = stage.goTo && stage.goTo.bind(stage);
+  if(origGoTo){
+    stage.goTo = (n)=>{
+      origGoTo(n);
+      setActive(n);
+    };
+  }
+  // also keyboard / click navigation: observe via MutationObserver on data-current attr if present
+  const mo = new MutationObserver(()=>{
+    const slides = document.querySelectorAll('deck-stage > section');
+    slides.forEach((s,i)=>{
+      const cs = getComputedStyle(s);
+      if(cs.opacity === '1' && cs.visibility !== 'hidden'){
+        // find the matching .slide element (same node)
+        if(!s.classList.contains('is-active')){
+          setActive(i);
+          try{ window.parent.postMessage({slideIndexChanged: i}, '*'); }catch(e){}
+        }
+      }
+    });
+  });
+  // periodic check is simpler; deck-stage likely toggles a class or attribute
+  setInterval(()=>{
+    const slides = [...document.querySelectorAll('deck-stage > section')];
+    let activeIdx = -1;
+    slides.forEach((s,i)=>{
+      const r = s.getBoundingClientRect();
+      const cs = getComputedStyle(s);
+      if(cs.opacity > .5 && r.width > 0){ activeIdx = i; }
+    });
+    if(activeIdx>=0){
+      const cur = document.querySelector('.slide.is-active');
+      const curIdx = cur ? slides.indexOf(cur) : -1;
+      if(curIdx !== activeIdx){
+        setActive(activeIdx);
+        try{ window.parent.postMessage({slideIndexChanged: activeIdx}, '*'); }catch(e){}
+      }
+    }
+  }, 200);
+}
+</script>
+
+</body>
+</html>
