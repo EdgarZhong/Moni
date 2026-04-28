@@ -11,7 +11,7 @@
 
 - 当前已发布稳定版本：`0.2.1`
 - 下一版本：暂未定号，当前按“账单导入增强”推进
-- 当前会话目标：废弃旧 `design/` 工作台，按 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 重建独立原型驱动开发工作流
+- 当前会话目标：修订 `Moni-Presentation/Moni Deck.html` 演示稿的全局口径，先完成 16:9 画布、隐藏浏览器内翻页控件、统一品牌标题，再进入逐页精修
 - 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
 
 ## 当前阶段基线
@@ -50,6 +50,7 @@
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 | 原型驱动工作流 v3 重建 | Done | 独立原型仓库已拉取到 `Moni-UI-Prototype/`，已同步主仓库当前表现层、补 mock 层、清理旧 `design` 工作台入口并更新核心文档 |
+| 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
 
