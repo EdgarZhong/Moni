@@ -9,10 +9,9 @@
 
 ## 当前版本状态
 
-- 当前已发布稳定版本：`0.2.1`
-- 下一版本：暂未定号，当前按“账单导入增强”推进
-- 当前会话目标：修订 `Moni-Presentation/Moni Deck.html` 演示稿的全局口径，先完成 16:9 画布、隐藏浏览器内翻页控件、统一品牌标题，再进入逐页精修
-- 首页、记账页、设置页主要持久化链路以 `0.2.1` 为当前稳定基线
+- 当前已发布稳定版本：`0.3.0`
+- 下一版本：暂未定号
+- 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
 ## 当前阶段基线
 
@@ -28,6 +27,13 @@
 - 本项目当前暂不启用 v3 第五章 Design Scope 导航脚手架，原型仓库维持与主仓库一致的状态驱动导航
 
 ## Release Changelog
+
+### `0.3.0`
+
+- 完成账单导入完整链路（直传文本/CSV/Excel、加密压缩包探测与解压）
+- 完成记账页 UI/UX 对接，微信/支付宝按钮统一走 `probeBillImportFiles()` 与 `importBillFiles()`
+- 建立 `HomeAiEngineUiState.activeDates` 贯通链路（BatchProcessor → AppFacade → MoniHome）
+- 清理旧 design 工作台，建立独立原型仓库 `Moni-UI-Prototype` 作为 UI/UX 表现层 source of truth
 
 ### `0.2.1`
 
