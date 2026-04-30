@@ -566,3 +566,54 @@ await window.__MONI_E2E__.tests.runBillImportBackendTest()
 
 1. 仍未在 Android 真机触摸环境下复跑同一长按拖拽链路
 2. 当前只验证了首页首条真实样本条目，尚未覆盖更长标题、更多分类、不同来源类型的拖拽细则表现
+
+## 9. `runClassifyLockBoundaryTest()` 独立账本链路验证（2026-04-30）
+
+### 9.1 目标
+
+验证本轮锁定链路与 Prompt 修订后的三个关键边界：
+
+1. 已入队日期的分类会话仍会注入完整消费交易上下文，包含锁定条目
+2. System Prompt 已包含 exact-ID 强锚点与同一消费事件联动提示
+3. 运行中锁定条目可以挡住 AI 自动写回；被用户显式勾选后，可解锁并成功入队重分类
+
+### 9.2 执行方式
+
+1. 启动本地 dev server：`http://127.0.0.1:4175/`
+2. 使用 Playwright Chromium，移动端视口 `390 x 844`
+3. 在页面内直接执行：`window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`
+4. 测试内部自动创建并清理独立临时账本：`分类锁定测试账本_*`
+
+### 9.3 结构化结果
+
+1. `createTempLedger=true`
+2. `switchToTempLedger=true`
+3. `promptDayIncludesLockedAndUnlockedTransactions=true`
+   - 同日两条交易均进入 `days[]`
+   - `txCount=2`
+4. `systemPromptContainsExactIdAndSameEventHints=true`
+   - `hasExactIdAnchor=true`
+   - `hasSameEventHint=true`
+5. `lockedRecordRejectsAiWriteback=true`
+   - 锁定条目在 AI_AGENT proposal 后仍保持 `category=正餐`
+   - `ai_category` 未被自动写入
+   - `is_verified=true`
+6. `unlockAndReclassifyEnqueuesSelectedLockedTransactions=true`
+   - `unlockedCount=1`
+   - `dirtyDates=["2026-04-30"]`
+   - 队列成功出现 `2026-04-30`
+   - 被勾选锁定条目变为 `is_verified=false`
+
+### 9.4 结论
+
+本轮规格修订涉及的关键链路已在浏览器开发态下通过：
+
+1. 生产边界与消费边界已分离
+2. Prompt 启发已落盘到运行时代码
+3. 最终写回保护可以挡住运行中用户新锁定的条目
+4. 全量重分类所需的“勾选锁定条目后解锁并入队”基础能力已成立
+
+### 9.5 未覆盖项
+
+1. 本轮未接入真实 LLM 响应，只验证了 Prompt 文案存在性与自动化链路边界
+2. 本轮验证的是浏览器开发态，不等价于 Android 真机验收

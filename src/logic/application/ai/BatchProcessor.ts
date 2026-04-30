@@ -160,12 +160,19 @@ export class BatchProcessor {
   }
 
   /**
-   * 将当前账本内待分类交易按“日期”分桶，并按照传入日期顺序返回。
-   * 这里会自动跳过：
+   * 将当前账本内“已入队日期”的当日消费交易按“日期”分桶，并按照传入日期顺序返回。
+   * 这里故意只保留“当前分类域真正不处理的记录”过滤：
    * - 非 SUCCESS
    * - 非支出
-   * - 已锁定
-   * - 已有最终分类的记录
+   *
+   * 其余状态一律继续注入给 AI，包括：
+   * - 已锁定交易
+   * - 已有 AI / USER 分类结果的交易
+   *
+   * 这样可以保证：
+   * 1. 任务生产边界仍由触发层按“未锁定条目”决定 dirtyDates
+   * 2. 一旦某天已经入队，分类会话看到的仍是该天完整消费上下文
+   * 3. 锁定保护留在仲裁 / 写回阶段，而不是提示词裁剪阶段
    */
   private buildPromptDayBatches(memory: LedgerMemory, dates: string[]): {
     dayBatches: PromptDayBatch[];
@@ -179,7 +186,6 @@ export class BatchProcessor {
     for (const date of dates) {
       const transactions = Object.entries(memory.records)
         .filter(([, record]) => record.time.startsWith(date) && record.transactionStatus === 'SUCCESS' && record.direction === 'out')
-        .filter(([, record]) => !record.is_verified && (!record.user_category && (!record.ai_category || record.ai_category === 'uncategorized')))
         .map(([id, record]) => ({ ...record, id }));
 
       if (transactions.length === 0) {

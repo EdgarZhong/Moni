@@ -682,7 +682,29 @@ Directory.Data/ledgers/{ledger}/memory/
 
 ### 5.1 `is_verified`（锁定）的语义
 
-**铁律**：`is_verified === true` 的交易不被任何自动化流程覆盖。唯一破壁条件：该交易的标签被删除。
+**铁律**：`is_verified === true` 表示该交易当前分类状态已被确认并冻结。
+
+这不是一句“AI 不允许覆盖”那么窄的限制，而是完整的自动化边界：
+
+1. **生产边界**：锁定条目默认不作为“待自动处理对象”参与 dirtyDates 判定、实例库预清理与自动解锁。
+2. **消费边界**：只要某个日期已经入队，分类会话仍然注入该日期的完整消费交易上下文，**包含已锁定条目**；不会因为锁定而从 `days[]` 中删掉。
+3. **写回边界**：自动化分类结果不得改写锁定条目的分类相关状态；若 AI 运行期间用户新锁定了某条交易，最终写回前仍必须基于最新记录再次校验 `is_verified`。
+
+**额外澄清**：
+
+- 锁定保护是一套**独立于 `USER > RULE_ENGINE > AI_AGENT` 提案优先级**的冻结机制；优先级负责“谁更高”，锁定负责“自动化流程能不能动”。
+- “某一天会重新入队”与“该天某条锁定交易仍受保护”并不矛盾：日期级任务可以重新生产，条目级冻结仍然成立。
+- 分类会话中不需要为锁定条目新增专门约束字段；`days[]` 继续注入完整交易，锁定保护由生产边界和写回边界共同承担。
+
+**允许解锁的路径（当前冻结）**：
+
+- 用户在详情页或其他显式入口手动关闭锁定
+- 删除标签时，原属于被删标签的交易因原分类语义失效而**强制解锁**
+- 删除标签并选择“真全量重分类”时，弹出全账本锁定交易列表；只有用户当场勾选的条目才解锁，可提供全选按钮
+- 修改标签描述并选择“该标签下所有交易”时，弹出该标签下锁定交易列表；只有用户当场勾选的条目才解锁，可提供全选按钮
+- 设置页账本区执行“全量重分类”时，弹出锁定交易列表；只有用户当场勾选的条目才解锁，可提供全选按钮
+
+除以上显式路径外，自动化流程本身无权解除锁定。
 
 ### 5.2 新增标签
 
@@ -715,7 +737,7 @@ Directory.Data/ledgers/{ledger}/memory/
   → 直接进入范围确认弹窗
       → [仅受影响的交易（原属于被删标签）]
       → [真全量重分类（全账本所有未锁定交易）] →
-          展示锁定交易列表，允许用户当场勾选并解锁
+          展示锁定交易列表，允许用户当场勾选并解锁，**提供快捷全选按钮**
           → 用户确认对应范围按钮
               → 同步完成该范围的前置处理与 dirtyDates 入队
               → 通知消费端开始消费（若当前空闲）
@@ -752,7 +774,7 @@ Directory.Data/ledgers/{ledger}/memory/
 
 ### 5.6 分类任务队列架构
 
-正常分类和重分类共用一套 AI Engine 管道（投喂全天交易、AI 输出全天结果、Arbiter 保护锁定条目）。本阶段重点是将“任务生产（前置处理 + 按天入队）”与“任务消费（按天执行）”彻底解耦；同时将“触发层”从 UI 中独立出来，统一承接按钮意图并暴露清晰接口。UI 可以在一次点击中同时触发两件事——任务生产与通知消费启动——但这只是控制流上的连续动作，不代表数据流耦合；消费端始终只读取队列，不读取 UI 上下文。
+正常分类和重分类共用一套 AI Engine 管道（**投喂当日完整消费交易上下文，包含已锁定条目**、AI 输出全天结果、Arbiter 保护锁定条目）。本阶段重点是将“任务生产（前置处理 + 按天入队）”与“任务消费（按天执行）”彻底解耦；同时将“触发层”从 UI 中独立出来，统一承接按钮意图并暴露清晰接口。UI 可以在一次点击中同时触发两件事——任务生产与通知消费启动——但这只是控制流上的连续动作，不代表数据流耦合；消费端始终只读取队列，不读取 UI 上下文。
 
 #### 5.6.1 队列设计
 
@@ -774,7 +796,7 @@ Directory.Data/ledgers/{ledger}/memory/
 │  当前：一次消费最多 3 天（最近日期优先）            │
 │  后续：若需放大批次，再单独评估 token 与时延        │
 │                                                   │
-│  投喂方式统一：多天交易按 `days[]` 一次打包         │
+│  投喂方式统一：多天完整消费交易按 `days[]` 一次打包   │
 │  AI 为本批次全部交易输出分类结果                    │
 │  结果应用统一：ai_category 全覆盖，                │
 │              Arbiter 保护 is_verified 条目          │
@@ -851,6 +873,8 @@ Directory.Data/ledgers/{ledger}/memory/
 - 若某次场景不需要生成新任务，则允许只发出“尝试启动消费”的控制信号
 - 若消费端已在运行，则跳过重复启动，只保留队列中的待处理任务
 - 接口按按钮拆分，不强求抽象复用；**三段重复的代码好过过早的抽象**
+- 生产端是否入队，只看该场景定义下的“未锁定待处理条目”是否存在；**不因为当天还包含锁定条目而禁止该日期入队**
+- 消费端一旦处理某天，送进 `days[]` 的仍是该天完整消费交易上下文；**锁定条目是否受保护，不靠提示词裁剪，而靠冻结边界与最终写回校验**
 
 **日期筛选辅助判定**：
 
@@ -916,7 +940,8 @@ UI 调用“删除标签-仅受影响”接口
 UI 调用“删除标签-真全量重分类”接口
   → 扫描全量日期
   → 筛选：该天有未锁定条目
-  → 前置处理：入选日期中所有未锁定条目按 `id` 清理实例库
+  → 展示锁定交易列表，允许用户当场勾选并解锁，提供快捷全选按钮
+  → 前置处理：入选日期中所有未锁定条目，以及用户当场解锁的锁定条目，按 `id` 清理实例库
   → dirtyDates += date
   → 入队 { date }
 ```
@@ -960,7 +985,8 @@ UI 调用学习后重分类接口
 UI 调用“设置页-全量重分类”接口
   → 扫描全量日期
   → 筛选：该天有未锁定条目
-  → 前置处理：入选日期中所有未锁定条目按 `id` 清理实例库
+  → 展示锁定交易列表，允许用户当场勾选并解锁，提供快捷全选按钮
+  → 前置处理：入选日期中所有未锁定条目，以及用户当场解锁的锁定条目，按 `id` 清理实例库
   → dirtyDates += date
   → 入队 { date }
 ```
@@ -993,10 +1019,10 @@ UI 调用“设置页-全量重分类”接口
 | 新增标签 → [暂时跳过] | 结束本次交互 | 无 | 无 | 无 | 否 | 否 | 不涉及 |
 | 新增标签 → [现在启动分类] | 仅尝试启动当前消费 | 无 | 无 | 无 | 否 | 是 | 不涉及 |
 | 删除标签 → [仅受影响的交易] | 对受影响日期生产任务 | 删除流程已完成 | 删除被删标签样本已完成 | 受影响日期 | 是 | 是 | 删除标签导致原标签条目强制解锁 |
-| 删除标签 → [真全量重分类] | 对全账本未锁定条目生产任务 | 无额外条目重置 | 清理入选日期中所有未锁定条目的样本 | 全账本日期 | 是 | 是 | 锁定条目默认不参与，除非用户当场解锁 |
+| 删除标签 → [真全量重分类] | 对全账本未锁定条目生产任务 | 无额外条目重置 | 清理入选日期中所有未锁定条目的样本 + 当场解锁条目的样本 | 全账本日期 | 是 | 是 | 弹出全账本锁定交易列表；仅用户勾选条目解锁，可全选 |
 | 修改标签描述 → [该标签下仅未锁定交易] | 对该标签范围生产任务 | 无 | 清理该标签下未锁定条目的样本 | 该标签涉及日期 | 是 | 是 | 锁定条目不参与 |
-| 修改标签描述 → [该标签下所有交易] | 对该标签范围生产任务 | 当场解锁用户勾选的该标签锁定条目 | 清理该标签下未锁定条目 + 当场解锁条目的样本 | 该标签涉及日期 | 是 | 是 | 仅该标签下的锁定条目进入解锁列表 |
-| 设置页账本区 → [全量重分类] | 生产真全量任务 | 无 | 清理全账本未锁定条目的样本 | 全账本日期 | 是 | 是 | 锁定条目默认不参与，除非用户先在别处解锁 |
+| 修改标签描述 → [该标签下所有交易] | 对该标签范围生产任务 | 当场解锁用户勾选的该标签锁定条目 | 清理该标签下未锁定条目 + 当场解锁条目的样本 | 该标签涉及日期 | 是 | 是 | 仅该标签下的锁定条目进入解锁列表，可全选 |
+| 设置页账本区 → [全量重分类] | 生产真全量任务 | 当场解锁用户勾选的锁定条目 | 清理全账本未锁定条目的样本 + 当场解锁条目的样本 | 全账本日期 | 是 | 是 | 弹出全账本锁定交易列表；仅用户勾选条目解锁，可全选 |
 
 **按动作类型归类**：
 
@@ -1046,7 +1072,7 @@ UI 调用“设置页-全量重分类”接口
 
 - 前置处理必须在入队前同步落盘（不可延迟到消费后）
 - 单日任务成功后才出队，失败/中断不出队
-- 消费必须按天读取实时账本状态并经过 Arbiter 锁定保护
+- 消费必须按天读取实时账本状态，向 AI 注入该天完整消费交易上下文，并经过 Arbiter 锁定保护
 - 出队必须附带版本一致性校验，防止同日重入被误删
 - AI 结果写回前必须基于最新记录二次校验 `is_verified`，确保运行中用户新锁定不会被覆盖
 
@@ -1096,12 +1122,12 @@ UI 调用“设置页-全量重分类”接口
 | ------------- | --------------------------- | --------------------- |
 | CSV 导入新交易     | 计算 dirtyDates 并入队           | 不适用                   |
 | 新增标签 → 现在启动分类 | 不改写现有交易，不计算 dirtyDates，不入队；仅尝试启动当前消费 | 不适用 |
-| 删除标签 → 仅受影响 / 真全量 | 重置 + 清理 + 计算 dirtyDates 并入队 | **强制解锁** → 重置；真全量路径中其余锁定条目默认不参与，除非用户当场解锁 |
+| 删除标签 → 仅受影响 / 真全量 | 重置 + 清理 + 计算 dirtyDates 并入队 | 原属于被删标签的条目 **强制解锁** → 重置；真全量路径中的其他锁定条目仅在用户当场勾选后解锁并参与 |
 | 重命名标签         | 批量改名                        | 批量改名（不影响锁定）           |
 | 修改标签描述 → 该标签下仅未锁定交易 | 清理实例库 + 计算 dirtyDates 并入队   | **不参与** |
-| 修改标签描述 → 该标签下所有交易 | 清理实例库 + 计算 dirtyDates 并入队   | 仅该标签下锁定条目在用户当场解锁后参与 |
+| 修改标签描述 → 该标签下所有交易 | 清理实例库 + 计算 dirtyDates 并入队   | 仅该标签下锁定条目在用户当场勾选后解锁并参与，可全选 |
 | 学习完成 → 重分类    | 清理实例库 + 计算 dirtyDates 并入队   | **不参与**               |
-| 设置页账本区 → 全量重分类 | 清理实例库 + 计算 dirtyDates 并入队   | **不参与**，除非用户先在别处手动解锁     |
+| 设置页账本区 → 全量重分类 | 清理实例库 + 计算 dirtyDates 并入队   | 默认保持锁定；弹出全账本锁定交易列表，只有用户当场勾选的条目才解锁并参与，可全选 |
 
 **补充冻结说明**：
 
@@ -1111,6 +1137,7 @@ UI 调用“设置页-全量重分类”接口
 - 修改标签描述场景禁止复用“全量”一词；只能使用“该标签下仅未锁定交易 / 该标签下所有交易”
 - 这不是让 UI 绕过队列直接调用分类逻辑，而是“触发层完成生产后自动衔接消费启动”，或在特例场景下仅发出消费启动信号
 - `重命名标签` 维持特殊口径：只做批量改名，不进入渐进式重分类流程
+- 锁定条目不参与生产判定，不等于锁定条目不出现在分类会话里；只要日期入队，`days[]` 仍会注入该天完整消费交易上下文
 
 ***
 
@@ -1190,7 +1217,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 5. **Category selection**: The \`category\` field MUST strictly match a key from \`category_list\`. Do not translate, paraphrase, or invent new categories.
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
 7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
-8. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+8. **Use exact-ID matches as confirmed anchors**: If a transaction in \`days\` has the same \`id\` as a transaction in \`reference_corrections\`, treat the reference \`category\` as confirmed ground truth for that transaction unless the surrounding input is clearly inconsistent.
+9. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):
@@ -1204,7 +1232,11 @@ When information sources conflict, follow this priority (highest to lowest):
 - Remain objective and non-judgmental about spending habits.
 - Return one flat `results` array for all transactions across all input days. Do not split the output by day.
 - When a transaction is ambiguous, choose the most logical category. Explain your reasoning.
-- Consider time-of-day context: consecutive transactions near the same time may be related (e.g., a small payment right after a large meal could be a supplement).
+- Consider local day context: transactions close in time should not be judged in isolation.
+- If several nearby transactions appear to be part of one spending event, reason about them together before assigning categories.
+- Exact-ID matches in \`reference_corrections\` are confirmed anchors for the corresponding transaction.
+- Nearby transactions may follow that anchor when the merchant, description, timing, and amount pattern support the same real-world event.
+- Do not force all nearby transactions into one category when an individual transaction's own evidence points to a different interpretation.
 ${selfDescriptionSection}${memorySection}`;
 };
 ```
@@ -1214,6 +1246,11 @@ ${selfDescriptionSection}${memorySection}`;
 **分类阶段实例库注入 Schema（`reference_corrections`）**：
 
 实例库注入按 §2.1.2 的注入区块规则执行，分 B 类（错误案例）和 A+C+D 类（正向参考）两个区块分别注入。每个区块的条目结构与实例库存储字段一致，运行时按区块规则精简或添加前缀。
+
+补充冻结说明：
+
+- `reference_corrections` 与 `days[].transactions[]` 都保留 `id`，便于模型识别“同一条交易”的 exact-ID 锚点。
+- 分类会话中的 `days[]` 注入的是**已入队日期的完整消费交易上下文**，不会因为某条交易已锁定就把它从 `days[]` 中删除。
 
 **注入示例（A+C+D 区块，运行时去掉 `ai_category`）**：
 

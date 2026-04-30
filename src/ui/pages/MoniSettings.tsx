@@ -645,7 +645,7 @@ function SettingsRoot({
           <SettingRow icon="🧠" label="AI 记忆" desc="查看 AI 学到的偏好" value={`${memoryCount} 条`} onClick={() => onNavigate("aiMemory")} />
           <SettingRow icon="💰" label="预算设置" desc="月度与分类预算" value={budgetSummaryText} onClick={() => onNavigate("budget")} />
           <SettingRow icon="📐" label="学习设置" desc="阈值、自动学习、收编" onClick={() => onNavigate("learnSettings")} />
-          <SettingRow icon="🔄" label="全量重新分类" desc="对全账本未锁定交易重新分类" onClick={() => onNavigate("fullReclass")} danger />
+          <SettingRow icon="🔄" label="全量重新分类" desc="默认重分未锁定交易，可额外勾选锁定条目一并解锁重分" onClick={() => onNavigate("fullReclass")} danger />
         </SectionCard>
       </div>
     </div>
@@ -2525,15 +2525,27 @@ function FullReclassPage({
   onBack,
   onTriggerFullReclassification,
   aiStatus,
+  ledgerTransactions,
 }: {
   onBack: () => void;
   onTriggerFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
   aiStatus: string;
+  ledgerTransactions: SettingsLedgerTransaction[];
 }) {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [selectedLockedIds, setSelectedLockedIds] = useState<string[]>([]);
   const running = aiStatus === "ANALYZING";
+  const lockedTransactions = ledgerTransactions.filter((tx) => tx.isVerified);
+  const unlockedTransactions = ledgerTransactions.filter((tx) => !tx.isVerified);
+  const totalCount = ledgerTransactions.length;
+  const unlockedCount = unlockedTransactions.length;
+  const lockedCount = lockedTransactions.length;
+
+  const toggleLockedSelected = (txId: string) => {
+    setSelectedLockedIds((current) => (current.includes(txId) ? current.filter((id) => id !== txId) : [...current, txId]));
+  };
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -2542,11 +2554,19 @@ function FullReclassPage({
         <FormCard title="重分类说明">
           <div style={{ padding: "14px", borderRadius: 12, background: C.warmBg, border: `1.5px solid ${C.warmBd}`, marginBottom: 18, lineHeight: 1.6 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 6 }}>什么是全量重分类？</div>
-            <div style={{ fontSize: 12, color: C.dark }}>AI 将对当前账本中的未锁定交易重新运行分类，并重新对齐当前启用的记忆偏好。</div>
+            <div style={{ fontSize: 12, color: C.dark }}>
+              系统会先对当前账本中所有未锁定交易重新生产重分类任务。
+              <br />
+              若你在确认弹窗中额外勾选了部分锁定交易，这些条目会先显式解锁，再一并进入本次重分类。
+            </div>
           </div>
 
           <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 18 }}>
-            {[{ label: "总交易数", value: "127 笔" }, { label: "未锁定", value: "84 笔", color: C.amber }, { label: "已锁定", value: "43 笔", color: C.mint }].map((row, index) => (
+            {[
+              { label: "总交易数", value: `${totalCount} 笔` },
+              { label: "未锁定", value: `${unlockedCount} 笔`, color: C.amber },
+              { label: "已锁定", value: `${lockedCount} 笔`, color: C.mint }
+            ].map((row, index) => (
               <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: index < 2 ? `0.5px solid ${C.line}` : "none" }}>
                 <span style={{ fontSize: 13, color: C.sub }}>{row.label}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: row.color || C.dark }}>{row.value}</span>
@@ -2555,7 +2575,7 @@ function FullReclassPage({
           </div>
 
           <div style={{ padding: "10px 14px", borderRadius: 10, background: C.pinkBg, border: `1px solid ${C.pinkBd}`, marginBottom: 16, fontSize: 12, color: C.coral, lineHeight: 1.5 }}>
-            全量重分类，会清理未锁定交易的实例库记录。
+            全量重分类会清理未锁定交易的实例库记录；若你额外勾选并解锁了锁定交易，也会同步清理这些条目的样本。
             <br />
             并根据当前启用的记忆重新分类，请确认当前 AI 记忆情况，谨慎操作。
           </div>
@@ -2569,7 +2589,69 @@ function FullReclassPage({
       </div>
 
       <Dialog visible={confirming} title="确认全量重分类" onClose={() => setConfirming(false)}>
-        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.6, marginBottom: 16 }}>即将对 <strong>84 笔未锁定交易</strong> 发起全量重分类。</div>
+        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.6, marginBottom: 14 }}>
+          即将对 <strong>{unlockedCount} 笔未锁定交易</strong> 发起全量重分类。
+          {selectedLockedIds.length > 0 ? (
+            <>
+              <br />
+              并额外解锁 <strong>{selectedLockedIds.length} 笔锁定交易</strong> 一并重分类。
+            </>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7, marginBottom: 12 }}>
+          锁定条目默认保持冻结。只有你在这里明确勾选的条目，才会先解锁再进入本次重分类。
+        </div>
+        {lockedTransactions.length ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              <Btn
+                small
+                variant="secondary"
+                onClick={() => {
+                  if (selectedLockedIds.length === lockedTransactions.length) {
+                    setSelectedLockedIds([]);
+                    return;
+                  }
+                  setSelectedLockedIds(lockedTransactions.map((tx) => tx.id));
+                }}
+              >
+                {selectedLockedIds.length === lockedTransactions.length ? "取消全选" : "全选锁定交易"}
+              </Btn>
+            </div>
+            <div style={{ border: `1.5px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16, maxHeight: 280, overflowY: "auto" }}>
+              {lockedTransactions.map((tx, index) => {
+                const selected = selectedLockedIds.includes(tx.id);
+                return (
+                  <label
+                    key={tx.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "12px 12px",
+                      borderBottom: index < lockedTransactions.length - 1 ? `0.5px solid ${C.line}` : "none",
+                      background: selected ? C.blueBg : C.white,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input type="checkbox" checked={selected} onChange={() => toggleLockedSelected(tx.id)} style={{ marginTop: 2 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>{tx.title}</div>
+                      <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+                        {tx.date} · {tx.category} · {formatAmount(-tx.amount)}
+                      </div>
+                    </div>
+                    <div style={{ padding: "2px 7px", borderRadius: 999, fontSize: 10, background: C.orangeBg, color: C.amber }}>已锁定</div>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px dashed ${C.border}`, color: C.sub, fontSize: 12, marginBottom: 16 }}>
+            当前账本没有锁定交易，本次将直接按未锁定范围发起全量重分类。
+          </div>
+        )}
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="secondary" onClick={() => setConfirming(false)}>
             取消
@@ -2580,9 +2662,10 @@ function FullReclassPage({
             onClick={() => {
               setConfirming(false);
               setSubmitting(true);
-              void onTriggerFullReclassification()
+              void onTriggerFullReclassification(selectedLockedIds)
                 .then(() => {
                   setToastMessage("重分类任务已入队，AI 正在处理中");
+                  setSelectedLockedIds([]);
                 })
                 .catch(() => {
                   setToastMessage("重分类触发失败，请稍后重试");
@@ -3027,6 +3110,7 @@ export default function MoniSettings({
             onBack={() => setPage("root")}
             onTriggerFullReclassification={triggerFullReclassification}
             aiStatus={aiEngineStatus}
+            ledgerTransactions={ledgerTransactions}
           />
         );
       case "about":

@@ -67,7 +67,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 5. **Category selection**: The \`category\` field MUST strictly match a key from \`category_list\`. Do not translate, paraphrase, or invent new categories.
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
 7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
-8. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+8. **Use exact-ID matches as confirmed anchors**: If a transaction in \`days\` has the same \`id\` as a transaction in \`reference_corrections\`, treat the reference \`category\` as confirmed ground truth for that transaction unless the surrounding input is clearly inconsistent.
+9. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):
@@ -81,7 +82,11 @@ When information sources conflict, follow this priority (highest to lowest):
 - Remain objective and non-judgmental about spending habits.
 - Return one flat \`results\` array for all transactions across all input days. Do not split the output by day.
 - When a transaction is ambiguous, choose the most logical category. Explain your reasoning in at most 20 characters.
-- Consider time-of-day context: consecutive transactions near the same time may be related (e.g., a small payment right after a large meal could be a supplement).
+- Consider local day context: transactions close in time should not be judged in isolation.
+- If several nearby transactions appear to be part of one spending event, reason about them together before assigning categories.
+- Exact-ID matches in \`reference_corrections\` are confirmed anchors for the corresponding transaction.
+- Nearby transactions may follow that anchor when the merchant, description, timing, and amount pattern support the same real-world event.
+- Do not force all nearby transactions into one category when an individual transaction's own evidence points to a different interpretation.
 - Never imitate a \`[错误判断]\`-prefixed \`ai_category\`. Those fields exist only to show what mistake should be avoided.
 - Manual-entry examples may have empty \`counterparty\`; when that happens, rely more on \`description\`, amount, and the confirmed \`category\`.
 ${selfDescriptionSection}${memorySection}`;

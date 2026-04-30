@@ -1,7 +1,10 @@
 import { appFacade } from '@bootstrap/appFacade';
+import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
 import { CompressionSession } from '@logic/application/ai/CompressionSession';
 import type { CompressionContext, CompressionResult } from '@logic/application/ai/CompressionSession';
+import { globalArbiter } from '@logic/domain/arbiter/Arbiter';
+import { generateSystemPrompt } from '@logic/application/llm/prompt/SystemPrompt';
 import { LearningAutomationService, type AutoLearningStatus } from '@logic/application/ai/LearningAutomationService';
 import { LearningSession, type LearningDeltaPayload } from '@logic/application/ai/LearningSession';
 import { BudgetManager } from '@logic/application/services/BudgetManager';
@@ -145,6 +148,7 @@ interface MoniE2EApi {
     runCompressionSpecTest: () => Promise<DebugTestReport>;
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
     runBillImportBackendTest: () => Promise<DebugTestReport>;
+    runClassifyLockBoundaryTest: () => Promise<DebugTestReport>;
   };
 }
 
@@ -1458,6 +1462,152 @@ async function runBillImportBackendTest(): Promise<DebugTestReport> {
   return report;
 }
 
+async function runClassifyLockBoundaryTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+  const report = createReport('classify_lock_boundary');
+  const ledgerManager = LedgerManager.getInstance();
+  const ledgerService = LedgerService.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('分类锁定测试账本');
+  const testDate = '2026-04-30 12:05:00';
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '分类锁定链路测试先创建独立临时账本');
+
+    const switched = await ledgerManager.switchLedger(tempLedger);
+    assertStep(report, 'switchToTempLedger', switched, { activeLedger: getActiveLedgerName() }, '后续链路校验必须在临时账本内完成');
+
+    /**
+     * 构造两条同日交易：
+     * - 一条保持锁定，作为“会话仍应注入”的锚点
+     * - 一条手动解锁，作为 dirtyDates 的正常生产来源
+     */
+    const lockedId = await ManualEntryManager.getInstance().addEntry(tempLedger, {
+      amount: 32,
+      direction: 'out',
+      category: '正餐',
+      subject: '锁定食堂主餐',
+      description: '分类锁定链路测试：锁定锚点',
+      date: testDate,
+    });
+    const unlockedId = await ManualEntryManager.getInstance().addEntry(tempLedger, {
+      amount: 6,
+      direction: 'out',
+      category: '零食',
+      subject: '食堂附加小食',
+      description: '分类锁定链路测试：未锁定邻近条目',
+      date: '2026-04-30 12:07:00',
+    });
+    ledgerService.setVerification(unlockedId, false);
+
+    const memoryBefore = getCurrentLedgerMemory();
+    const processor = BatchProcessor.getInstance() as unknown as {
+      buildPromptDayBatches: (
+        memory: NonNullable<ReturnType<typeof getCurrentLedgerMemory>>,
+        dates: string[]
+      ) => { dayBatches: Array<{ transactions: Array<{ id: string }> }>; emptyDates: string[]; txCount: number };
+    };
+    const promptDayResult = memoryBefore
+      ? processor.buildPromptDayBatches(memoryBefore, ['2026-04-30'])
+      : { dayBatches: [], emptyDates: ['2026-04-30'], txCount: 0 };
+    const injectedIds = promptDayResult.dayBatches.flatMap((batch) => batch.transactions.map((tx) => tx.id));
+    assertStep(
+      report,
+      'promptDayIncludesLockedAndUnlockedTransactions',
+      injectedIds.includes(lockedId) && injectedIds.includes(unlockedId),
+      { injectedIds, txCount: promptDayResult.txCount },
+      '已入队日期的分类会话应注入完整消费交易上下文，不能把锁定条目从 days[] 里裁掉'
+    );
+
+    const promptText = generateSystemPrompt({ language: 'Chinese' });
+    assertStep(
+      report,
+      'systemPromptContainsExactIdAndSameEventHints',
+      promptText.includes('Use exact-ID matches as confirmed anchors') &&
+        promptText.includes('If several nearby transactions appear to be part of one spending event'),
+      {
+        hasExactIdAnchor: promptText.includes('Use exact-ID matches as confirmed anchors'),
+        hasSameEventHint: promptText.includes('If several nearby transactions appear to be part of one spending event'),
+      },
+      'System Prompt 应同时具备 exact-ID 强锚点与同一消费事件联动判断提示'
+    );
+
+    /**
+     * 直接模拟 AI_AGENT 对锁定条目的自动写回，验证最新态锁定保护：
+     * - 即便 AI 返回了新分类
+     * - 只要记录此刻仍锁定，就必须整笔丢弃
+     */
+    globalArbiter.ingest(lockedId, {
+      source: 'AI_AGENT',
+      category: '零食',
+      reasoning: '错误覆盖',
+      timestamp: Date.now(),
+      txId: lockedId,
+    });
+    const lockedAfterAiPatch = getCurrentLedgerMemory()?.records[lockedId];
+    assertStep(
+      report,
+      'lockedRecordRejectsAiWriteback',
+      Boolean(
+        lockedAfterAiPatch &&
+          lockedAfterAiPatch.is_verified === true &&
+          lockedAfterAiPatch.category === '正餐' &&
+          lockedAfterAiPatch.ai_category !== '零食'
+      ),
+      lockedAfterAiPatch,
+      '运行中锁定条目必须挡住 AI 自动写回，不能被 ai_category/category 改写'
+    );
+
+    /**
+     * 最后验证“显式勾选锁定条目 → 解锁并入队”的全量路径基础能力。
+     * 这里不直接跑 BatchProcessor.run()，避免把测试结果绑死到真实 LLM 配置，
+     * 只验证：
+     * - 选中的锁定条目被解锁
+     * - dirtyDates 正确合并
+     * - 队列成功入队
+     */
+    const reclassifyResult = await ledgerService.unlockTransactionsAndReclassify(
+      [lockedId],
+      ledgerService.collectDirtyDatesForAll(),
+      'debug_lock_boundary_confirmed'
+    );
+    const queueAfterUnlock = await classifyQueue.getPending(tempLedger);
+    const lockedAfterUnlock = getCurrentLedgerMemory()?.records[lockedId];
+    assertStep(
+      report,
+      'unlockAndReclassifyEnqueuesSelectedLockedTransactions',
+      reclassifyResult.success &&
+        reclassifyResult.enqueueSuccess &&
+        reclassifyResult.unlockedCount === 1 &&
+        reclassifyResult.dirtyDates.includes('2026-04-30') &&
+        queueAfterUnlock.some((task) => task.date === '2026-04-30') &&
+        lockedAfterUnlock?.is_verified === false,
+      {
+        reclassifyResult,
+        queueAfterUnlock,
+        lockedAfterUnlock,
+      },
+      '用户显式勾选的锁定条目应先解锁，再与未锁定 dirtyDates 一起入队'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+    tempLedger,
+  };
+  return report;
+}
+
 function createDebugApi(): MoniDebugApi {
   return {
     env: {
@@ -1763,6 +1913,7 @@ function createE2EApi(): MoniE2EApi {
       runCompressionSpecTest,
       runHomeReadModelSmokeTest,
       runBillImportBackendTest,
+      runClassifyLockBoundaryTest,
     },
   };
 }

@@ -96,7 +96,7 @@ export interface MoniSettingsData {
     updateMonthlyBudget: (amount: number) => Promise<void>;
     updateCategoryBudget: (tag: string, amount: number) => Promise<void>;
     // Reclassification
-    triggerFullReclassification: () => Promise<void>;
+    triggerFullReclassification: (unlockTxIds?: string[]) => Promise<void>;
     // Refresh
     refresh: () => void;
   };
@@ -272,8 +272,8 @@ export function useMoniSettingsData(): MoniSettingsData {
   }, []);
 
   // Reclassification
-  const triggerFullReclassification = useCallback(async () => {
-    await appFacade.triggerFullReclassification();
+  const triggerFullReclassification = useCallback(async (unlockTxIds: string[] = []) => {
+    await appFacade.triggerFullReclassification(unlockTxIds);
   }, []);
 
   return {

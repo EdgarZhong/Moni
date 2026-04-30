@@ -1113,20 +1113,29 @@ export class AppFacade {
   }
 
   // Reclassification
-  public async triggerFullReclassification(): Promise<void> {
+  public async triggerFullReclassification(unlockTxIds: string[] = []): Promise<void> {
     const ledgerId = this.ledgerManager.getActiveLedgerName();
     if (!ledgerId) return;
-    const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
-    const dirtyDates = Array.from(
-      new Set(
-        Object.values(records)
-          .filter((record) => record.transactionStatus === 'SUCCESS' && !record.is_verified)
-          .map((record) => record.time.slice(0, 10))
-      )
-    ).sort();
-    if (dirtyDates.length > 0) {
+
+    /**
+     * 全量重分类的生产边界仍然是“当前所有未锁定交易”；
+     * 若用户在设置页额外勾选了部分锁定条目，则先显式解锁，再把这些日期并入 dirtyDates。
+     * 这样 UI 仍通过 facade 触发，不直接下潜到底层分类运行态。
+     */
+    const dirtyDates = this.ledgerService.collectDirtyDatesForAll();
+    if (unlockTxIds.length > 0) {
+      const result = await this.ledgerService.unlockTransactionsAndReclassify(
+        unlockTxIds,
+        dirtyDates,
+        'full_reclassification'
+      );
+      if (!result.success || !result.enqueueSuccess) {
+        throw new Error('unlock_transactions_and_reclassify_failed');
+      }
+    } else if (dirtyDates.length > 0) {
       await classifyTrigger.enqueueConfirmedDates(ledgerId, dirtyDates, 'full_reclassification');
     }
+
     await this.batchProcessor.run();
     this.notify();
   }

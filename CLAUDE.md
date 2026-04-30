@@ -56,7 +56,7 @@
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
-| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 仅补充新增 `DragDetailPanel` 与详情页细化定义，不改写既有首页固定规格；拖拽投放后的可选理由输入继续沿用既有 `ReasonDialog`，且当前系统不存在 `memo` 字段；当前最新口径已收口为“拖拽蒙版按分类区 / 窄安全带 / 细则区三段连续拼接实现；三段紧密拼接且互不覆盖；分类卡片维持两列半宽栅格、单卡高度自适应，但最大高度口径恢复到收紧前的样子；安全带只承担缓冲与取消且不做任何视觉样式，不命中分类也不触发展开；Collapsed 态底部补‘拖到此处查看交易细则’提示；Expanded 时三段共享同一个位移量，细则区再做自身形态变化；驻留区统一使用主题青色系；展开阈值固定锚在父层安全带 / 细则区分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；长按成立后需先真实向下拖出一小段距离，才允许进入 Expanded”；实现继续在主仓库内推进 |
+| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；**下一步：按既有详情页规格重构交易详情页，尤其在锁定按钮下补一条面向用户、直白解释“锁定后系统不会再自动改写这条记录”的说明文案** |
 | 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
@@ -88,6 +88,7 @@
 - `2026-04-29`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4173/`，长按首页首条交易并下拖进入 `DragDetailPanel` 展开态；确认完整时间显示为“4月16日 17:23”，展开态仅展示交易细则，且手指位置 `y=770` 落在虚线驻留区 `y=702..842` 内；console 未出现新的 runtime error；截图 `drag-detail-expanded-main-v2.png`
 - `2026-04-30`：`npm run typecheck` 通过
 - `2026-04-30`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4175/`，执行新增浏览器调试测试 `window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`；测试在独立临时账本 `分类锁定测试账本_*` 中通过，确认三件事：已入队日期的 `days[]` 会注入完整消费交易上下文（包含锁定条目）、System Prompt 已包含 exact-ID 强锚点与同一消费事件联动提示、运行中锁定条目可挡住 AI 自动写回且被用户勾选后可解锁并成功入队重分类
 - `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，直接使用首页现成数据中的“西北工业大学云餐便利店”条目做长按拖拽；确认长按停在原位时仍保持 Collapsed、未提前出现“停留看细则”，向下拖到 `y=792` 后进入 Expanded，驻留区虚线框为主题青色 `rgb(78, 205, 196)`，分类区与详情面板仅共享同一位移量，且 `其他` 分类卡宽度回到与其他卡一致的半宽两列布局；console 未出现新的 runtime error；截图 `test-img/drag-panel-collapsed-stable.png`、`test-img/drag-panel-expanded-cyan-zone.png`
 - `2026-04-30`：拖拽细则面板展开阈值已切换为父层固定分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；Playwright 在 `390 x 844` 视口下复验首页首条条目，确认长按原位仍保持 Collapsed，边界点 `y=743` 不展开、`y=744` 开始展开，判定线不再受子组件进场动画与 Expanded 位移污染
 - `2026-04-24`：`npm run typecheck` 通过
@@ -118,6 +119,8 @@
 - `classify_runtime.json` 在工程行为上更接近“按天缓冲区”，但当前文档与代码命名继续沿用 queue 术语
 - `data range` 只约束 AI 消费，不限制 dirtyDates 生产与日期入队
 - 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
+- `is_verified` 当前固定语义为“自动化链路级冻结”：生产端默认不以锁定条目生成 dirtyDates，但消费端对已入队日期仍向 AI 注入完整消费交易上下文；锁定保护独立于 `USER > RULE_ENGINE > AI_AGENT` 提案优先级，并要求最终写回前基于最新记录再次校验
+- 分类 System Prompt 当前固定增强两条启发：`reference_corrections` 与 `days[]` 的 exact-ID 命中视为强锚点；同一时间段、同场景的多笔交易应先按同一消费事件联合判断，再决定是否同类
 - 首页 AI 工作态对外接口当前固定为 `HomeAiEngineUiState.activeDates`，由 `BatchProcessor -> AppFacade -> MoniHome` 贯通，显示层只消费该字段决定哪些日期高亮
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单

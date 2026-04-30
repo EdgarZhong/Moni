@@ -258,7 +258,23 @@ export class LedgerService {
       return prevMemory;
     }
 
+    /**
+     * 锁定保护的最终边界放在写回前的“最新态校验”。
+     * 这里不依赖提示词层是否过滤，也不依赖 Arbiter 提案优先级，
+     * 而是直接基于当前内存中的最新记录判断：
+     *
+     * - 只要这次 patch 代表 AI 自动写回
+     * - 且最新记录已经被用户锁定
+     *
+     * 就整笔丢弃，不允许 AI 改动 `ai_category / ai_reasoning / category / updated_at`。
+     * 这样可以覆盖“AI 运行中用户新锁定”的竞态窗口。
+     */
     const hasAiUpdates = patch.updates.ai_category !== undefined || patch.updates.ai_reasoning !== undefined;
+    if (hasAiUpdates && record.is_verified) {
+      console.log('[LedgerService] Ignore AI patch for locked record:', patch.id);
+      return prevMemory;
+    }
+
     if (hasAiUpdates) {
       this.notifyBeforePatch();
     }
