@@ -77,15 +77,43 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
   isLoading: true,
 };
 
-function toHomeTransaction(item: MoniHomeReadModel['dailyTransactionGroups'][number]['items'][number]): HomeTransaction {
+/**
+ * 首页拖拽细则面板要求时间写成“X月X日 HH:mm”。
+ * 若读模型已给出完整时间戳，则优先从完整时间戳中解析月份、日期与时分；
+ * 否则退回到日分组 id 与条目 time 的组合，保证拖拽面板永远不直接暴露原始秒级时间串。
+ */
+function formatFullTimeLabel(dayId: string, time: string, fullTime?: string): string {
+  const fullTimeMatch = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::\d{2})?$/.exec(fullTime?.trim() || "");
+  if (fullTimeMatch) {
+    const month = Number(fullTimeMatch[2]);
+    const day = Number(fullTimeMatch[3]);
+    return `${month}月${day}日 ${fullTimeMatch[4]}:${fullTimeMatch[5]}`;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayId);
+  if (!match) return time;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return `${month}月${day}日 ${time}`;
+}
+
+function toHomeTransaction(dayId: string, item: MoniHomeReadModel['dailyTransactionGroups'][number]['items'][number]): HomeTransaction {
+  const normalizedTitle = item.title?.trim() || "未知交易";
+  const normalizedCounterparty = item.counterparty?.trim() || "";
+  const normalizedProduct = item.product?.trim() || "";
   return {
     id: item.id,
-    n: item.title,
+    n: normalizedTitle,
     a: item.amount,
     t: item.time,
+    fullTimeLabel: formatFullTimeLabel(dayId, item.time, item.fullTime),
     pay: item.paymentMethod,
     sourceType: item.sourceType,
     sourceLabel: item.sourceLabel,
+    rawClass: item.rawClass ?? null,
+    counterparty: normalizedCounterparty || null,
+    product: normalizedProduct || null,
+    transactionStatus: item.transactionStatus ?? 'SUCCESS',
     userCat: item.userCategory,
     aiCat: item.aiCategory,
     reason: item.reasoning,
@@ -201,7 +229,7 @@ export function useMoniHomeData(): MoniHomeData {
       readModel.dailyTransactionGroups.map((group) => ({
         id: group.id,
         label: group.label,
-        items: group.items.map(toHomeTransaction),
+        items: group.items.map((item) => toHomeTransaction(group.id, item)),
       })),
     [readModel.dailyTransactionGroups]
   );

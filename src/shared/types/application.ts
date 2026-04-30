@@ -81,9 +81,14 @@ export interface HomeTransactionReadModel {
   title: string;
   amount: number;
   time: string;
+  fullTime?: string;
   sourceType: 'wechat' | 'alipay' | 'manual';
   sourceLabel: string;
   paymentMethod: string;
+  rawClass?: string | null;
+  counterparty?: string | null;
+  product?: string | null;
+  transactionStatus?: string | null;
   category: string | null;
   userCategory: string | null;
   aiCategory: string | null;

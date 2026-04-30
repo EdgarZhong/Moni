@@ -21,10 +21,11 @@
 - 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
 - 旧主仓库 `design/` 工作台已判定废弃，`/__design` 不再作为开发态原型入口
 - 旧主仓库 `design/` 工作台源码与 `DesignWorkbench` 运行入口已移入 `.archive/design_workbench_2026-04-26/`，不再留在正式源码树
-- UI/UX 表现层工作流切回独立原型仓库驱动，规范以 `PROTOTYPE_DRIVEN_WORKFLOW_v3.md` 为准
-- `Moni-UI-Prototype` 重新作为长期 UI 表现层 source of truth；主仓库只消费确认后的原型规格与复制后的代码
-- 主仓库与原型仓库禁止任何运行时代码耦合；只能信息参考和复制迁移
-- 本项目当前暂不启用 v3 第五章 Design Scope 导航脚手架，原型仓库维持与主仓库一致的状态驱动导航
+- UI/UX 表现层探索与实现即日起统一回到主仓库内完成，不再经过独立原型仓库
+- 表现层探索默认在主仓库 `feature` 分支完成；未合入 `main` 的变更视为探索中，合入 `main` 即视为已拍板
+- 表现层变更继续保持与业务逻辑层解耦，不得越过当前 `ui -> facade/read model` 边界
+- `DESIGN.md` 不再作为当前项目设计总纲、规则入口或实现前置依赖；后续 UI/UX 口径以已确认原型和 `docs/` 下专项规格为准
+- 表现层变更必须先更新对应 `docs/` 规格文档，经确认后再修改代码；若实现中发现需要波及当前 design scope 外的组件，必须先报告并获授权
 
 ## Release Changelog
 
@@ -55,7 +56,7 @@
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
-| 原型驱动工作流 v3 重建 | Done | 独立原型仓库已拉取到 `Moni-UI-Prototype/`，已同步主仓库当前表现层、补 mock 层、清理旧 `design` 工作台入口并更新核心文档 |
+| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 仅补充新增 `DragDetailPanel` 与详情页细化定义，不改写既有首页固定规格；拖拽投放后的可选理由输入继续沿用既有 `ReasonDialog`，且当前系统不存在 `memo` 字段；当前最新口径已收口为“拖拽蒙版按分类区 / 窄安全带 / 细则区三段连续拼接实现；三段紧密拼接且互不覆盖；分类卡片维持两列半宽栅格、单卡高度自适应，但最大高度口径恢复到收紧前的样子；安全带只承担缓冲与取消且不做任何视觉样式，不命中分类也不触发展开；Collapsed 态底部补‘拖到此处查看交易细则’提示；Expanded 时三段共享同一个位移量，细则区再做自身形态变化；驻留区统一使用主题青色系；展开阈值固定锚在父层安全带 / 细则区分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；长按成立后需先真实向下拖出一小段距离，才允许进入 Expanded”；实现继续在主仓库内推进 |
 | 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
@@ -82,6 +83,13 @@
 - `2026-04-26`：主仓库旧 `design/` 工作台目录与 `src/ui/devtools/DesignWorkbench.tsx` 已移入 `.archive/design_workbench_2026-04-26/`；运行源码树仅保留正式应用入口与独立原型仓库文档索引
 - `2026-04-26`：Playwright 打开 `http://127.0.0.1:5174/` 并进入记账页，确认“微信账单 / 支付宝账单”入口存在且 console error 为 0；未用 UI 真实上传样本，避免污染当前账本
 - `2026-04-26`：Playwright 通过支付宝 zip 样本触发正式密码页，确认密码页覆盖层定位为整页、截图输出 `/tmp/moni-password-page-v3.png`；console 中仍有既有文件系统 404 噪音
+- `2026-04-29`：`npm run typecheck` 通过
+- `2026-04-29`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-29`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4173/`，长按首页首条交易并下拖进入 `DragDetailPanel` 展开态；确认完整时间显示为“4月16日 17:23”，展开态仅展示交易细则，且手指位置 `y=770` 落在虚线驻留区 `y=702..842` 内；console 未出现新的 runtime error；截图 `drag-detail-expanded-main-v2.png`
+- `2026-04-30`：`npm run typecheck` 通过
+- `2026-04-30`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，直接使用首页现成数据中的“西北工业大学云餐便利店”条目做长按拖拽；确认长按停在原位时仍保持 Collapsed、未提前出现“停留看细则”，向下拖到 `y=792` 后进入 Expanded，驻留区虚线框为主题青色 `rgb(78, 205, 196)`，分类区与详情面板仅共享同一位移量，且 `其他` 分类卡宽度回到与其他卡一致的半宽两列布局；console 未出现新的 runtime error；截图 `test-img/drag-panel-collapsed-stable.png`、`test-img/drag-panel-expanded-cyan-zone.png`
+- `2026-04-30`：拖拽细则面板展开阈值已切换为父层固定分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；Playwright 在 `390 x 844` 视口下复验首页首条条目，确认长按原位仍保持 Collapsed，边界点 `y=743` 不展开、`y=744` 开始展开，判定线不再受子组件进场动画与 Expanded 位移污染
 - `2026-04-24`：`npm run typecheck` 通过
 - `2026-04-24`：`npm run build` 通过，存在既有 chunk size warning
 - `2026-04-24`：浏览器开发态执行 `window.__MONI_E2E__.tests.runBillImportBackendTest()` 通过
@@ -114,10 +122,9 @@
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
-- UI/UX 设计源头当前固定为独立原型仓库 `Moni-UI-Prototype`，主仓库 `design/` 工作台与 `/__design` 入口废弃
-- 主仓库与原型仓库各自独立运行、独立构建；禁止通过 `import`、alias、submodule、npm link 或构建脚本建立运行时耦合
-- 原型仓库允许复制主仓库当前表现层代码作为同步基线，但复制后必须属于原型仓库自身代码，并通过原型本地 mock / fixtures 层供数
-- 原型到主仓库的迁移只能在用户确认进入实现阶段后进行，且除 mock import 替换为真实 service import 外，不做静默重构
+- UI/UX 设计与实现当前统一在主仓库内完成，主仓库 `design/` 工作台与 `/__design` 入口废弃
+- `DESIGN.md` 当前不再作为项目设计规则入口；若历史文档仍有引用，仅作追溯材料，不作为现行依据
+- 当前不再使用独立原型仓库作为现行 UI/UX 工作流入口；历史原型目录仅供追溯，不再承接新的表现层探索或实现
 - 账单导入入口当前固定为记账页现有“微信账单 / 支付宝账单”两个按钮，不新增导入舱或重做表面结构
 - 账单导入两个按钮的实现差异仅为 `expectedSource` 与平台化密码提示文案，后续统一走 `probeBillImportFiles()` 与 `importBillFiles()`
 - 记账一级页中的账单解析中、导入中、导入成功提示统一复用导入卡片底部提示条；这些提示出现时，默认“查看导入指南”提示需要让位

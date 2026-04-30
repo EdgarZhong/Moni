@@ -22,6 +22,8 @@ import {
   DateRangeDialog,
   DayCard,
   Decor,
+  DRAG_PANEL_COLLAPSED_VISIBLE_PX,
+  DRAG_PANEL_EXPAND_ARM_DISTANCE_PX,
   DisplayBoard,
   DragOverlay,
   HintCard,
@@ -352,6 +354,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [dragItem, setDragItem] = useState<HomeTransaction | null>(null);
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [hoverCategory, setHoverCategory] = useState<string | null>(null);
+  const [dragPanelState, setDragPanelState] = useState<"collapsed" | "expanded">("collapsed");
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
   const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
@@ -378,6 +381,9 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const pressRef = useRef<PressState | null>(null);
   const hoverCategoryRef = useRef<string | null>(null);
   const dragLockRef = useRef<DragLock | null>(null);
+  const dragPanelStateRef = useRef<"collapsed" | "expanded">("collapsed");
+  const dragActivationPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragExpandArmedRef = useRef(false);
   const pendingDropRef = useRef<{ txId: string; category: string } | null>(null);
   const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
 
@@ -711,6 +717,21 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     dragLockRef.current = null;
   }, []);
 
+  /**
+   * 拖拽态退出时统一清理底部细则面板与拖拽浮层的瞬时状态。
+   * 这样无论是正常投放、取消，还是 pointercancel，中间态都不会泄漏到下一次长按。
+   */
+  const resetDragOverlay = useCallback(() => {
+    setDragItem(null);
+    setDragPoint(null);
+    setHoverCategory(null);
+    hoverCategoryRef.current = null;
+    dragPanelStateRef.current = "collapsed";
+    dragActivationPointRef.current = null;
+    dragExpandArmedRef.current = false;
+    setDragPanelState("collapsed");
+  }, []);
+
   const resolveHoverCategory = useCallback((clientX: number, clientY: number) => {
     const target = document.elementFromPoint(clientX, clientY)?.closest("[data-drop-category]");
     const category = target?.getAttribute("data-drop-category") ?? null;
@@ -733,6 +754,10 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       startHold(() => {
         const point = { x: pressRef.current?.startX ?? event.clientX, y: pressRef.current?.startY ?? event.clientY };
         lockDragScroll();
+        dragPanelStateRef.current = "collapsed";
+        dragActivationPointRef.current = point;
+        dragExpandArmedRef.current = false;
+        setDragPanelState("collapsed");
         setDragItem(item);
         setDragPoint(point);
         hoverCategoryRef.current = null;
@@ -789,13 +814,10 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       setReasonItem({ n: dragItem.n, nc: category });
       pendingDropRef.current = { txId: String(dragItem.id), category };
       unlockDragScroll();
-      setDragItem(null);
-      setDragPoint(null);
-      setHoverCategory(null);
-      hoverCategoryRef.current = null;
+      resetDragOverlay();
       void triggerImpact("medium");
     },
-    [dragItem, unlockDragScroll],
+    [dragItem, resetDragOverlay, unlockDragScroll],
   );
 
   useEffect(() => {
@@ -803,6 +825,27 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     const handlePointerMove = (event: PointerEvent) => {
       setDragPoint({ x: event.clientX, y: event.clientY });
       resolveHoverCategory(event.clientX, event.clientY);
+      /**
+       * 细则展开阈值必须是父层里的固定几何分界线：
+       * 视口底边向上减去收缩态面板可见高度。
+       * 这样分类区整体在 Expanded 时被上推，也不会污染真实触发线。
+       */
+      const threshold = window.innerHeight - DRAG_PANEL_COLLAPSED_VISIBLE_PX;
+      /**
+       * 只有当用户在长按成立后真正向下拖出一小段位移时，才允许 Expanded 介入。
+       * 这样可以挡住“用户本来准备直接上拖去分类，面板却先自己弹开”的打扰。
+       */
+      if (!dragExpandArmedRef.current) {
+        const activationPoint = dragActivationPointRef.current;
+        if (activationPoint && event.clientY - activationPoint.y >= DRAG_PANEL_EXPAND_ARM_DISTANCE_PX) {
+          dragExpandArmedRef.current = true;
+        }
+      }
+      const nextState: "collapsed" | "expanded" = dragExpandArmedRef.current && event.clientY >= threshold ? "expanded" : "collapsed";
+      if (dragPanelStateRef.current !== nextState) {
+        dragPanelStateRef.current = nextState;
+        setDragPanelState(nextState);
+      }
     };
     /**
      * 只有用户真实抬手（pointerup）时才允许提交分类。
@@ -823,10 +866,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         return;
       }
       unlockDragScroll();
-      setDragItem(null);
-      setDragPoint(null);
-      setHoverCategory(null);
-      hoverCategoryRef.current = null;
+      resetDragOverlay();
     };
     /**
      * pointercancel 只表示当前触摸流被中断，不代表用户完成了放手。
@@ -834,10 +874,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
      */
     const handlePointerCancel = () => {
       unlockDragScroll();
-      setDragItem(null);
-      setDragPoint(null);
-      setHoverCategory(null);
-      hoverCategoryRef.current = null;
+      resetDragOverlay();
     };
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
@@ -847,7 +884,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
     };
-  }, [dragItem, handleDropCategory, resolveHoverCategory, unlockDragScroll]);
+  }, [dragItem, handleDropCategory, resetDragOverlay, resolveHoverCategory, unlockDragScroll]);
 
   useEffect(() => () => {
     stopHold();
@@ -1195,10 +1232,11 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         dragItem={dragItem}
         dragPoint={dragPoint}
         hoverCategory={hoverCategory}
+        panelState={dragPanelState}
         onHover={setHoverCategory}
         onLeave={() => { setHoverCategory(null); hoverCategoryRef.current = null; }}
         onDrop={handleDropCategory}
-        onClose={() => { unlockDragScroll(); setDragItem(null); setDragPoint(null); setHoverCategory(null); hoverCategoryRef.current = null; }}
+        onClose={() => { unlockDragScroll(); resetDragOverlay(); }}
         availableCategories={availableCategories}
       />
 
