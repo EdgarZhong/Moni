@@ -19,12 +19,9 @@
 - 当前账单导入增强已进入记账页表现层对接；入口仍保持现有两个按钮，不重做记账页表面结构
 - 表现层已基于“先 probe，再 import”的接口决定是否展示密码输入；微信 / 支付宝两个按钮只传入不同 `expectedSource` 与对应密码文案
 - 浏览器开发态已具备真实样本回归能力，但 Android 文件选择器真机闭环尚未完成
-- 旧主仓库 `design/` 工作台已判定废弃，`/__design` 不再作为开发态原型入口
-- 旧主仓库 `design/` 工作台源码与 `DesignWorkbench` 运行入口已移入 `.archive/design_workbench_2026-04-26/`，不再留在正式源码树
-- UI/UX 表现层探索与实现即日起统一回到主仓库内完成，不再经过独立原型仓库
-- 表现层探索默认在主仓库 `feature` 分支完成；未合入 `main` 的变更视为探索中，合入 `main` 即视为已拍板
+- 现行设计规格体系已切换为 `DESIGN_SPEC_SYSTEM.md -> docs/design/Moni_Brand_Identity.md -> docs/design/SURFACE_SYSTEM.md -> tailwind.config.js -> docs/* Page Spec`
+- 新体系下，表现层规则分层收口为 Brand Identity / Surface System / Design Tokens / Page Spec；旧 `DESIGN.md`、旧主仓库 `design/` 工作台、`/__design` 入口、独立原型仓库工作流均退出现行规则链
 - 表现层变更继续保持与业务逻辑层解耦，不得越过当前 `ui -> facade/read model` 边界
-- `DESIGN.md` 不再作为当前项目设计总纲、规则入口或实现前置依赖；后续 UI/UX 口径以已确认原型和 `docs/` 下专项规格为准
 - 表现层变更必须先更新对应 `docs/` 规格文档，经确认后再修改代码；若实现中发现需要波及当前 design scope 外的组件，必须先报告并获授权
 
 ## Release Changelog
@@ -34,7 +31,6 @@
 - 完成账单导入完整链路（直传文本/CSV/Excel、加密压缩包探测与解压）
 - 完成记账页 UI/UX 对接，微信/支付宝按钮统一走 `probeBillImportFiles()` 与 `importBillFiles()`
 - 建立 `HomeAiEngineUiState.activeDates` 贯通链路（BatchProcessor → AppFacade → MoniHome）
-- 清理旧 design 工作台，建立独立原型仓库 `Moni-UI-Prototype` 作为 UI/UX 表现层 source of truth
 
 ### `0.2.1`
 
@@ -56,7 +52,8 @@
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
-| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；`2026-04-30` 已进一步收口详情页排版：原始交易信息置顶、AI 分析区前置、锁定控制并入分类操作区且紧邻用户分类入口、锁定按钮下方补面向用户的直白说明文案、系统元数据统一沉到底部单独区块；**下一步：新建独立详情页 TSX，替换首页当前内联详情页，并归档未引用的旧 PixelBill 风格遗留组件** |
+| 设计规格体系切换与核心文档收口 | Done | 新的四层设计规格体系已落地：`DESIGN_SPEC_SYSTEM.md` 为总入口，`docs/design/Moni_Brand_Identity.md` / `docs/design/SURFACE_SYSTEM.md` / `tailwind.config.js` 分别承接 Layer 0/1/2；核心文档中的旧设计系统残留口径已移除，现行规则入口已统一收口 |
+| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；`2026-05-03` 新增待修问题已冻结：1）顶部细则面板需复核原始字段完整性与主标题取值口径，统一 `displayTitle` 规则；2）详情页原始信息区在窄视口下，金额不得再与支付方式横向抢位；3）详情页字体必须收口到 `Nunito + 系统无衬线 + Space Mono`，去除额外字体族；4）详情页返回按钮必须对齐设置子页 `SubPageHeader`；5）整页视觉语法需跟随新的 Surface System 内容卡规则，不沿用首版详情页的松散分区与杂糅控件语言；**下一会话目标：基于新设计规格体系重做 TransactionDetailPage，并同步复核 DragDetailPanel 的字段组织与标题规则** |
 | 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
@@ -125,9 +122,7 @@
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度
 - 规格文档只维护目标口径，不再维护“代码/规格差异”与实现差距清单
 - 浏览器调试入口和测试入口属于稳定工具链，索引写入 `README.md`，协议与记录写入 `docs/`
-- UI/UX 设计与实现当前统一在主仓库内完成，主仓库 `design/` 工作台与 `/__design` 入口废弃
-- `DESIGN.md` 当前不再作为项目设计规则入口；若历史文档仍有引用，仅作追溯材料，不作为现行依据
-- 当前不再使用独立原型仓库作为现行 UI/UX 工作流入口；历史原型目录仅供追溯，不再承接新的表现层探索或实现
+- UI/UX 设计与实现当前统一在主仓库内完成；现行规则入口固定为 `DESIGN_SPEC_SYSTEM.md` 及其指向的 Layer 0/1/2/3 文档
 - 账单导入入口当前固定为记账页现有“微信账单 / 支付宝账单”两个按钮，不新增导入舱或重做表面结构
 - 账单导入两个按钮的实现差异仅为 `expectedSource` 与平台化密码提示文案，后续统一走 `probeBillImportFiles()` 与 `importBillFiles()`
 - 记账一级页中的账单解析中、导入中、导入成功提示统一复用导入卡片底部提示条；这些提示出现时，默认“查看导入指南”提示需要让位

@@ -73,10 +73,17 @@
 
 ## UI/UX 工作流
 
-- 后续不再使用 `DESIGN.md` 作为当前项目的设计总纲、规则入口或实现前置依赖；设计口径以 `docs/` 下专项规格和用户明确确认的口径为准
-- 旧主仓库 `design/` 工作台与 `/__design` 开发态入口已废弃，不再作为设计入口
-- 表现层探索、验证、实现统一在主仓库内完成
-- 表现层探索默认在 `feature` 分支上进行；确认后合入，否决则丢弃分支
+- 现行设计规格体系以根目录 `DESIGN_SPEC_SYSTEM.md` 为总入口，按四层划分：
+  - Layer 0：`docs/design/Moni_Brand_Identity.md`
+  - Layer 1：`docs/design/SURFACE_SYSTEM.md`
+  - Layer 2：`tailwind.config.js`
+  - Layer 3：`docs/` 下对应页面 / 功能 spec 文档
+- 后续不再使用 `DESIGN.md`、旧主仓库 `design/` 工作台、`/__design` 开发态入口、独立原型仓库工作流作为现行设计规则入口
+- 表现层实现前必须先判断本次变更落在哪一层；组件与页面实现至少先查阅 Layer 1 / Layer 2，以及对应 Layer 3 页面规格
+- Page Spec 只定义结构、字段、交互、状态流转与接口约定；不直接承担品牌层和 token 层的职责
+- Layer 1 / Layer 2 变更必须先更新对应文档，再改代码；未经确认不得擅自新增新的表面语法或 token
+- 所有新增表现层代码、以及本次顺手修改到的表现层代码，禁止继续新增硬编码色值、字号、圆角、描边粗细；必须优先复用 `tailwind.config.js` 中已定义的 semantic token
+- 现有内联样式与历史硬编码值属于存量，不要求一次性全量迁移；但修改到对应组件时应优先向 token 收口
 - 表现层实验代码必须继续使用主仓库当前的 TypeScript / React / Vite / 样式与依赖约束
 
 ## 当前长期有效约束

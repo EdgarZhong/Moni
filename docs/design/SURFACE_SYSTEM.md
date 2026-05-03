@@ -1,0 +1,263 @@
+# Moni 表面系统（Surface System）
+
+**文档层级**: Layer 1 — Surface System
+**作用**: 定义"什么场景用什么视觉组合"，是编码 agent 实现任何新组件时的第一参照物。
+
+> 本文档中所有具体值以 `tailwind.config.js` 中的 token name 为准。文档中括号内标注的色值仅为阅读辅助，代码中禁止硬编码。
+
+---
+
+## 一、页面类型与视觉对应
+
+| 页面类型 | 代表页面 | 卡片语法 | 说明 |
+|----------|----------|----------|------|
+| 一级页面 | 首页、记账页、设置页 Root | 主卡语法 | 粗描边、大圆角、强存在感 |
+| 二级页面 | 设置子页面、详情页、密码输入页 | 内容卡语法 | 淡描边、克制、不抢注意力 |
+| 弹层/蒙版 | 拖拽蒙版、分类选择器、确认对话框 | 弹层语法 | 依场景选择，见下文 |
+
+**关键规则**：详情页、设置子页面等从一级页面推入的子页面，统一跟随**内容卡语法**，不跟随一级页面的主卡语法。
+
+---
+
+## 二、卡片家族
+
+### 2.1 主卡（Primary Card）
+
+用于一级页面的核心内容容器：看板卡片、展开态日卡片、设置页 Root 的 SectionCard。
+
+```
+底色:       white
+描边:       border-primary border-ink（2px solid #222）
+圆角:       rounded-card 至 rounded-card-lg（14-16px）
+阴影:       无
+内边距:     14-16px
+```
+
+### 2.2 内容卡（Content Card）
+
+用于二级页面的主体内容区：设置子页面的 FormCard、详情页的信息区块。
+
+```
+底色:       white
+描边:       border-secondary border-muted（1.5px solid #DDD）
+圆角:       rounded-card-sm（12px）至 rounded-card（14px）
+阴影:       无
+内边距:     12-14px
+```
+
+**危险变体**：
+
+```
+底色:       bg-danger-surface（#FFF0F0）
+描边:       border-secondary border-danger-border（1.5px solid #FFB8B8）
+其余同上
+```
+
+### 2.3 次级卡（Minor Card）
+
+用于次级信息展示：统计小卡、折叠态日卡片。
+
+```
+底色:       white
+描边:       border-secondary border-muted（1.5px solid #DDD）
+圆角:       rounded-card-xs（10px）
+阴影:       无
+透明度:     折叠态可降至 0.76
+```
+
+### 2.4 情景提示卡（Hint Card）
+
+用于临时性提示信息。
+
+```
+底色:       bg-warn-surface（#FFF8F0）
+描边:       border-secondary border-warn-border（1.5px solid #F0C89A）
+圆角:       rounded-card-xs 至 rounded-card-sm（10-12px）
+阴影:       无
+```
+
+### 全局卡片禁止项
+
+- 禁止使用渐变背景作为卡片底色
+- 禁止使用玻璃态（backdrop-blur / glassmorphism）效果
+- 禁止在卡片上叠加多层半透明边框模拟深度
+- 卡片不使用 box-shadow，深度感通过描边粗细和颜色区分
+
+---
+
+## 三、按钮家族
+
+### 3.1 主按钮（Primary）
+
+```
+底色:       bg-ink（#222）
+文字:       text-surface（#F5F0EB）
+描边:       border-primary border-ink
+圆角:       rounded-card-sm（12px）
+```
+
+### 3.2 次级按钮（Secondary）
+
+```
+底色:       white
+文字:       text-ink（#222）
+描边:       border-secondary border-muted（#DDD）
+圆角:       rounded-card-sm（12px）
+```
+
+### 3.3 危险按钮（Danger）
+
+```
+底色:       bg-danger-surface（#FFF0F0）
+文字:       text-coral（#FF6B6B）
+描边:       border-secondary border-danger-border（#FFB8B8）
+圆角:       rounded-card-sm（12px）
+```
+
+### 3.4 薄荷按钮（Mint）
+
+用于正向操作强调。
+
+```
+底色:       bg-mint（#4ECDC4）
+文字:       white
+描边:       border-primary border-mint
+圆角:       rounded-card-sm（12px）
+```
+
+### 3.5 幽灵按钮（Ghost）
+
+```
+底色:       transparent
+文字:       text-dim（#888）
+描边:       无
+```
+
+### 3.6 Pill 按钮（标签轨道专用）
+
+```
+激活态:     bg-ink / text-surface / 无描边
+普通态:     bg-white / text-dim / border-secondary border-muted
+警示态:     bg-danger-surface / text-uncat-text / border-secondary border-danger-border
+形状:       圆角使用 rounded-pill（9999px）
+```
+
+### 3.7 设置行按钮（Setting Row）
+
+设置页 Root 的列表行，整行可点击。
+
+```
+内边距:     14px 0
+底部分割:   border-b border-divider border-faint（0.5px solid #EEE）
+左侧图标:   36x36 / rounded-card-xs（10px）
+```
+
+---
+
+## 四、输入框家族
+
+### 4.1 标准输入框
+
+用于记账页表单、设置页编辑、详情页文本输入。
+
+```
+底色:       white
+描边:       border-secondary border-muted（1.5px solid #DDD）
+圆角:       rounded-card-xs（10px）至 rounded-card-sm（12px）
+内边距:     10-14px
+字体:       inherit（继承页面字体）
+outline:    none
+```
+
+### 4.2 高亮编辑态
+
+标准输入框的焦点/编辑状态变体。
+
+```
+描边:       依语境使用对应功能色（如薄荷绿表示正常编辑，珊瑚红表示危险编辑）
+其余同标准输入框
+```
+
+### 4.3 金额输入
+
+特殊用途，极简处理。
+
+```
+底色:       transparent
+描边:       无
+字体:       font-mono（Space Mono）
+字号:       大号突出
+```
+
+### 4.4 密码格输入
+
+特殊用途（压缩包密码），不纳入通用体系。
+
+---
+
+## 五、返回按钮规范
+
+**统一规则**：所有二级页面（设置子页面、详情页、密码输入页）的返回按钮使用同一套样式。
+
+统一基准：设置页 `SubPageHeader` 的裸 SVG 箭头 + 轻量 padding 触控区。
+
+---
+
+## 六、阴影使用规则
+
+阴影只允许在以下场景中使用：
+
+- 浮动弹层（账本选择器下拉、分类选择器弹层、确认对话框）
+- 拖拽预览卡片（表达"悬浮拎起"的物理隐喻）
+- 底部导航的 AI 控制弹层
+
+普通卡片、按钮、输入框禁止使用阴影。深度感通过描边粗细区分，不通过阴影。
+
+---
+
+## 七、渐变使用规则
+
+渐变只允许在以下场景中使用：
+
+- 预算进度条（表达连续的状态变化）
+- 分类概览中未分类段的斜杠条纹（`repeating-linear-gradient`，表达"缺失/待补"）
+- 全局点阵背景装饰工具
+
+卡片底色、按钮底色、输入框底色禁止使用渐变。
+
+---
+
+## 八、字体使用规则
+
+全局只允许三种字体族：
+
+| Token | 字体 | 用途范围 |
+|-------|------|----------|
+| font-brand | Nunito + 系统回退 | 页面根容器字体、品牌标题、区域标题 |
+| font-mono | Space Mono + 等宽回退 | 金额数字、数据展示、模型名 |
+| （系统默认） | 继承自 font-brand | 正文、输入框、按钮文字 |
+
+**禁止引入任何上述三种之外的字体族。** 所有输入框使用 `font-family: inherit`。
+
+---
+
+## 九、间距规则
+
+间距遵循 4px 网格，允许的值为：
+
+```
+4px / 8px / 12px / 16px / 20px / 24px / 32px / 48px / 64px
+```
+
+不允许使用 5px、7px、15px 等非 4px 倍数值。现有代码中的非标准间距应在后续迭代中逐步对齐。
+
+---
+
+## 十、分类色板
+
+分类色板独立于品牌核心色，是一组为分类标签和概览图表定义的扩展色彩。
+
+分类色板的管理原则：
+- 分类色的具体值在 `config.ts` 的分类定义中维护，不纳入 tailwind token
+- 新增分类时，色彩必须与现有分类可区分，且符合品牌气质（明快、饱和度适中、不刺眼）
+- 分类标签的文字色使用该分类色的深色变体，底色使用浅色变体
