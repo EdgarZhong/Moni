@@ -58,6 +58,65 @@ export function getCategory(item: { userCat?: string | null; aiCat?: string | nu
   return item.userCat ?? item.aiCat ?? null;
 }
 
+/**
+ * 交易细则相关文本统一做一层轻量清洗：
+ * - `null / undefined / "/"` 统一视为空
+ * - 去掉首尾空白
+ *
+ * 这样拖拽细则面板与详情页都可以复用同一条空值语义，
+ * 不会再出现一边把 "/" 当正文、另一边把它当空值的漂移。
+ */
+export function normalizeTransactionDetailText(value?: string | null): string {
+  if (!value || value === "/") return "";
+  return value.trim();
+}
+
+/**
+ * 微信 / 支付宝原始字段里常混入“商品:”“收款方备注:”这类前缀。
+ * 这些前缀对用户识别交易身份没有帮助，反而会污染标题与副标题，
+ * 因此在展示层统一剥离。
+ */
+export function stripTransactionDisplayPrefix(value: string): string {
+  return value.replace(/^(收款方备注:|商品:|备注:|付款方备注:)\s*/u, "").trim();
+}
+
+interface TransactionDisplayIdentityInput {
+  readonly n?: string | null;
+  readonly counterparty?: string | null;
+  readonly product?: string | null;
+  readonly rawClass?: string | null;
+}
+
+/**
+ * 统一计算“这笔交易在界面上最该被叫什么”。
+ *
+ * 当前规格已明确要求：首页拖拽细则面板与独立详情页必须共用同一标题口径：
+ * 1. 优先交易对方
+ * 2. 其次为清洗后的商品说明
+ * 3. 再其次为原始分类
+ * 4. 最后才退回首页卡片标题 `n`
+ */
+export function resolveTransactionDisplayTitle(item: TransactionDisplayIdentityInput): string {
+  const counterpartyText = normalizeTransactionDetailText(item.counterparty);
+  if (counterpartyText) return counterpartyText;
+
+  const productText = stripTransactionDisplayPrefix(normalizeTransactionDetailText(item.product));
+  if (productText) return productText;
+
+  const rawClassText = normalizeTransactionDetailText(item.rawClass);
+  if (rawClassText) return rawClassText;
+
+  return normalizeTransactionDetailText(item.n) || "未知交易";
+}
+
+/**
+ * 详情页与拖拽细则都需要展示“标题之下的补充商品说明”。
+ * 这里单独导出清洗后的商品文本，便于调用方自行决定是否与主标题去重后再显示。
+ */
+export function resolveTransactionDisplayProductText(item: TransactionDisplayIdentityInput): string {
+  return stripTransactionDisplayPrefix(normalizeTransactionDetailText(item.product));
+}
+
 // ──────────────────────────────────────────────
 // 日期工具
 // ──────────────────────────────────────────────

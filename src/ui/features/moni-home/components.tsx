@@ -10,7 +10,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { BOTTOM_NAV_PADDING_BOTTOM, C, CAT, LEDGER_HEADER_CONTROL_WIDTH, OVERVIEW_COLORS } from "./config";
-import { getCategory, seededShapes, type OverviewItem } from "./helpers";
+import {
+  getCategory,
+  normalizeTransactionDetailText,
+  resolveTransactionDisplayProductText,
+  resolveTransactionDisplayTitle,
+  seededShapes,
+  type OverviewItem,
+} from "./helpers";
 
 // ──────────────────────────────────────────────
 // 内部常量
@@ -884,36 +891,6 @@ interface DragOverlayProps {
   availableCategories?: string[];
 }
 
-function normalizeDetailText(value?: string | null): string {
-  if (!value || value === "/") return "";
-  return value.trim();
-}
-
-/**
- * 支付平台原始文案里常带“商品:”“备注:”这类前缀。
- * 这些前缀会干扰用户在拖拽时快速识别交易，因此面板内展示前先做一层轻量清洗。
- */
-function stripRedundantPrefix(value: string): string {
-  return value.replace(/^(收款方备注:|商品:|备注:|付款方备注:)\s*/u, "").trim();
-}
-
-/**
- * 拖拽细则面板需要独立计算“交易身份标题”。
- * 这里遵循规格：优先交易对方，其次清洗后的商品名称，再其次原始分类，最后才退回首页卡片标题。
- */
-function resolveDragDisplayTitle(item: HomeTransaction): string {
-  const counterpartyText = normalizeDetailText(item.counterparty);
-  if (counterpartyText) return counterpartyText;
-
-  const productText = stripRedundantPrefix(normalizeDetailText(item.product));
-  if (productText) return productText;
-
-  const rawClassText = normalizeDetailText(item.rawClass);
-  if (rawClassText) return rawClassText;
-
-  return normalizeDetailText(item.n) || "未知交易";
-}
-
 /**
  * 拖拽预览卡片需要继承首页原条目的图标语义。
  * 若条目已有分类，则继续使用该分类当前在首页列表中的图标与色彩；仅未分类时回退到问号占位。
@@ -963,7 +940,7 @@ export function DragOverlay({
   const PANEL_EXPAND_DELTA_PX = DRAG_PANEL_EXPANDED_VISIBLE_PX - DRAG_PANEL_COLLAPSED_VISIBLE_PX;
   const [panelEntered, setPanelEntered] = useState(false);
   const isExpanded = panelState === "expanded";
-  const displayTitle = dragItem ? resolveDragDisplayTitle(dragItem) : "未知交易";
+  const displayTitle = dragItem ? resolveTransactionDisplayTitle(dragItem) : "未知交易";
   const previewVisual = dragItem ? resolveDragPreviewVisual(dragItem) : null;
   const displayCategory = dragItem?.userCat?.trim() || dragItem?.aiCat?.trim() || "未分类";
   const detailLine = dragItem?.userCat?.trim()
@@ -973,7 +950,7 @@ export function DragOverlay({
       : "";
   const directionLabel = dragItem?.direction === "in" ? "收入" : "支出";
   const amountLabel = `${directionLabel} ¥${formatCurrencyAmount(dragItem?.a ?? 0)}`;
-  const remarkText = normalizeDetailText(dragItem?.remark);
+  const remarkText = normalizeTransactionDetailText(dragItem?.remark);
   const paymentText = dragItem?.pay?.trim() || "未提供";
   const sourceTypeText = dragItem?.sourceType === "wechat"
     ? "微信"
@@ -981,11 +958,13 @@ export function DragOverlay({
       ? "支付宝"
       : "手动";
   const sourceLabelText = dragItem?.sourceLabel?.trim() || "来源未知";
-  const productText = stripRedundantPrefix(normalizeDetailText(dragItem?.product)) || normalizeDetailText(dragItem?.n) || "未知交易";
-  const counterpartyText = normalizeDetailText(dragItem?.counterparty);
-  const rawClassText = normalizeDetailText(dragItem?.rawClass);
-  const fullTimeText = normalizeDetailText(dragItem?.fullTimeLabel) || normalizeDetailText(dragItem?.t) || "时间未知";
-  const transactionStatusText = normalizeDetailText(dragItem?.transactionStatus) || "SUCCESS";
+  const productText = dragItem
+    ? (resolveTransactionDisplayProductText(dragItem) || normalizeTransactionDetailText(dragItem.n) || "未知交易")
+    : "未知交易";
+  const counterpartyText = normalizeTransactionDetailText(dragItem?.counterparty);
+  const rawClassText = normalizeTransactionDetailText(dragItem?.rawClass);
+  const fullTimeText = normalizeTransactionDetailText(dragItem?.fullTimeLabel) || normalizeTransactionDetailText(dragItem?.t) || "时间未知";
+  const transactionStatusText = normalizeTransactionDetailText(dragItem?.transactionStatus) || "SUCCESS";
   const shouldShowSourceTypeText = sourceTypeText !== sourceLabelText;
   const amountAccentColor = dragItem?.direction === "in" ? C.mint : C.coral;
   /**

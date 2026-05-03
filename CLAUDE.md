@@ -53,7 +53,7 @@
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 | 设计规格体系切换与核心文档收口 | Done | 新的四层设计规格体系已落地：`DESIGN_SPEC_SYSTEM.md` 为总入口，`docs/design/Moni_Brand_Identity.md` / `docs/design/SURFACE_SYSTEM.md` / `tailwind.config.js` 分别承接 Layer 0/1/2；核心文档中的旧设计系统残留口径已移除，现行规则入口已统一收口 |
-| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；`2026-05-03` 新增待修问题已冻结：1）顶部细则面板需复核原始字段完整性与主标题取值口径，统一 `displayTitle` 规则；2）详情页原始信息区在窄视口下，金额不得再与支付方式横向抢位；3）详情页字体必须收口到 `Nunito + 系统无衬线 + Space Mono`，去除额外字体族；4）详情页返回按钮必须对齐设置子页 `SubPageHeader`；5）整页视觉语法需跟随新的 Surface System 内容卡规则，不沿用首版详情页的松散分区与杂糅控件语言；**下一会话目标：基于新设计规格体系重做 TransactionDetailPage，并同步复核 DragDetailPanel 的字段组织与标题规则** |
+| 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；`2026-05-03` 已进一步完成：1）抽出共享 `displayTitle` / 商品说明清洗 helper，拖拽细则与详情页统一标题口径；2）`TransactionDetailPage` 已按新的 Surface System 内容卡语法重写，原始信息区不再让金额与支付方式横向抢位；3）详情页字体已收口到 `Nunito + 系统无衬线 + Space Mono`，分类选择器也跟随 `font-brand`；4）Header 已去掉日期 / sourceType 重复副标题，右上角状态改为锁 / 解锁 icon 过渡；5）详情页可编辑区已收口为单一 `user_note` 字段，不再保留第二个备注输入；6）分类选择器卡片已补 `overflow-hidden`，圆角裁切完整；7）Playwright MCP 已改为固定复用系统 Chromium（免浏览器下载），相关配置与文档已收口。`2026-05-04` 继续按现场反馈完成：a）顶部 badge 固定单行并允许横向滑动；b）原始细则改为 `支付方式 -> 原始分类` 的更稳妥左右顺序；c）AI 分析区分类标签去掉重复的 `AI 分类：` 前缀；d）分类操作区收口为整宽单卡，顶部同一行放置“当前分类”与“锁定此分类 + 开关”；e）分类来源文案压缩为“来自 AI / 来自用户”；f）选择新分类后自动平滑滚动到 `user_note` 输入区，提示补充原因；g）标题下方副标题字号略增，但仍低于主标题。**剩余事项：继续按你现场审视反馈精修详情页视觉，不再存在“功能未落地、只差截图验证”的阻塞项** |
 | 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
@@ -85,6 +85,12 @@
 - `2026-04-29`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4173/`，长按首页首条交易并下拖进入 `DragDetailPanel` 展开态；确认完整时间显示为“4月16日 17:23”，展开态仅展示交易细则，且手指位置 `y=770` 落在虚线驻留区 `y=702..842` 内；console 未出现新的 runtime error；截图 `drag-detail-expanded-main-v2.png`
 - `2026-04-30`：`npm run typecheck` 通过
 - `2026-04-30`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-05-03`：`npm run typecheck` 通过
+- `2026-05-03`：`npm run build` 通过，存在既有 chunk size warning
+- `2026-05-03`：本机已验证 `timeout 5s npx -y @playwright/mcp@latest --browser chrome --executable-path /usr/bin/chromium-browser --headless --port 39001` 可正常监听；随后以统一配置链 `timeout 5s npx -y @playwright/mcp@latest --config .codex/playwright.mcp.json --caps vision --port 39002` 复验通过，确认当前可免下载复用系统 Chromium 启动 Playwright MCP
+- `2026-05-03`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，切到“全部”时间范围后进入 `4月24日` 首条交易详情；确认 Header 已简化为单行“交易详情”，分类选择器圆角裁切完整、字体跟随 `font-brand`，详情页只保留单一 `user_note` 输入区；截图 `test-img/transaction-detail-page-v3.png`、`test-img/transaction-detail-category-modal-v3.png`；console error 为 0
+- `2026-05-04`：`npm run typecheck` 通过
+- `2026-05-04`：`npm run build` 通过，存在既有 chunk size warning
 - `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4175/`，执行新增浏览器调试测试 `window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`；测试在独立临时账本 `分类锁定测试账本_*` 中通过，确认三件事：已入队日期的 `days[]` 会注入完整消费交易上下文（包含锁定条目）、System Prompt 已包含 exact-ID 强锚点与同一消费事件联动提示、运行中锁定条目可挡住 AI 自动写回且被用户勾选后可解锁并成功入队重分类
 - `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，直接使用首页现成数据中的“西北工业大学云餐便利店”条目做长按拖拽；确认长按停在原位时仍保持 Collapsed、未提前出现“停留看细则”，向下拖到 `y=792` 后进入 Expanded，驻留区虚线框为主题青色 `rgb(78, 205, 196)`，分类区与详情面板仅共享同一位移量，且 `其他` 分类卡宽度回到与其他卡一致的半宽两列布局；console 未出现新的 runtime error；截图 `test-img/drag-panel-collapsed-stable.png`、`test-img/drag-panel-expanded-cyan-zone.png`
 - `2026-04-30`：拖拽细则面板展开阈值已切换为父层固定分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；Playwright 在 `390 x 844` 视口下复验首页首条条目，确认长按原位仍保持 Collapsed，边界点 `y=743` 不展开、`y=744` 开始展开，判定线不再受子组件进场动画与 Expanded 位移污染
@@ -129,7 +135,7 @@
 - 浏览器开发态文件系统 mock 当前只保留 `Directory.Data -> virtual_android_filesys/sandbox_path`；旧的独立 `Documents_path` 已退出运行时路径
 - 本项目语境中的端到端测试默认指 agent 通过 `Playwright MCP` 在浏览器开发态做自动化页面验证
 - Playwright MCP 默认移动端测试视口以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
-- “一图一测试”只适用于浏览器侧 Playwright 页面验证，不等同于 Android 安装包人工验收
+- “e2e测试”只适用于浏览器侧 Playwright 页面验证，不等同于 Android 安装包人工验收
 - 端到端测试仅在用户明确指令下开启
 - 默认账本初始名称固定为 `日常开销`，且允许用户后续重命名
 - `MemoryManager`、`ExampleStore`、`SelfDescriptionManager` 均为纯静态类，无 getInstance() 单例

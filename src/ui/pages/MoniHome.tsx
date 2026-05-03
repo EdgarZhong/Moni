@@ -1019,12 +1019,10 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         <TransactionDetailPage
           transaction={detailContext.item}
           dayId={detailContext.dayId}
-          dayLabel={detailContext.dayLabel}
           availableCategories={availableCategories}
           onClose={() => setDetailTxId(null)}
           onUpdateCategory={actions.updateCategory}
           onUpdateUserReasoning={actions.updateUserReasoning}
-          onUpdateRemark={actions.updateRemark}
           onSetTransactionVerification={actions.setTransactionVerification}
         />
       )}
