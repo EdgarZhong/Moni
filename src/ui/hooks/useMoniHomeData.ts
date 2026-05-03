@@ -103,6 +103,7 @@ function toHomeTransaction(dayId: string, item: MoniHomeReadModel['dailyTransact
   const normalizedProduct = item.product?.trim() || "";
   return {
     id: item.id,
+    originalId: item.originalId ?? null,
     n: normalizedTitle,
     a: item.amount,
     t: item.time,
@@ -121,6 +122,7 @@ function toHomeTransaction(dayId: string, item: MoniHomeReadModel['dailyTransact
     remark: item.remark,
     direction: item.direction,
     isVerified: item.isVerified,
+    updatedAt: item.updatedAt ?? null,
     ih: item.sequence,
   };
 }

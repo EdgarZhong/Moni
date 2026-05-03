@@ -52,6 +52,8 @@ export interface TrendPoint {
 /** 流水条目（首页展示用最小字段集） */
 export interface HomeTransaction {
   id: number | string;
+  /** 原始流水号 */
+  originalId?: string | null;
   /** 商户名 */
   n: string;
   /** 金额（元） */
@@ -88,6 +90,8 @@ export interface HomeTransaction {
   direction?: "in" | "out";
   /** 是否已锁定/确认 */
   isVerified?: boolean;
+  /** 最后更新时间 */
+  updatedAt?: string | null;
   /** 图标变体索引（对应 CAT[category].icons[ih % 4]） */
   ih: number;
 }

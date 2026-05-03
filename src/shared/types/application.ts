@@ -78,6 +78,7 @@ export interface HomeHintCardReadModel {
 
 export interface HomeTransactionReadModel {
   id: string;
+  originalId?: string | null;
   title: string;
   amount: number;
   time: string;
@@ -97,6 +98,7 @@ export interface HomeTransactionReadModel {
   remark: string | null;
   direction: 'in' | 'out';
   isVerified: boolean;
+  updatedAt?: string | null;
   sequence: number;
 }
 

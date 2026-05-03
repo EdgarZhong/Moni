@@ -142,6 +142,7 @@ function toHomeTransaction(txId: string, record: FullTransactionRecord, index: n
 
   return {
     id: txId,
+    originalId: record.originalId || null,
     title,
     amount: record.amount,
     time: record.time.slice(11, 16),
@@ -161,6 +162,7 @@ function toHomeTransaction(txId: string, record: FullTransactionRecord, index: n
     remark: record.remark && record.remark !== '/' ? record.remark : null,
     direction: record.direction,
     isVerified: record.is_verified,
+    updatedAt: record.updated_at || null,
     sequence: index,
   };
 }
