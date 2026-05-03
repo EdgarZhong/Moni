@@ -12,13 +12,8 @@ command = "npx"
 args = [
   "-y",
   "@playwright/mcp@latest",
-  "--browser",
-  "chromium",
-  "--device",
-  "iPhone 15",
-  "--headless",
-  "--output-dir",
-  ".codex/artifacts/playwright",
+  "--config",
+  ".codex/playwright.mcp.json",
   "--caps",
   "vision"
 ]

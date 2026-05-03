@@ -20,9 +20,30 @@
 - 自动化工具：`Playwright MCP`
 - 运行环境：浏览器开发态页面
 - 默认移动端视口：以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
+- 默认浏览器来源：系统 Chromium（当前固定路径：`/usr/bin/chromium-browser`）
 - 默认流程：先调 `window.__MONI_E2E__` 或 `window.__MONI_DEBUG__` 准备数据，再执行页面交互，再截图，再复核 console
-- “一图一测试”定义：每个关键页面或关键状态至少保留一张截图，并与对应断言、检查项或结构化测试结果成对记录
+- “e2e测试”定义：每个关键页面或关键状态至少保留一张截图，并与对应断言、检查项或结构化测试结果成对记录
 - 若因专项问题需要切换视口，必须在记录中注明实际尺寸与切换原因
+
+## 0.2 Playwright MCP 本地浏览器基线
+
+当前仓库已把 Playwright MCP 的浏览器配置固定为：
+
+- 单一信源：`./.codex/playwright.mcp.json`
+- 浏览器二进制：`/usr/bin/chromium-browser`
+- 启动入口：`./.codex/config.toml` 中的 `playwright` MCP server 只负责转发到上述配置文件
+
+这样做的原因：
+
+- 避免每次新 worktree / 新会话都依赖 `playwright install` 或 `chrome-for-testing` 下载浏览器
+- 避免项目级 `.codex/config.toml` 和 `./.codex/playwright.mcp.json` 同时各写一套浏览器参数，导致口径漂移
+- 让 `AGENTS.md` / `README.md` 中约定的默认移动端视口真正只维护在一处
+
+当前固定约束：
+
+- 若系统 Chromium 路径变更，优先修改 `./.codex/playwright.mcp.json` 的 `launchOptions.executablePath`
+- 若本机只存在 `/snap/bin/chromium` 而不存在 `/usr/bin/chromium-browser`，必须显式更新配置后再继续使用
+- 首次启动仍可能通过 `npx` 下载 `@playwright/mcp` npm 包本身，但**不会再额外下载浏览器二进制**
 
 ## 1. 当前稳定调试入口
 
@@ -267,9 +288,8 @@ await window.__MONI_E2E__.tests.runBillImportBackendTest()
 ### 1.1 环境要求
 
 - 本地已安装 `@playwright/test`
-- 本地已执行 `npx playwright install chromium`
 - Codex 已加载项目级 `.codex/config.toml`
-- `playwright` MCP 当前使用 `chromium`
+- `playwright` MCP 当前固定复用系统 Chromium：`/usr/bin/chromium-browser`
 
 ### 1.2 启动要求
 

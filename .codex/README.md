@@ -49,9 +49,18 @@ MONI_CODEX_RUN_FULL_VERIFY=1 ./.codex/scripts/worktree-init.sh
   - 指向 OpenAI Developers MCP 端点，用于查官方文档
 - `playwright`
   - 通过 `npx @playwright/mcp@latest` 启动
-  - 默认参数已固定为移动端尺寸验证友好的 Chrome + `iPhone 15` 设备模拟
+  - 启动参数统一改为读取 `/.codex/playwright.mcp.json`
+  - 浏览器固定走系统 Chromium：`/usr/bin/chromium-browser`
+  - 不再依赖 `chrome-for-testing` 或 `npx playwright install` 的临时下载
   - 产物输出目录：`/.codex/artifacts/playwright`
   - 首次启动可能因为 `npx` 下载和浏览器探测超过 20 秒，因此项目配置已把 `startup_timeout_sec` 提高到 `90`
+
+当前 Playwright 配置收口原则：
+
+- `/.codex/playwright.mcp.json` 是唯一浏览器运行参数单一信源
+- `/.codex/config.toml` 只负责“如何启动 MCP server”，不再重复维护浏览器型号、视口、headless 等细节
+- 若未来系统 Chromium 路径变化，优先改 `/.codex/playwright.mcp.json` 的 `launchOptions.executablePath`
+- 当前机器已验证可用的系统 Chromium 路径为：`/usr/bin/chromium-browser`
 
 建议用法：
 
@@ -60,7 +69,7 @@ codex mcp list
 codex mcp get playwright
 ```
 
-若本机尚未安装浏览器自动化所需依赖，首次启动 `playwright` MCP 时会触发 `npx` 下载对应包。
+若本机尚未缓存 `@playwright/mcp` 包，首次启动 `playwright` MCP 仍可能触发 `npx` 下载 **MCP npm 包本身**；但浏览器进程固定复用系统 Chromium，不再额外下载 Playwright 浏览器二进制。
 
 ## 说明
 

@@ -152,7 +152,8 @@ npm run build:release
 - 工具：`Playwright MCP`
 - 环境：浏览器开发态
 - 默认移动端视口：以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`
-- “一图一测试”只适用于这套浏览器自动化链路，不等同于 Android 安装包人工验收
+- 浏览器来源：固定复用系统 Chromium（当前路径：`/usr/bin/chromium-browser`），不再依赖 `playwright install` 或 `chrome-for-testing` 下载
+- “e2e测试”只适用于这套浏览器自动化链路，不等同于 Android 安装包人工验收
 
 ## 表现层设计入口
 
