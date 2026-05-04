@@ -803,6 +803,8 @@ interface BottomNavProps {
   onSettings?: () => void;
   /** 点击记账按钮的回调 */
   onBookkeeping?: () => void;
+  /** 短按中央首页按钮的导航回调（在非首页时使用） */
+  onHomeNavigate?: () => void;
   /** 当前激活页面 */
   activePage?: 'home' | 'entry' | 'settings';
 }
@@ -819,9 +821,19 @@ interface BottomNavProps {
  * - 控制条子元素不绑 onPointerMove（避免隐式捕获失效）
  * - 移除 onPointerLeave（防止误取消）
  */
-export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, activePage = 'home' }: BottomNavProps) {
+export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, onHomeNavigate, activePage = 'home' }: BottomNavProps) {
   const isEntryActive = activePage === 'entry';
   const isSettingsActive = activePage === 'settings';
+
+  // 短按中央按钮（控制条未打开时）的处理：在非首页可导航回首页
+  const handleCenterPointerUp = () => {
+    const wasOpen = controlOpen;
+    onEndControl();
+    if (!wasOpen && onHomeNavigate) {
+      onHomeNavigate();
+    }
+  };
+
   return (
     <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM, display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
       {/* 左：设置 */}
@@ -839,7 +851,7 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
             onUpdateControlHit.move(event.clientY);
           }
         }}
-        onPointerUp={onEndControl}
+        onPointerUp={handleCenterPointerUp}
         onPointerCancel={onCancelControl}
       >
         {controlOpen && (
@@ -1370,6 +1382,21 @@ function diffDays(start: string, end: string): number {
   return Math.round((toDateNumber(end) - toDateNumber(start)) / 86_400_000);
 }
 
+/**
+ * 日期字符串统一是 YYYY-MM-DD，可直接按字典序比较。
+ * 这里抽成工具函数，避免各处手写三元表达式导致边界口径漂移。
+ */
+function minDateString(...values: string[]): string {
+  return values.reduce((currentMin, value) => (value < currentMin ? value : currentMin));
+}
+
+/**
+ * 与 minDateString 成对使用，返回一组日期中的最晚值。
+ */
+function maxDateString(...values: string[]): string {
+  return values.reduce((currentMax, value) => (value > currentMax ? value : currentMax));
+}
+
 interface DateRangeDialogProps {
   visible: boolean;
   rangeMode: string;
@@ -1389,30 +1416,41 @@ interface DateRangeDialogProps {
  *
  * 入口：分类概览右上角"本月 >"。
  * 包含快捷项（今天/本周/本月/近三月/全部）和双滑块自定义范围。
+ *
+ * 重要口径：
+ * - 该面板只维护“草稿态”，点击快捷项或拖动滑块时不立即提交首页过滤。
+ * - 轨道 MIN / MAX 永远等于账本实际数据范围，不再被快捷项外扩。
+ * - `customStart/customEnd` 代表当前草稿下应显示在滑块上的有效区间位置。
  */
 export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, minDate, maxDate, onClose, onQuickSelect, onCustomStartChange, onCustomEndChange, onConfirmCustom }: DateRangeDialogProps) {
   const railRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number | null>(null);
   const [dragThumb, setDragThumb] = useState<"start" | "end" | null>(null);
-  const totalDays = Math.max(diffDays(minDate, maxDate), 1);
-  const [draftStartDay, setDraftStartDay] = useState(() => diffDays(minDate, customStart));
-  const [draftEndDay, setDraftEndDay] = useState(() => diffDays(minDate, customEnd));
+  const railMinDate = minDate;
+  const railMaxDate = maxDate;
+  const totalDays = Math.max(diffDays(railMinDate, railMaxDate), 1);
+  const [draftStartDay, setDraftStartDay] = useState(() => diffDays(railMinDate, customStart));
+  const [draftEndDay, setDraftEndDay] = useState(() => diffDays(railMinDate, customEnd));
 
   // 用 ref 跟踪最新草稿值，避免拖拽闭包读到过时状态
   const draftRef = useRef({ start: draftStartDay, end: draftEndDay });
   draftRef.current = { start: draftStartDay, end: draftEndDay };
 
-  const draftStartValue = addDays(minDate, draftStartDay);
-  const draftEndValue = addDays(minDate, draftEndDay);
+  const draftStartValue = addDays(railMinDate, draftStartDay);
+  const draftEndValue = addDays(railMinDate, draftEndDay);
   const startPercent = (draftStartDay / totalDays) * 100;
   const endPercent = (draftEndDay / totalDays) * 100;
 
-  // 面板打开时同步外部传入的起止日期到草稿值（拖拽中跳过，避免回写冲突）
+  /**
+   * 面板打开或父层草稿变化时，同步当前应展示的起止日期到局部拖拽草稿。
+   * 这里的 `customStart/customEnd` 已经是父层算好的“有效显示区间”，
+   * 因此直接映射到滑块位置即可。
+   */
   useEffect(() => {
     if (!visible || dragThumb) return;
-    setDraftStartDay(Math.max(0, Math.min(totalDays, diffDays(minDate, customStart))));
-    setDraftEndDay(Math.max(0, Math.min(totalDays, diffDays(minDate, customEnd))));
-  }, [visible, customStart, customEnd, minDate, totalDays]);
+    setDraftStartDay(Math.max(0, Math.min(totalDays, diffDays(railMinDate, customStart))));
+    setDraftEndDay(Math.max(0, Math.min(totalDays, diffDays(railMinDate, customEnd))));
+  }, [visible, customStart, customEnd, dragThumb, railMinDate, totalDays]);
 
   // 卸载时清理 rAF
   useEffect(() => () => {
@@ -1423,8 +1461,8 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
   const syncToParent = (nextStart: number, nextEnd: number) => {
     if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
     frameRef.current = requestAnimationFrame(() => {
-      onCustomStartChange(addDays(minDate, nextStart));
-      onCustomEndChange(addDays(minDate, nextEnd));
+      onCustomStartChange(addDays(railMinDate, nextStart));
+      onCustomEndChange(addDays(railMinDate, nextEnd));
     });
   };
 
@@ -1462,7 +1500,7 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [dragThumb, totalDays, minDate]);
+  }, [dragThumb, railMinDate, totalDays]);
 
   if (!visible) return null;
 
@@ -1470,12 +1508,39 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
     <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onClose}>
       <div className="fi" onClick={(event) => event.stopPropagation()} style={{ background: C.white, borderRadius: 16, padding: 20, width: "100%", maxWidth: 332, border: `2px solid ${C.dark}` }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 12 }}>选择时间范围</div>
-        {/* 快捷选项 */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+        {/* 快捷选项
+            这里不用 flex-wrap，而改为固定 4 列网格。
+            原因是激活态会改变字重与视觉样式；若按钮宽度继续由内容决定，
+            同一视口下就会因为重排阈值轻微变化而发生“上一帧在第一行，下一帧掉到第二行”的抖动。
+            固定网格后，每个按钮始终占自己的稳定槽位，切换选中态时只改颜色与字重，不再改布局。 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 16 }}>
           {["今天", "本周", "本月", "近三月", "全部"].map((label) => (
-            <div key={label} onClick={() => onQuickSelect(label)} style={{ padding: "8px 16px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: rangeMode === label ? 700 : 500, background: rangeMode === label ? C.dark : C.white, color: rangeMode === label ? C.bg : "#666", border: rangeMode === label ? "none" : `1.5px solid ${C.border}` }}>
+            <button
+              key={label}
+              type="button"
+              onClick={() => onQuickSelect(label)}
+              style={{
+                width: "100%",
+                minHeight: 40,
+                padding: "8px 0",
+                borderRadius: 20,
+                fontSize: 13,
+                cursor: "pointer",
+                fontWeight: rangeMode === label ? 700 : 500,
+                background: rangeMode === label ? C.dark : C.white,
+                color: rangeMode === label ? C.bg : "#666",
+                border: `1.5px solid ${rangeMode === label ? C.dark : C.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "inherit",
+                lineHeight: 1,
+                appearance: "none",
+                WebkitAppearance: "none",
+              }}
+            >
               {label}
-            </div>
+            </button>
           ))}
         </div>
         <div style={{ fontSize: 11, color: C.sub, marginBottom: 10 }}>自定义范围</div>
@@ -1484,10 +1549,10 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
           <input
             type="date"
             value={draftStartValue}
-            min={minDate}
+            min={railMinDate}
             max={draftEndValue}
             onChange={(event) => {
-              const nextStart = Math.max(0, Math.min(diffDays(minDate, event.target.value), draftEndDay));
+              const nextStart = Math.max(0, Math.min(diffDays(railMinDate, event.target.value), draftEndDay));
               updateDraftRange(nextStart, draftEndDay);
             }}
             style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: "inherit" }}
@@ -1497,9 +1562,9 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
             type="date"
             value={draftEndValue}
             min={draftStartValue}
-            max={maxDate}
+            max={railMaxDate}
             onChange={(event) => {
-              const nextEnd = Math.min(totalDays, Math.max(diffDays(minDate, event.target.value), draftStartDay));
+              const nextEnd = Math.min(totalDays, Math.max(diffDays(railMinDate, event.target.value), draftStartDay));
               updateDraftRange(draftStartDay, nextEnd);
             }}
             style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: "inherit" }}
@@ -1511,7 +1576,7 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
             {/* 底色轨道 */}
             <div style={{ position: "absolute", left: 0, right: 0, top: 15, height: 6, borderRadius: 999, background: "#ECE8E3" }} />
             {/* 选中区间高亮 */}
-            <div style={{ position: "absolute", left: `${startPercent}%`, width: `${Math.max(endPercent - startPercent, 0)}%`, top: 15, height: 6, borderRadius: 999, background: C.dark }} />
+            <div style={{ position: "absolute", left: `${startPercent}%`, width: `${Math.max(endPercent - startPercent, 0)}%`, top: 15, height: 6, borderRadius: 999, background: C.dark, transition: dragThumb ? "none" : "left 0.2s ease, width 0.2s ease" }} />
             {/* 两个滑块 */}
             {(["start", "end"] as const).map((key) => {
               const left = key === "start" ? startPercent : endPercent;
@@ -1524,14 +1589,14 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
                     event.stopPropagation();
                     setDragThumb(key);
                   }}
-                  style={{ position: "absolute", left: `${left}%`, top: 6, width: 18, height: 24, borderRadius: 999, transform: "translateX(-50%)", border: `2px solid ${C.dark}`, background: C.white, boxShadow: "0 2px 10px rgba(0,0,0,.12)", cursor: "grab" }}
+                  style={{ position: "absolute", left: `${left}%`, top: 6, width: 18, height: 24, borderRadius: 999, transform: "translateX(-50%)", border: `2px solid ${C.dark}`, background: C.white, boxShadow: "0 2px 10px rgba(0,0,0,.12)", cursor: "grab", transition: dragThumb ? "none" : "left 0.2s ease" }}
                 />
               );
             })}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.sub, marginTop: 10 }}>
-            <span>MIN: {formatBoundaryDate(minDate)}</span>
-            <span>MAX: {formatBoundaryDate(maxDate)}</span>
+            <span>MIN: {formatBoundaryDate(railMinDate)}</span>
+            <span>MAX: {formatBoundaryDate(railMaxDate)}</span>
           </div>
         </div>
         {/* 底部按钮 */}

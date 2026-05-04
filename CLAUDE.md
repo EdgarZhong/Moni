@@ -64,6 +64,7 @@
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 | 设计规格体系切换与核心文档收口 | Done | 新的四层设计规格体系已落地：`DESIGN_SPEC_SYSTEM.md` 为总入口，`docs/design/Moni_Brand_Identity.md` / `docs/design/SURFACE_SYSTEM.md` / `tailwind.config.js` 分别承接 Layer 0/1/2；核心文档中的旧设计系统残留口径已移除，现行规则入口已统一收口 |
 | 首页拖拽细则面板与交易详情页规格收口 | In Progress | 拖拽细则面板、展开阈值修复、`is_verified` 自动化链路冻结语义、BatchProcessor 完整当日交易注入、System Prompt 的 exact-ID 强锚点与同事件联动提示、设置页全量重分类的锁定列表解锁入口，均已按规格收口并接线；`2026-05-03` 已进一步完成：1）抽出共享 `displayTitle` / 商品说明清洗 helper，拖拽细则与详情页统一标题口径；2）`TransactionDetailPage` 已按新的 Surface System 内容卡语法重写，原始信息区不再让金额与支付方式横向抢位；3）详情页字体已收口到 `Nunito + 系统无衬线 + Space Mono`，分类选择器也跟随 `font-brand`；4）Header 已去掉日期 / sourceType 重复副标题，右上角状态改为锁 / 解锁 icon 过渡；5）详情页可编辑区已收口为单一 `user_note` 字段，不再保留第二个备注输入；6）分类选择器卡片已补 `overflow-hidden`，圆角裁切完整；7）Playwright MCP 已改为固定复用系统 Chromium（免浏览器下载），相关配置与文档已收口。`2026-05-04` 继续按现场反馈完成：a）顶部 badge 固定单行并允许横向滑动；b）原始细则改为 `支付方式 -> 原始分类` 的更稳妥左右顺序；c）AI 分析区分类标签去掉重复的 `AI 分类：` 前缀；d）分类操作区收口为整宽单卡，顶部同一行放置“当前分类”与“锁定此分类 + 开关”；e）分类来源文案压缩为“来自 AI / 来自用户”；f）选择新分类后自动平滑滚动到 `user_note` 输入区，提示补充原因；g）标题下方副标题字号略增，但仍低于主标题。**剩余事项：继续按你现场审视反馈精修详情页视觉，不再存在“功能未落地、只差截图验证”的阻塞项** |
+| 首页现场 bug 修复收尾 | In Progress | `2026-05-04` 已接手 claude code 的半截修复并复审：整体方向基本合理，但 `DateRangePicker` 的快捷范围滑块同步方案不完整。根因现已收敛为两层：1）快捷范围按系统当前日期计算，而弹窗滑块轨道最初只锚定账本 `dataRange`；2）更关键的是 `MoniHome` 会把 `customStart/customEnd` 无条件再夹回 `dataRange`，导致 `本周/本月/近三月/今天` 等快捷范围写入后立刻退化成账本最后一笔交易日。现已把 `DateRangeDialog` 的轨道与输入边界改为“账本数据范围 + 当前已选范围”的并集，并把 `MoniHome` 的边界夹取收窄到 `自定义` 模式，待浏览器交互复验。 |
 | 演示稿全局修订 | In Progress | `Moni-Presentation` 已固定三项全局口径：画布强制 `16:9`、浏览器内不显示翻页控件且只保留键盘上下键翻页、封面/品牌显影页标题统一为主应用当前 `MoniHome` / `MoniEntry` / `MoniSettings` 顶部左侧在用的 `Logo()` 字标；同时已把会误导样式判断的旧 `Pixel Bill` shell/header/splash/dot-matrix 实现移入 `.archive/legacy_pixelbill_2026-04-28/`，当前正按页做截图驱动精修 |
 
 ## 当前优先级
@@ -131,6 +132,7 @@
 - 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
 - `classify_runtime.json` 在工程行为上更接近“按天缓冲区”，但当前文档与代码命名继续沿用 queue 术语
 - `data range` 只约束 AI 消费，不限制 dirtyDates 生产与日期入队
+- 首页 `DateRangePicker` 的快捷范围继续按系统当前时间计算；但滑块轨道与日期输入边界必须覆盖“账本数据范围 + 当前已选范围”的并集，不能只锚定 `dataRange`
 - 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
 - `is_verified` 当前固定语义为“自动化链路级冻结”：生产端默认不以锁定条目生成 dirtyDates，但消费端对已入队日期仍向 AI 注入完整消费交易上下文；锁定保护独立于 `USER > RULE_ENGINE > AI_AGENT` 提案优先级，并要求最终写回前基于最新记录再次校验
 - 分类 System Prompt 当前固定增强两条启发：`reference_corrections` 与 `days[]` 的 exact-ID 命中视为强锚点；同一时间段、同场景的多笔交易应先按同一消费事件联合判断，再决定是否同类

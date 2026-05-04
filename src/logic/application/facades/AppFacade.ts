@@ -77,11 +77,18 @@ function toLocalDateKey(date: Date): string {
  * - 兜底保证 start <= end
  */
 function normalizeHomeDateRange(
-  range: { start: Date | null; end: Date | null },
+  range: { start: Date | null; end: Date | null; isEmpty?: boolean },
   bounds: { min: Date | null; max: Date | null }
-): { start: Date | null; end: Date | null } {
+): { start: Date | null; end: Date | null; isEmpty?: boolean } {
   const fallbackStart = bounds.min;
   const fallbackEnd = bounds.max;
+  if (range.isEmpty) {
+    return {
+      start: range.start ?? fallbackStart,
+      end: range.end ?? fallbackEnd,
+      isEmpty: true,
+    };
+  }
   const start = range.start ?? fallbackStart;
   const end = range.end ?? fallbackEnd;
   if (!start || !end) {
@@ -97,6 +104,9 @@ function normalizeHomeDateRange(
  * 判断某个日期键是否落在首页当前范围内。
  */
 function isDateKeyInRange(dateKey: string, range: { start: Date | null; end: Date | null }): boolean {
+  if ((range as { isEmpty?: boolean }).isEmpty) {
+    return false;
+  }
   if (!range.start || !range.end) {
     return true;
   }
@@ -238,7 +248,7 @@ export class AppFacade {
   public async getMoniHomeReadModel(input?: {
     now?: Date;
     trendWindowOffset?: number;
-    homeDateRange?: { start: Date | null; end: Date | null };
+    homeDateRange?: { start: Date | null; end: Date | null; isEmpty?: boolean };
   }): Promise<MoniHomeReadModel> {
     const now = input?.now ?? new Date();
     const ledgerState = this.getLedgerState();
@@ -379,6 +389,7 @@ export class AppFacade {
       homeDateRange: {
         start: selectedHomeDateRange.start ? toLocalDateKey(selectedHomeDateRange.start) : null,
         end: selectedHomeDateRange.end ? toLocalDateKey(selectedHomeDateRange.end) : null,
+        isEmpty: selectedHomeDateRange.isEmpty === true,
       },
       isLoading: ledgerState.isLoading,
     };
@@ -522,7 +533,7 @@ export class AppFacade {
   private toHomeAiState(
     currentLedgerId: string,
     pendingTasks: Awaited<ReturnType<typeof classifyQueue.getPending>>,
-    selectedHomeDateRange: { start: Date | null; end: Date | null },
+    selectedHomeDateRange: { start: Date | null; end: Date | null; isEmpty?: boolean },
     lastLearningMeta: { timestamp: string; message: string } | null,
   ): HomeAiEngineUiState {
     const pendingCount = pendingTasks.length;

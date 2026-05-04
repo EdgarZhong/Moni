@@ -2,14 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   APP_HEADER_MIN_HEIGHT,
   APP_HEADER_PADDING_TOP,
-  BOTTOM_NAV_PADDING_BOTTOM,
   C,
-  PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
-import { Decor, GearIcon, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
+import { Decor, Logo } from "@ui/features/moni-home/components";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
-import { useKeyboard } from "@ui/hooks/useKeyboard";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
 import type {
   MoniSettingsData,
@@ -516,69 +513,6 @@ function BottomSheet({ visible, title, children, onClose }: { visible: boolean; 
         <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border, margin: "0 auto 12px" }} />
         {title ? <div style={{ fontSize: 16, fontWeight: 700, color: C.dark, marginBottom: 14 }}>{title}</div> : null}
         <div className="scrollbar-hide" style={{ overflowY: "auto", maxHeight: "55vh" }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * 设置页底部导航与首页、记账页采用同一视觉骨架。
- * 中央首页按钮保持品牌主入口，设置页自身显示 active 态。
- */
-function SettingsBottomNav({ onOpenHome, onOpenEntry, aiStatus }: { onOpenHome: () => void; onOpenEntry: () => void; aiStatus: string }) {
-  const aiRunning = aiStatus === "ANALYZING";
-  const homeLabel = aiStatus === "ANALYZING"
-    ? "进行中"
-    : aiStatus === "ERROR"
-      ? "异常"
-      : "首页";
-  return (
-    <div
-      style={{
-        background: C.white,
-        borderTop: `1.5px solid ${C.border}`,
-        paddingTop: 3,
-        paddingBottom: BOTTOM_NAV_PADDING_BOTTOM,
-        display: "flex",
-        justifyContent: "space-around",
-        alignItems: "flex-end",
-        flexShrink: 0,
-        zIndex: 20,
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          padding: "4px 16px",
-        }}
-      >
-        <GearIcon active />
-        <div style={{ fontSize: 10, color: C.dark, fontWeight: 700, marginTop: 2 }}>设置</div>
-      </div>
-      <div onClick={onOpenHome} style={{ position: "relative", textAlign: "center", cursor: "pointer" }}>
-        <div style={{ marginTop: -12 }}>
-          <div
-            className={aiRunning ? "ag" : ""}
-            style={{
-              width: 52,
-              height: 52,
-              background: C.dark,
-              borderRadius: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transform: "rotate(2deg)",
-              transition: "box-shadow .6s",
-            }}
-          >
-            <NavIcon />
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: aiRunning ? C.mint : C.dark }}>{homeLabel}</div>
-        </div>
-      </div>
-      <div onClick={onOpenEntry} style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }}>
-        <NoteIcon active={false} />
-        <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>记账</div>
       </div>
     </div>
   );
@@ -2715,12 +2649,10 @@ function AboutPage({ onBack }: { onBack: () => void }) {
  * 3. 通过底部导航把三页串成一个完整原型流
  */
 export default function MoniSettings({
-  onNavigate,
+  onNavigate: _onNavigate,
 }: {
   onNavigate: (page: "home" | "entry" | "settings") => void;
 }) {
-  const onOpenHome = () => onNavigate("home");
-  const onOpenEntry = () => onNavigate("entry");
   const {
     aiConfig,
     selfDescription: selfDescriptionFromReadModel,
@@ -3130,8 +3062,6 @@ export default function MoniSettings({
     }
   };
 
-  const { isKeyboardVisible } = useKeyboard();
-
   return (
     <div
       style={{
@@ -3142,29 +3072,14 @@ export default function MoniSettings({
         overflow: "hidden",
         position: "relative",
         fontFamily: "'Nunito', -apple-system, sans-serif",
-        height: PHONE_FRAME_HEIGHT_CSS,
+        height: "100%",
         display: "flex",
         flexDirection: "column",
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`
-        @keyframes settings-nav-glow {
-          0%   { box-shadow: 0 0 0 2.5px ${C.coral}, 0 0 12px ${C.coral}44; }
-          25%  { box-shadow: 0 0 0 2.5px ${C.yellow}, 0 0 12px ${C.yellow}44; }
-          50%  { box-shadow: 0 0 0 2.5px ${C.blue}, 0 0 12px ${C.blue}44; }
-          75%  { box-shadow: 0 0 0 2.5px ${C.mint}, 0 0 12px ${C.mint}44; }
-          100% { box-shadow: 0 0 0 2.5px ${C.coral}, 0 0 12px ${C.coral}44; }
-        }
-        .ag {
-          animation: settings-nav-glow 3s linear infinite;
-        }
-      `}</style>
       <Decor />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
-      {!isKeyboardVisible && (
-        <SettingsBottomNav onOpenHome={onOpenHome} onOpenEntry={onOpenEntry} aiStatus={aiEngineStatus} />
-      )}
     </div>
   );
 }

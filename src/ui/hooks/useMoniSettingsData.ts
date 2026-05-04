@@ -235,8 +235,11 @@ export function useMoniSettingsData(): MoniSettingsData {
     await appFacade.updateMemoryItems(items);
   }, []);
   const triggerImmediateLearning = useCallback(async (): Promise<boolean> => {
-    return appFacade.triggerImmediateLearning();
-  }, []);
+    const result = await appFacade.triggerImmediateLearning();
+    // appFacade.notify() 时机可能早于快照落盘，显式再 load 一次确保 UI 拿到最新快照
+    await load();
+    return result;
+  }, [load]);
   const rollbackMemorySnapshot = useCallback(async (snapshotId: string): Promise<boolean> => {
     const rolled = await appFacade.rollbackMemorySnapshot(snapshotId);
     if (rolled) {

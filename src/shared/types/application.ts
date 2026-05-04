@@ -161,6 +161,7 @@ export interface MoniHomeReadModel {
   homeDateRange: {
     start: string | null;
     end: string | null;
+    isEmpty?: boolean;
   };
   isLoading: boolean;
 }
@@ -172,7 +173,7 @@ export interface LedgerFacadeState {
   isLoading: boolean;
   filter: string;
   direction: number;
-  dateRange: { start: Date | null; end: Date | null };
+  dateRange: { start: Date | null; end: Date | null; isEmpty?: boolean };
   tabs: string[];
   memoryFileHandle: StorageHandle | null;
   currentLedgerId: string;

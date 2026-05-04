@@ -15,6 +15,16 @@
         margin: 0;
         padding: 0;
       }
+      /* 全局禁止文字选中，避免 UI 交互被干扰 */
+      * {
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      /* 输入框恢复可选中/输入 */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
     </style>
     <title>Moni</title>
   </head>

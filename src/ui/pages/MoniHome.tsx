@@ -13,12 +13,10 @@ import {
   LEDGER_HEADER_CONTROL_WIDTH,
   MANUAL_IDLE_LOCK_MS,
   MANUAL_RESUME_MS,
-  PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
 import { buildOverview, getCategory, getRange, isInRange } from "@ui/features/moni-home/helpers";
 import {
-  BottomNav,
   DateRangeDialog,
   DayCard,
   Decor,
@@ -39,7 +37,7 @@ import {
 import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
-import { useKeyboard } from "@ui/hooks/useKeyboard";
+
 
 interface DragLock {
   bodyOverflow: string;
@@ -89,7 +87,7 @@ interface DetailContext {
   dayLabel: string;
 }
 
-export default function MoniHome({ onNavigate }: MoniHomeProps) {
+export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const {
     days: realDays,
     income: realIncome,
@@ -115,6 +113,9 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [customStart, setCustomStart] = useState(dataRange.min ?? new Date().toISOString().slice(0, 10));
   const [customEnd, setCustomEnd] = useState(dataRange.max ?? new Date().toISOString().slice(0, 10));
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
+  const [draftRangeMode, setDraftRangeMode] = useState("本月");
+  const [draftCustomStart, setDraftCustomStart] = useState(dataRange.min ?? new Date().toISOString().slice(0, 10));
+  const [draftCustomEnd, setDraftCustomEnd] = useState(dataRange.max ?? new Date().toISOString().slice(0, 10));
 
   const [hintVisible, setHintVisible] = useState(true);
   const [dragItem, setDragItem] = useState<HomeTransaction | null>(null);
@@ -125,10 +126,6 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
   const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
   const [trendDragOffsetPx, setTrendDragOffsetPx] = useState(0);
-
-  const [controlOpen, setControlOpen] = useState(false);
-  const [controlHit, setControlHit] = useState<string | null>(null);
-  const [optimisticStopping, setOptimisticStopping] = useState(false);
 
   const [stickyRail, setStickyRail] = useState(false);
   const [scrollStage, setScrollStage] = useState<"初始" | "过渡" | "完全">("初始");
@@ -141,7 +138,6 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const railRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const controlRef = useRef<HTMLDivElement>(null);
   const boardSwipeRef = useRef<SwipeState | null>(null);
   const trendSwipeRef = useRef<TrendDragState | null>(null);
   const pressRef = useRef<PressState | null>(null);
@@ -154,8 +150,8 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
 
   const primaryHint = hintCards[0] ?? null;
-  const aiStop = aiEngineUiState.status === "draining" || optimisticStopping;
-  const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining" || optimisticStopping;
+  const aiStop = aiEngineUiState.status === "draining";
+  const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
   const aiCurrentDates = aiEngineUiState.activeDates;
   const currentLedgerName = currentLedger.name || availableLedgers.find((ledger) => ledger.id === currentLedger.id)?.name || "未设置账本";
   /**
@@ -168,6 +164,16 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
+  }, []);
+  /**
+   * Date 对象统一回写成 YYYY-MM-DD 字符串，避免同一页面里反复手写格式化逻辑。
+   * 这里固定使用本地日期口径，与首页 `dataRange` / `homeDateRange` 保持一致。
+   */
+  const toDateKey = useCallback((value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }, []);
 
   const railFilters = useMemo(() => {
@@ -189,17 +195,75 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     };
   }, [dataRange.max, dataRange.min]);
 
-  const range = useMemo(
-    () => getRange(rangeMode, customStart, customEnd, rangeBounds.min, rangeBounds.max),
-    [customEnd, customStart, rangeBounds.max, rangeBounds.min, rangeMode],
+  /**
+   * 统一计算“一个范围选择”在首页里的三层含义：
+   * 1. requested：快捷键/自定义真正要求的原始日期；
+   * 2. visual：映射到滑块上的显示位置，永远限制在账本数据范围内；
+   * 3. applied：真正提交给首页过滤和 AI 消费的范围，语义上等于交集；
+   *    若无交集，则用 `isEmpty` 显式表达空结果，而不是偷偷折成边界日。
+   */
+  const buildRangeSelection = useCallback((mode: string, start: string, end: string) => {
+    const requested = getRange(mode, start, end, rangeBounds.min, rangeBounds.max);
+    const requestedStart = toDateKey(requested.start);
+    const requestedEnd = toDateKey(requested.end);
+    const intersects = !(requestedEnd < rangeBounds.min || requestedStart > rangeBounds.max);
+
+    const visualStart = requestedEnd < rangeBounds.min
+      ? rangeBounds.min
+      : requestedStart > rangeBounds.max
+        ? rangeBounds.max
+        : (requestedStart < rangeBounds.min ? rangeBounds.min : requestedStart);
+    const visualEnd = requestedEnd < rangeBounds.min
+      ? rangeBounds.min
+      : requestedStart > rangeBounds.max
+        ? rangeBounds.max
+        : (requestedEnd > rangeBounds.max ? rangeBounds.max : requestedEnd);
+
+    return {
+      label: requested.label,
+      requested: {
+        start: requestedStart,
+        end: requestedEnd,
+      },
+      visual: {
+        start: visualStart,
+        end: visualEnd,
+      },
+      applied: {
+        start: new Date(`${visualStart}T00:00:00`),
+        end: new Date(`${visualEnd}T00:00:00`),
+        isEmpty: !intersects,
+      },
+    };
+  }, [rangeBounds.max, rangeBounds.min, toDateKey]);
+
+  const committedRangeSelection = useMemo(
+    () => buildRangeSelection(rangeMode, customStart, customEnd),
+    [buildRangeSelection, customEnd, customStart, rangeMode],
+  );
+  const draftRangeSelection = useMemo(
+    () => buildRangeSelection(draftRangeMode, draftCustomStart, draftCustomEnd),
+    [buildRangeSelection, draftCustomEnd, draftCustomStart, draftRangeMode],
   );
 
   useEffect(() => {
-    actions.setHomeDateRange({ start: range.start, end: range.end });
-  }, [actions.setHomeDateRange, range.end, range.start]);
+    actions.setHomeDateRange(committedRangeSelection.applied);
+  }, [actions.setHomeDateRange, committedRangeSelection]);
 
   useEffect(() => {
     if (!rangeBounds.min || !rangeBounds.max) {
+      return;
+    }
+
+    /**
+     * `customStart/customEnd` 既承载“自定义范围草稿”，也承载快捷范围映射出的真实起止日期。
+     * 若在这里无条件按账本 dataRange 强行夹回，`本周/本月/近三月/今天` 这类按系统当前日期计算的快捷项
+     * 会在写入后立刻被改回到账本最后一笔交易日，表现成两个 thumb 一起顶到右侧。
+     *
+     * 因此这里只在“自定义”模式下兜底收口输入边界；快捷模式允许超出 dataRange，
+     * 列表是否有数据由实际交易日期过滤结果自然决定。
+     */
+    if (rangeMode !== "自定义") {
       return;
     }
 
@@ -212,13 +276,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     if (nextEnd !== customEnd) {
       setCustomEnd(nextEnd < nextStart ? nextStart : nextEnd);
     }
-  }, [clampDateString, customEnd, customStart, rangeBounds.max, rangeBounds.min]);
-
-  useEffect(() => {
-    if (aiEngineUiState.status !== "running") {
-      setOptimisticStopping(false);
-    }
-  }, [aiEngineUiState.status]);
+  }, [clampDateString, customEnd, customStart, rangeBounds.max, rangeBounds.min, rangeMode]);
 
   useEffect(() => {
     if (!rangeBounds.min || !rangeBounds.max) {
@@ -226,17 +284,26 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     }
     setCustomStart(rangeBounds.min);
     setCustomEnd(rangeBounds.max);
+    setDraftCustomStart(rangeBounds.min);
+    setDraftCustomEnd(rangeBounds.max);
     if (homeDateRange.start && homeDateRange.end) {
       setCustomStart(homeDateRange.start);
       setCustomEnd(homeDateRange.end);
+      setDraftCustomStart(homeDateRange.start);
+      setDraftCustomEnd(homeDateRange.end);
     }
     setRangeMode("本月");
+    setDraftRangeMode("本月");
     actions.setTrendWindowOffset(0);
   }, [currentLedger.id, rangeBounds.max, rangeBounds.min]);
 
   const trendTrackMax = Math.max(...trendCard.points.map((item) => item.amount), 1);
 
-  const rangeDays = useMemo(() => realDays.filter((day) => isInRange(day.id, range)), [realDays, range]);
+  /**
+   * `realDays` 已经是 facade 按 `homeDateRange` 过滤后的结果。
+   * 这里不能再按滑块视觉位置二次过滤，否则会把“无交集”错误折叠成边界那一天。
+   */
+  const rangeDays = realDays;
 
   const filterItems = useCallback(
     (items: HomeTransaction[]) => {
@@ -269,7 +336,17 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
   const latestId = renderDays[0]?.id;
   const expenseItems = useMemo(() => rangeDays.flatMap((day) => day.items), [rangeDays]);
   const expenseTotal = expenseItems.reduce((sum, item) => sum + item.a, 0);
-  const incomeTotal = realIncome.filter((item) => isInRange(item.date, range)).reduce((sum, item) => sum + item.amount, 0);
+  const committedIncomeRange = useMemo(
+    () => ({
+      start: committedRangeSelection.applied.start,
+      end: committedRangeSelection.applied.end,
+      label: committedRangeSelection.label,
+    }),
+    [committedRangeSelection.applied.end, committedRangeSelection.applied.start, committedRangeSelection.label],
+  );
+  const incomeTotal = committedRangeSelection.applied.isEmpty
+    ? 0
+    : realIncome.filter((item) => isInRange(item.date, committedIncomeRange)).reduce((sum, item) => sum + item.amount, 0);
   const txCount = expenseItems.length;
   const overview = useMemo(() => buildOverview(expenseItems), [expenseItems]);
 
@@ -538,17 +615,14 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     (event: React.PointerEvent) => {
       if (!pressRef.current || pressRef.current.pointerId !== event.pointerId || dragItem) return;
       const pressState = pressRef.current;
+      // 已进入滚动模式：不手动写 scrollTop，让浏览器原生惯性接管
+      if (pressState.mode === "scroll") return;
       const deltaX = event.clientX - pressState.startX;
       const deltaY = event.clientY - pressState.startY;
-      if (pressState.mode === "scroll") {
-        if (scrollRef.current) scrollRef.current.scrollTop = pressState.startScrollTop - deltaY;
-        return;
-      }
       if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
         if (Math.abs(deltaY) > Math.abs(deltaX)) {
           stopHold();
           pressRef.current = { ...pressState, mode: "scroll" };
-          if (scrollRef.current) scrollRef.current.scrollTop = pressState.startScrollTop - deltaY;
           return;
         }
         cancelPendingPress();
@@ -657,47 +731,6 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     unlockDragScroll();
   }, [stopHold, unlockDragScroll]);
 
-  const handleStartControl = useCallback(() => {
-    startHold(() => {
-      setControlOpen(true);
-      setControlHit(null);
-      void triggerImpact("light");
-    });
-  }, [startHold]);
-
-  const handleEndControl = useCallback(() => {
-    stopHold();
-    if (!controlOpen) return;
-    if (controlHit === "开启") {
-      setOptimisticStopping(false);
-      void actions.startAiProcessing().catch((error) => {
-        console.error("[MoniHome] Failed to start AI processing:", error);
-      });
-      void triggerImpact("medium");
-    }
-    if (controlHit === "关闭" && aiOn) {
-      setOptimisticStopping(true);
-      actions.stopAiProcessing();
-      void triggerImpact("medium");
-    }
-    setControlOpen(false);
-    setControlHit(null);
-  }, [actions, aiOn, controlHit, controlOpen, stopHold]);
-
-  const handleCancelControl = useCallback(() => {
-    stopHold();
-    if (controlOpen) {
-      setControlOpen(false);
-      setControlHit(null);
-    }
-  }, [controlOpen, stopHold]);
-
-  const updateControlHit = useCallback((clientY: number) => {
-    const rect = controlRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setControlHit(clientY - rect.top < rect.height / 2 ? "开启" : "关闭");
-  }, []);
-
   const toggleDay = useCallback((dayId: string) => {
     if (scrollStage === "完全") return;
     setExpandedDays((prev) => (prev.includes(dayId) ? prev.filter((item) => item !== dayId) : [...prev, dayId]));
@@ -755,7 +788,16 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
     },
   };
 
-  const { isKeyboardVisible } = useKeyboard();
+  /**
+   * 打开面板时，把“已提交生效态”复制成一份草稿。
+   * 后续快捷键/滑块/日期输入都只改草稿，不立刻影响首页内容。
+   */
+  const openRangeDialog = useCallback(() => {
+    setDraftRangeMode(rangeMode);
+    setDraftCustomStart(customStart);
+    setDraftCustomEnd(customEnd);
+    setRangeDialogOpen(true);
+  }, [customEnd, customStart, rangeMode]);
 
   return (
     <div
@@ -767,7 +809,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         overflow: "hidden",
         position: "relative",
         fontFamily: "'Nunito',-apple-system,sans-serif",
-        height: PHONE_FRAME_HEIGHT_CSS,
+        height: "100%",
         display: "flex",
         flexDirection: "column",
       }}
@@ -881,7 +923,7 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         ref={scrollRef}
         data-scroll-container
         onScroll={handleScroll}
-        style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative", zIndex: 1 }}
+        style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative", zIndex: 1, WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"] }}
       >
         <DisplayBoard
           currentIndex={carouselIndex}
@@ -927,14 +969,14 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
         />
 
         <StatsBar
-          rangeLabel={range.label}
+          rangeLabel={committedRangeSelection.label}
           expenseTotal={expenseTotal}
           incomeTotal={incomeTotal}
           count={txCount}
           isCustom={rangeMode === "自定义"}
         />
 
-        <OverviewCard rangeLabel={range.label} overview={overview} onOpen={() => setRangeDialogOpen(true)} />
+        <OverviewCard rangeLabel={committedRangeSelection.label} overview={overview} onOpen={openRangeDialog} />
 
         <div
           ref={railRef}
@@ -967,28 +1009,6 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
           )}
         </div>
       </div>
-
-      {!isKeyboardVisible && (
-        <BottomNav
-          aiOn={aiOn}
-          aiStop={aiStop}
-          controlOpen={controlOpen}
-          controlHit={controlHit}
-          onStartControl={handleStartControl}
-          onEndControl={handleEndControl}
-          onCancelControl={handleCancelControl}
-          onUpdateControlHit={{ ref: controlRef, move: updateControlHit }}
-          onBookkeeping={onNavigate ? () => onNavigate("entry") : undefined}
-          onSettings={onNavigate ? () => onNavigate("settings") : undefined}
-        />
-      )}
-
-      {controlOpen && (
-        <div
-          onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setControlOpen(false); setControlHit(null); }}
-          style={{ position: "absolute", inset: 0, zIndex: 25, background: "transparent" }}
-        />
-      )}
 
       <DragOverlay
         dragItem={dragItem}
@@ -1029,16 +1049,37 @@ export default function MoniHome({ onNavigate }: MoniHomeProps) {
 
       <DateRangeDialog
         visible={rangeDialogOpen}
-        rangeMode={rangeMode}
-        customStart={customStart}
-        customEnd={customEnd}
+        rangeMode={draftRangeMode}
+        customStart={draftRangeSelection.visual.start}
+        customEnd={draftRangeSelection.visual.end}
         minDate={rangeBounds.min}
         maxDate={rangeBounds.max}
         onClose={() => setRangeDialogOpen(false)}
-        onQuickSelect={(mode) => { setRangeMode(mode); setRangeDialogOpen(false); }}
-        onCustomStartChange={setCustomStart}
-        onCustomEndChange={setCustomEnd}
-        onConfirmCustom={() => { setRangeMode("自定义"); setRangeDialogOpen(false); }}
+        onQuickSelect={(mode) => {
+          /**
+           * 快捷项只更新弹窗草稿，不立即提交。
+           * `draftCustomStart/draftCustomEnd` 保存的是快捷项对应的原始请求范围，
+           * 真正显示在轨道上的位置会由 `draftRangeSelection.visual` 统一收口。
+           */
+          setDraftRangeMode(mode);
+          const effective = getRange(mode, draftCustomStart, draftCustomEnd, rangeBounds.min, rangeBounds.max);
+          setDraftCustomStart(toDateKey(effective.start));
+          setDraftCustomEnd(toDateKey(effective.end));
+        }}
+        onCustomStartChange={(value) => {
+          setDraftRangeMode("自定义");
+          setDraftCustomStart(value);
+        }}
+        onCustomEndChange={(value) => {
+          setDraftRangeMode("自定义");
+          setDraftCustomEnd(value);
+        }}
+        onConfirmCustom={() => {
+          setRangeMode(draftRangeMode);
+          setCustomStart(draftCustomStart);
+          setCustomEnd(draftCustomEnd);
+          setRangeDialogOpen(false);
+        }}
       />
     </div>
   );

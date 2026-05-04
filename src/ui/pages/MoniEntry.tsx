@@ -11,16 +11,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   APP_HEADER_MIN_HEIGHT,
   APP_HEADER_PADDING_TOP,
-  BOTTOM_NAV_PADDING_BOTTOM,
   C,
   CAT,
   LEDGER_HEADER_CONTROL_WIDTH,
-  PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
-import { Decor, GearIcon, LedgerHeaderControl, Logo, NavIcon, NoteIcon } from "@ui/features/moni-home/components";
+import { Decor, LedgerHeaderControl, Logo } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
-import { useKeyboard } from "@ui/hooks/useKeyboard";
+import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
 import type { BillImportSource } from "@shared/types";
@@ -281,7 +279,7 @@ function ImportPasswordPage({
         }
       `}</style>
 
-      <header style={{ padding: "18px 16px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+      <header style={{ padding: "max(18px, env(safe-area-inset-top, 0px)) 16px 12px", display: "flex", alignItems: "center", gap: 12 }}>
         <button
           type="button"
           onClick={onBack}
@@ -647,11 +645,12 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
       <div style={{ width: "100%", margin: "0 auto", padding: "0 12px", boxSizing: "border-box" }}>
         <div
           onClick={(e) => e.stopPropagation()}
+          className="entry-form-panel"
           style={{
             background: C.white, borderRadius: "20px 20px 0 0",
             padding: "20px 20px 24px", border: `2px solid ${C.dark}`, borderBottom: "none",
             animation: "slideUp .3s cubic-bezier(.4,0,.2,1)",
-            maxHeight: "75dvh", overflowY: "auto", overflowX: "hidden",
+            maxHeight: `calc(var(--app-root-height, 100dvh) - 60px)`, overflowY: "auto", overflowX: "hidden",
             width: "100%", boxSizing: "border-box",
           }}
         >
@@ -845,42 +844,6 @@ function SuccessToast({ visible, entry }: { visible: boolean; entry: SuccessToas
   );
 }
 
-function EntryBottomNav({ onOpenHome, onOpenSettings }: { onOpenHome: () => void; onOpenSettings: () => void }) {
-  return (
-    <div
-      style={{
-        background: C.white, borderTop: `1.5px solid ${C.border}`,
-        paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM,
-        display: "flex", justifyContent: "space-around", alignItems: "flex-end",
-        flexShrink: 0, zIndex: 20,
-      }}
-    >
-      <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onOpenSettings}>
-        <GearIcon />
-        <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>设置</div>
-      </div>
-      <div onClick={onOpenHome} style={{ position: "relative", textAlign: "center", cursor: "pointer" }}>
-        <div style={{ marginTop: -12 }}>
-          <div
-            style={{
-              width: 52, height: 52, background: C.dark, borderRadius: 16,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transform: "rotate(2deg)",
-            }}
-          >
-            <NavIcon />
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: C.dark }}>首页</div>
-        </div>
-      </div>
-      <div style={{ textAlign: "center", padding: "4px 16px" }}>
-        <NoteIcon active />
-        <div style={{ fontSize: 10, color: C.dark, fontWeight: 700, marginTop: 2 }}>记账</div>
-      </div>
-    </div>
-  );
-}
-
 // ──────────────────────────────────────────────
 // 主组件
 // ──────────────────────────────────────────────
@@ -891,9 +854,10 @@ interface MoniEntryProps {
   onNavigate: (page: "home" | "entry" | "settings") => void;
 }
 
-export default function MoniEntry({ onNavigate }: MoniEntryProps) {
+export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
   const {
     currentLedger,
+    availableLedgers,
     recentReferences,
     categoryDefinitions,
     actions,
@@ -934,6 +898,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [selectedImportSource, setSelectedImportSource] = useState<BillImportSource | null>(null);
   const [pendingPasswordImport, setPendingPasswordImport] = useState<PendingPasswordImport | null>(null);
+  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
 
   /**
    * 本轮 Android 真机修复要求首屏优先露出“记一笔”入口。
@@ -949,6 +914,8 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   const directionRef = useRef<"in" | "out">("out");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 防止 pointerup 之后紧跟 pointercancel 导致 closeOverlay 误触发
+  const entryFormOpenedRef = useRef(false);
 
   const setImportNoticeWithTimer = useCallback((nextNotice: ImportNotice | null, autoHideMs?: number) => {
     if (importNoticeTimerRef.current) {
@@ -1045,6 +1012,16 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
     setImportNoticeWithTimer(null);
   }, [setImportNoticeWithTimer]);
 
+  // 返回键：密码页 > 表单覆盖层 > 分类选择覆盖层
+  const hasOverlay = pendingPasswordImport !== null || phase === "form" || phase === "selecting" || phase === "dragging";
+  useBackHandler(() => {
+    if (pendingPasswordImport !== null) {
+      closeImportPasswordPage();
+    } else {
+      closeOverlay();
+    }
+  }, hasOverlay);
+
   const handleImportPasswordChange = useCallback((nextValue: string) => {
     const sanitizedValue = nextValue.replace(/\D/g, "").slice(0, 6);
 
@@ -1114,6 +1091,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   }, []);
 
   const openEntryForm = useCallback((category: string) => {
+    entryFormOpenedRef.current = true;
     setSelectedCat(category);
     setPhase("form");
     setHoverCat(null);
@@ -1122,6 +1100,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
   }, []);
 
   const closeOverlay = useCallback(() => {
+    entryFormOpenedRef.current = false;
     setPhase("idle");
     setHoverCat(null);
     hoverCatRef.current = null;
@@ -1180,13 +1159,19 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
 
     /**
      * pointercancel 只表示当前触摸流被系统中断，不代表用户已经松手完成投放。
-     * Android 真机上若把它和 pointerup 共用，会出现“手还没松就提前落类”的问题。
+     * Android 真机上若把它和 pointerup 共用，会出现”手还没松就提前落类”的问题。
+     * 若 entryFormOpenedRef 为 true，说明 pointerup 已触发 openEntryForm，此时
+     * pointercancel 可能紧随其后（race），跳过 closeOverlay 防止面板立刻被关闭。
      */
     const handlePointerCancel = () => {
       isPointerDownRef.current = false;
       setPressed(false);
       clearLongPressTimer();
       longPressTriggeredRef.current = false;
+      if (entryFormOpenedRef.current) {
+        entryFormOpenedRef.current = false;
+        return;
+      }
       closeOverlay();
     };
 
@@ -1244,8 +1229,6 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
     [actions, resetDragState],
   );
 
-  const { isKeyboardVisible } = useKeyboard();
-
   return (
     <div
       style={{
@@ -1258,7 +1241,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Nunito',-apple-system,sans-serif",
-        height: PHONE_FRAME_HEIGHT_CSS,
+        height: "100%",
       }}
     >
       <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -1269,6 +1252,8 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .entry-scroll-container { scrollbar-width: none; -ms-overflow-style: none; }
         .entry-scroll-container::-webkit-scrollbar { display: none; }
+        .entry-form-panel { scrollbar-width: none; -ms-overflow-style: none; }
+        .entry-form-panel::-webkit-scrollbar { display: none; }
         .entry-amount-input {
           color: ${C.dark};
         }
@@ -1300,8 +1285,49 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Logo />
-          <div style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: "flex", justifyContent: "flex-end" }}>
-            <LedgerHeaderControl ledgerName={currentLedger.name} ariaLabel="当前账本" />
+          <div style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: "flex", justifyContent: "flex-end", position: "relative" }}>
+            <LedgerHeaderControl
+              ledgerName={currentLedger.name}
+              ariaLabel="切换账本"
+              onClick={() => setLedgerDropdownOpen((open) => !open)}
+            />
+            {ledgerDropdownOpen && (
+              <div
+                style={{
+                  position: "absolute", top: 40, right: 0,
+                  minWidth: 146, maxWidth: 220,
+                  background: C.white, border: `2px solid ${C.dark}`,
+                  borderRadius: 14, boxShadow: "0 8px 20px rgba(0,0,0,.14)",
+                  overflow: "hidden", zIndex: 40,
+                }}
+              >
+                {availableLedgers.map((ledger, index) => {
+                  const selected = ledger.id === currentLedger.id;
+                  return (
+                    <div
+                      key={ledger.id}
+                      onClick={() => {
+                        void actions.switchLedger(ledger.id).catch((err) => {
+                          console.error("[MoniEntry] Failed to switch ledger:", err);
+                        });
+                        setLedgerDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        gap: 10, padding: "10px 12px", cursor: "pointer",
+                        borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : "none",
+                        background: selected ? C.blueBg : C.white,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {ledger.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: selected ? C.dark : "transparent", fontWeight: 700 }}>✓</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1354,12 +1380,7 @@ export default function MoniEntry({ onNavigate }: MoniEntryProps) {
           </div>
         )}
 
-        <div style={{ height: 72 }} />
       </div>
-
-      {!isKeyboardVisible && (
-        <EntryBottomNav onOpenHome={() => onNavigate("home")} onOpenSettings={() => onNavigate("settings")} />
-      )}
 
       <CategoryOverlay
         visible={phase === "selecting" || phase === "dragging"}

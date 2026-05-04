@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 import { CircleAlert, Clock3, LockKeyhole, LockKeyholeOpen, MessageCircle, MessageSquareQuote, PencilLine, ReceiptText, Sparkles, Tags, Wallet } from "lucide-react";
 import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, CAT } from "@ui/features/moni-home/config";
+import { useBackHandler } from "@ui/hooks/useBackHandler";
 import {
   getCategory,
   normalizeTransactionDetailText,
@@ -666,6 +667,15 @@ export function TransactionDetailPage({
   const openedAtRef = useRef(0);
   const reasoningInputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // 分类模态框打开时，返回键关闭模态框；否则关闭整个详情页
+  useBackHandler(() => {
+    if (isCategoryModalOpen) {
+      setIsCategoryModalOpen(false);
+    } else {
+      onClose();
+    }
+  });
+
   /**
    * 详情页切换到另一条交易时，所有本地编辑态都要跟着重置。
    * 这里把“动画重新进场”和“输入缓存同步到账本当前值”放到同一个 effect 中处理。
@@ -900,7 +910,7 @@ export function TransactionDetailPage({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-3 pt-2.5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)" }}>
+        <div className="flex-1 overflow-y-auto px-3 pt-2.5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)", userSelect: "text", WebkitUserSelect: "text" }}>
           <div className="flex flex-col gap-3">
             <section className={contentCardClassName}>
               <SectionEyebrow icon={<ReceiptText size={16} strokeWidth={2.2} />} title="交易原始信息" />

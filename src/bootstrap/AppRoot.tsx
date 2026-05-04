@@ -1,9 +1,26 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { registerPlugin, Capacitor } from '@capacitor/core';
 import { appFacade } from '@bootstrap/appFacade';
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
 import { useAppViewportLock } from '@ui/hooks/useAppViewportLock';
+import { useAiEngineControl } from '@ui/hooks/useAiEngineControl';
+import { useKeyboard } from '@ui/hooks/useKeyboard';
+import { BottomNav } from '@ui/features/moni-home/components';
+import { PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from '@ui/features/moni-home/config';
+import { invokeTopBackHandler } from '@system/device/backHandler';
+
+/** Capacitor App 插件（仅声明所需方法，无需安装 @capacitor/app 包） */
+interface CapacitorAppPlugin {
+  addListener(
+    event: 'backButton',
+    handler: (data: { canGoBack: boolean }) => void
+  ): Promise<{ remove: () => Promise<void> }>;
+  exitApp(): Promise<void>;
+}
+
+const CapacitorApp = registerPlugin<CapacitorAppPlugin>('App');
 
 type Page = 'home' | 'entry' | 'settings';
 
@@ -15,6 +32,58 @@ function RuntimeApp() {
   useAppViewportLock();
 
   const [activePage, setActivePage] = useState<Page>('home');
+  const { isKeyboardVisible } = useKeyboard();
+
+  /**
+   * AI 引擎控制状态放在 AppRoot 层，BottomNav 随之不再随页面切换而卸载。
+   * 这样 AI 运行状态和动画在三个页面间保持完全连贯，不会出现闪烁或重置。
+   */
+  const aiEngineControl = useAiEngineControl();
+
+  /** 是否显示"再次返回退出应用"提示条 */
+  const [exitToastVisible, setExitToastVisible] = useState(false);
+  const lastBackTimeRef = useRef(0);
+  const exitToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 监听 Android 系统返回键（仅在 Capacitor native 环境下生效）
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listenerHandle: { remove: () => Promise<void> } | null = null;
+
+    const registerBack = async () => {
+      listenerHandle = await CapacitorApp.addListener('backButton', () => {
+        // 优先交给二级页面处理（详情页、覆盖层、密码页等）
+        if (invokeTopBackHandler()) return;
+
+        // 一级页面：两次返回退出应用
+        const now = Date.now();
+        if (now - lastBackTimeRef.current < 2000) {
+          // 第二次返回：退出应用
+          if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
+          setExitToastVisible(false);
+          void CapacitorApp.exitApp();
+        } else {
+          // 第一次返回：显示提示条
+          lastBackTimeRef.current = now;
+          setExitToastVisible(true);
+          if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
+          exitToastTimerRef.current = setTimeout(() => {
+            setExitToastVisible(false);
+            exitToastTimerRef.current = null;
+          }, 2000);
+        }
+      });
+    };
+
+    void registerBack();
+
+    return () => {
+      if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
+      void listenerHandle?.remove();
+    };
+  }, []);
+
   const [autoLearningNotice, setAutoLearningNotice] = useState<{
     visible: boolean;
     message: string;
@@ -45,10 +114,52 @@ function RuntimeApp() {
   }, []);
 
   return (
-    <>
-      {activePage === 'entry' ? <MoniEntry onNavigate={handleNavigate} /> : null}
-      {activePage === 'settings' ? <MoniSettings onNavigate={handleNavigate} /> : null}
-      {activePage === 'home' ? <MoniHome onNavigate={handleNavigate} /> : null}
+    <div
+      style={{
+        width: PHONE_FRAME_WIDTH_CSS,
+        maxWidth: '100vw',
+        margin: 0,
+        height: PHONE_FRAME_HEIGHT_CSS,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        position: 'relative',
+        fontFamily: "'Nunito',-apple-system,sans-serif",
+      }}
+    >
+      {/* 页面内容区：占满 BottomNav 以上的全部高度 */}
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        {activePage === 'entry' ? <MoniEntry onNavigate={handleNavigate} /> : null}
+        {activePage === 'settings' ? <MoniSettings onNavigate={handleNavigate} /> : null}
+        {activePage === 'home' ? <MoniHome onNavigate={handleNavigate} /> : null}
+      </div>
+
+      {/* BottomNav 常驻于此，不随页面切换卸载，AI 状态保持连贯 */}
+      {!isKeyboardVisible && (
+        <BottomNav
+          aiOn={aiEngineControl.aiOn}
+          aiStop={aiEngineControl.aiStop}
+          controlOpen={aiEngineControl.controlOpen}
+          controlHit={aiEngineControl.controlHit}
+          onStartControl={aiEngineControl.onStartControl}
+          onEndControl={aiEngineControl.onEndControl}
+          onCancelControl={aiEngineControl.onCancelControl}
+          onUpdateControlHit={aiEngineControl.onUpdateControlHit}
+          activePage={activePage}
+          onSettings={() => handleNavigate('settings')}
+          onBookkeeping={() => handleNavigate('entry')}
+          onHomeNavigate={activePage !== 'home' ? () => handleNavigate('home') : undefined}
+        />
+      )}
+
+      {/* AI 控制条背景遮罩：打开时拦截页面点击，关闭控制条 */}
+      {aiEngineControl.controlOpen ? (
+        <div
+          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); aiEngineControl.onCancelControl(); }}
+          style={{ position: 'absolute', inset: 0, zIndex: 25, background: 'transparent' }}
+        />
+      ) : null}
+
       {autoLearningNotice.visible ? (
         <div
           style={{
@@ -101,7 +212,30 @@ function RuntimeApp() {
           </div>
         </div>
       ) : null}
-    </>
+
+      {/* 再次返回退出提示条（Android 一级页面返回手势） */}
+      {exitToastVisible ? (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99998,
+            background: 'rgba(20, 20, 20, 0.88)',
+            color: '#ffffff',
+            fontSize: 13,
+            fontWeight: 600,
+            padding: '8px 18px',
+            borderRadius: 20,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          再次返回退出应用
+        </div>
+      ) : null}
+    </div>
   );
 }
 

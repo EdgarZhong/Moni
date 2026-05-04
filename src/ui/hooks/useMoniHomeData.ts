@@ -73,6 +73,7 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
   homeDateRange: {
     start: null,
     end: null,
+    isEmpty: false,
   },
   isLoading: true,
 };
@@ -162,9 +163,10 @@ export interface MoniHomeData {
 export function useMoniHomeData(): MoniHomeData {
   const [readModel, setReadModel] = useState<MoniHomeReadModel>(EMPTY_READ_MODEL);
   const [trendWindowOffset, setTrendWindowOffset] = useState(0);
-  const [homeDateRange, setHomeDateRange] = useState<{ start: Date | null; end: Date | null }>({
+  const [homeDateRange, setHomeDateRange] = useState<{ start: Date | null; end: Date | null; isEmpty?: boolean }>({
     start: null,
     end: null,
+    isEmpty: false,
   });
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -253,17 +255,19 @@ export function useMoniHomeData(): MoniHomeData {
   const stopAiProcessing = useCallback(() => {
     appFacade.stopAiProcessing();
   }, []);
-  const updateHomeDateRange = useCallback((range: { start: Date | null; end: Date | null }) => {
+  const updateHomeDateRange = useCallback((range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => {
     const currentStart = homeDateRange.start?.getTime() ?? null;
     const currentEnd = homeDateRange.end?.getTime() ?? null;
+    const currentEmpty = homeDateRange.isEmpty === true;
     const nextStart = range.start?.getTime() ?? null;
     const nextEnd = range.end?.getTime() ?? null;
-    if (currentStart === nextStart && currentEnd === nextEnd) {
+    const nextEmpty = range.isEmpty === true;
+    if (currentStart === nextStart && currentEnd === nextEnd && currentEmpty === nextEmpty) {
       return;
     }
     appFacade.setDateRange(range);
     setHomeDateRange(range);
-  }, [homeDateRange.end, homeDateRange.start]);
+  }, [homeDateRange.end, homeDateRange.isEmpty, homeDateRange.start]);
   const updateTrendWindowOffset = useCallback((offset: number) => {
     setTrendWindowOffset((previous) => (previous === offset ? previous : offset));
   }, []);
