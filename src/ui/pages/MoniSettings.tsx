@@ -5,13 +5,15 @@ import {
   C,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
-import { Decor, Logo } from "@ui/features/moni-home/components";
+import { Decor, Logo, type HomeTransaction } from "@ui/features/moni-home/components";
+import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
 import type {
   MoniSettingsData,
 } from "@ui/hooks/useMoniSettingsData";
 import type {
+  HomeTransactionReadModel,
   SettingsAiConfig,
   SettingsExampleLibrarySummary,
   SettingsLedgerItem,
@@ -128,7 +130,55 @@ type LockedSheetState = {
   desc: string;
 };
 
-const SYSTEM_FALLBACK_TAG: CustomTag = { key: "其他", desc: "所有未落入用户显式标签的兜底支出", isSystem: true };
+const SYSTEM_FALLBACK_TAG: CustomTag = { key: "其他", desc: "所有未落入用户显式标签的兜底项目", isSystem: true };
+
+function toSettingsHomeTransaction(tx: {
+  id: string;
+  date: string;
+  title: string;
+  amount: number;
+  category: string;
+  isVerified: boolean;
+}): HomeTransactionReadModel {
+  return {
+    id: tx.id,
+    title: tx.title,
+    amount: tx.amount,
+    time: "12:00",
+    fullTime: `${tx.date} 12:00:00`,
+    sourceType: "manual",
+    sourceLabel: "随手记",
+    paymentMethod: "",
+    rawClass: tx.category,
+    counterparty: tx.title,
+    product: tx.title,
+    transactionStatus: "SUCCESS",
+    category: tx.category,
+    userCategory: tx.category,
+    aiCategory: null,
+    reasoning: null,
+    userNote: null,
+    remark: null,
+    direction: "out",
+    isVerified: tx.isVerified,
+    updatedAt: null,
+    sequence: 0,
+  };
+}
+
+function withSettingsHomeTransaction(tx: {
+  id: string;
+  date: string;
+  title: string;
+  amount: number;
+  category: string;
+  isVerified: boolean;
+}): SettingsLedgerTransaction {
+  return {
+    ...tx,
+    homeTransaction: toSettingsHomeTransaction(tx),
+  };
+}
 
 /**
  * S32 渐进式重分类在原型中需要可观测的数据承载。
@@ -139,19 +189,19 @@ const SYSTEM_FALLBACK_TAG: CustomTag = { key: "其他", desc: "所有未落入�
  */
 const INITIAL_LEDGER_TRANSACTIONS: Record<string, SettingsLedgerTransaction[]> = {
   daily: [
-    { id: "d-001", date: "2026-04-07", title: "盒马鲜生", amount: 86, category: "正餐", isVerified: false },
-    { id: "d-002", date: "2026-04-07", title: "瑞幸咖啡", amount: 21, category: "零食", isVerified: true },
-    { id: "d-003", date: "2026-04-06", title: "滴滴出行", amount: 29, category: "交通", isVerified: false },
-    { id: "d-004", date: "2026-04-06", title: "万象城餐厅", amount: 168, category: "大餐", isVerified: true },
-    { id: "d-005", date: "2026-04-05", title: "B站年度会员", amount: 198, category: "娱乐", isVerified: false },
-    { id: "d-006", date: "2026-04-05", title: "优衣库", amount: 259, category: "购物", isVerified: true },
-    { id: "d-007", date: "2026-04-04", title: "面包新语", amount: 33, category: "零食", isVerified: false },
+    withSettingsHomeTransaction({ id: "d-001", date: "2026-04-07", title: "盒马鲜生", amount: 86, category: "正餐", isVerified: false }),
+    withSettingsHomeTransaction({ id: "d-002", date: "2026-04-07", title: "瑞幸咖啡", amount: 21, category: "零食", isVerified: true }),
+    withSettingsHomeTransaction({ id: "d-003", date: "2026-04-06", title: "滴滴出行", amount: 29, category: "交通", isVerified: false }),
+    withSettingsHomeTransaction({ id: "d-004", date: "2026-04-06", title: "万象城餐厅", amount: 168, category: "大餐", isVerified: true }),
+    withSettingsHomeTransaction({ id: "d-005", date: "2026-04-05", title: "B站年度会员", amount: 198, category: "娱乐", isVerified: false }),
+    withSettingsHomeTransaction({ id: "d-006", date: "2026-04-05", title: "优衣库", amount: 259, category: "购物", isVerified: true }),
+    withSettingsHomeTransaction({ id: "d-007", date: "2026-04-04", title: "面包新语", amount: 33, category: "零食", isVerified: false }),
   ],
   travel: [
-    { id: "t-001", date: "2026-04-03", title: "高铁票", amount: 420, category: "交通", isVerified: true },
-    { id: "t-002", date: "2026-04-03", title: "酒店早餐", amount: 58, category: "正餐", isVerified: false },
-    { id: "t-003", date: "2026-04-02", title: "景区门票", amount: 180, category: "娱乐", isVerified: false },
-    { id: "t-004", date: "2026-04-02", title: "机场饮品", amount: 26, category: "零食", isVerified: true },
+    withSettingsHomeTransaction({ id: "t-001", date: "2026-04-03", title: "高铁票", amount: 420, category: "交通", isVerified: true }),
+    withSettingsHomeTransaction({ id: "t-002", date: "2026-04-03", title: "酒店早餐", amount: 58, category: "正餐", isVerified: false }),
+    withSettingsHomeTransaction({ id: "t-003", date: "2026-04-02", title: "景区门票", amount: 180, category: "娱乐", isVerified: false }),
+    withSettingsHomeTransaction({ id: "t-004", date: "2026-04-02", title: "机场饮品", amount: 26, category: "零食", isVerified: true }),
   ],
 };
 
@@ -1350,7 +1400,7 @@ function TagManagePage({
   classifyQueueDates: string[];
   onEnqueueClassifyDates: (dates: string[]) => { added: number; total: number };
 }) {
-  // “其他”不是用户真的在这里维护的数据，只在存在自定义标签时展示为兜底行。
+  // “其他”不是用户真的在这里维护的数据，只在存在用户标签时展示为兜底行。
   // 这样当用户删光所有标签时，列表可以自然进入空态，不会残留一个系统占位项。
   const displayTags = customTags.length ? [...customTags, SYSTEM_FALLBACK_TAG] : [];
   const [toastMessage, setToastMessage] = useState("");
@@ -2457,25 +2507,42 @@ function LearningSettingsPage({
 
 function FullReclassPage({
   onBack,
-  onTriggerFullReclassification,
+  onSubmitFullReclassification,
+  onStartQueuedClassification,
+  onUpdateCategory,
+  onUpdateUserReasoning,
+  onSetTransactionVerification,
+  availableCategories,
   aiStatus,
   ledgerTransactions,
 }: {
   onBack: () => void;
-  onTriggerFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
+  onSubmitFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
+  onStartQueuedClassification: MoniSettingsData["actions"]["startQueuedClassification"];
+  onUpdateCategory: MoniSettingsData["actions"]["updateCategory"];
+  onUpdateUserReasoning: MoniSettingsData["actions"]["updateUserReasoning"];
+  onSetTransactionVerification: MoniSettingsData["actions"]["setTransactionVerification"];
+  availableCategories: string[];
   aiStatus: string;
   ledgerTransactions: SettingsLedgerTransaction[];
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const [selectingLocked, setSelectingLocked] = useState(false);
+  const [confirmingCommit, setConfirmingCommit] = useState(false);
+  const [confirmingStart, setConfirmingStart] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [submittedDirtyDates, setSubmittedDirtyDates] = useState<string[]>([]);
   const [selectedLockedIds, setSelectedLockedIds] = useState<string[]>([]);
+  const [detailTx, setDetailTx] = useState<SettingsLedgerTransaction | null>(null);
   const running = aiStatus === "ANALYZING";
   const lockedTransactions = ledgerTransactions.filter((tx) => tx.isVerified);
   const unlockedTransactions = ledgerTransactions.filter((tx) => !tx.isVerified);
   const totalCount = ledgerTransactions.length;
   const unlockedCount = unlockedTransactions.length;
   const lockedCount = lockedTransactions.length;
+  const selectedLockedCount = selectedLockedIds.length;
+  const submitCount = unlockedCount + selectedLockedCount;
 
   const toggleLockedSelected = (txId: string) => {
     setSelectedLockedIds((current) => (current.includes(txId) ? current.filter((id) => id !== txId) : [...current, txId]));
@@ -2487,11 +2554,11 @@ function FullReclassPage({
       <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         <FormCard title="重分类说明">
           <div style={{ padding: "14px", borderRadius: 12, background: C.warmBg, border: `1.5px solid ${C.warmBd}`, marginBottom: 18, lineHeight: 1.6 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 6 }}>什么是全量重分类？</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 6 }}>全量重分类</div>
             <div style={{ fontSize: 12, color: C.dark }}>
-              系统会先对当前账本中所有未锁定交易重新生产重分类任务。
+              默认处理未锁定交易。
               <br />
-              若你在确认弹窗中额外勾选了部分锁定交易，这些条目会先显式解锁，再一并进入本次重分类。
+              你也可以额外选择已锁定条目，一起重分。
             </div>
           </div>
 
@@ -2509,54 +2576,51 @@ function FullReclassPage({
           </div>
 
           <div style={{ padding: "10px 14px", borderRadius: 10, background: C.pinkBg, border: `1px solid ${C.pinkBd}`, marginBottom: 16, fontSize: 12, color: C.coral, lineHeight: 1.5 }}>
-            全量重分类会清理未锁定交易的实例库记录；若你额外勾选并解锁了锁定交易，也会同步清理这些条目的样本。
-            <br />
-            并根据当前启用的记忆重新分类，请确认当前 AI 记忆情况，谨慎操作。
+            这是一次批量操作，请确认后再继续。
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Btn variant={running ? "secondary" : "danger"} onClick={() => setConfirming(true)} disabled={running || submitting}>
-              {running ? "重分类进行中…" : "开始全量重新分类"}
+            <Btn variant="danger" onClick={() => setSelectingLocked(true)} disabled={submitting || starting}>
+              开始全量重新分类
             </Btn>
           </div>
         </FormCard>
       </div>
 
-      <Dialog visible={confirming} title="确认全量重分类" onClose={() => setConfirming(false)}>
-        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.6, marginBottom: 14 }}>
-          即将对 <strong>{unlockedCount} 笔未锁定交易</strong> 发起全量重分类。
-          {selectedLockedIds.length > 0 ? (
-            <>
-              <br />
-              并额外解锁 <strong>{selectedLockedIds.length} 笔锁定交易</strong> 一并重分类。
-            </>
-          ) : null}
+      <Dialog visible={selectingLocked} title="选择锁定条目" onClose={() => setSelectingLocked(false)}>
+        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.6, marginBottom: 14, minHeight: 44 }}>
+          <div>默认处理 <strong>{unlockedCount} 笔未锁定交易</strong>。</div>
+          <div style={{ visibility: selectedLockedIds.length > 0 ? "visible" : "hidden" }}>
+            已额外选中 <strong>{selectedLockedIds.length} 笔锁定交易</strong>。
+          </div>
         </div>
         <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7, marginBottom: 12 }}>
-          锁定条目默认保持冻结。只有你在这里明确勾选的条目，才会先解锁再进入本次重分类。
+          点击条目可查看详情
         </div>
         {lockedTransactions.length ? (
           <>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-              <Btn
-                small
-                variant="secondary"
-                onClick={() => {
-                  if (selectedLockedIds.length === lockedTransactions.length) {
-                    setSelectedLockedIds([]);
-                    return;
-                  }
-                  setSelectedLockedIds(lockedTransactions.map((tx) => tx.id));
-                }}
-              >
-                {selectedLockedIds.length === lockedTransactions.length ? "取消全选" : "全选锁定交易"}
-              </Btn>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, minHeight: 32 }}>
+              <div style={{ width: 112, display: "flex", justifyContent: "flex-end" }}>
+                <Btn
+                  small
+                  variant="secondary"
+                  onClick={() => {
+                    if (selectedLockedIds.length === lockedTransactions.length) {
+                      setSelectedLockedIds([]);
+                      return;
+                    }
+                    setSelectedLockedIds(lockedTransactions.map((tx) => tx.id));
+                  }}
+                >
+                  {selectedLockedIds.length === lockedTransactions.length ? "取消全选" : "全选锁定交易"}
+                </Btn>
+              </div>
             </div>
-            <div style={{ border: `1.5px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16, maxHeight: 280, overflowY: "auto" }}>
+            <div className="scrollbar-hide" style={{ border: `1.5px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16, maxHeight: 280, overflowY: "auto" }}>
               {lockedTransactions.map((tx, index) => {
                 const selected = selectedLockedIds.includes(tx.id);
                 return (
-                  <label
+                  <div
                     key={tx.id}
                     style={{
                       display: "flex",
@@ -2569,14 +2633,21 @@ function FullReclassPage({
                     }}
                   >
                     <input type="checkbox" checked={selected} onChange={() => toggleLockedSelected(tx.id)} style={{ marginTop: 2 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>{tx.title}</div>
-                      <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
-                        {tx.date} · {tx.category} · {formatAmount(-tx.amount)}
+                    <button
+                      type="button"
+                      onClick={() => setDetailTx(tx)}
+                      style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.dark, lineHeight: 1.4 }}>{tx.title}</div>
+                      <div style={{ fontSize: 11, color: C.sub, marginTop: 3, lineHeight: 1.5 }}>
+                        {tx.date} · {formatAmount(-tx.amount)}
                       </div>
+                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <div style={{ padding: "2px 7px", borderRadius: 999, fontSize: 10, background: C.orangeBg, color: C.amber }}>已锁定</div>
+                      <div style={{ fontSize: 14, color: C.sub }}>›</div>
                     </div>
-                    <div style={{ padding: "2px 7px", borderRadius: 999, fontSize: 10, background: C.orangeBg, color: C.amber }}>已锁定</div>
-                  </label>
+                  </div>
                 );
               })}
             </div>
@@ -2587,35 +2658,154 @@ function FullReclassPage({
           </div>
         )}
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn full variant="secondary" onClick={() => setConfirming(false)}>
+          <Btn full variant="secondary" onClick={() => setSelectingLocked(false)}>
+            取消
+          </Btn>
+          <Btn
+            full
+            disabled={submitCount === 0}
+            onClick={() => {
+              setSelectingLocked(false);
+              setConfirmingCommit(true);
+            }}
+          >
+            继续
+          </Btn>
+        </div>
+      </Dialog>
+
+      <Dialog visible={confirmingCommit} title="确认提交本次重分类" onClose={() => setConfirmingCommit(false)}>
+        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.7, marginBottom: 14 }}>
+          将开始处理 <strong>{submitCount} 笔交易</strong>。
+        </div>
+        <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7, marginBottom: 16 }}>
+          是否确认重置条目分类？交易已有标签将丢失。
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn full variant="secondary" onClick={() => setConfirmingCommit(false)} disabled={submitting}>
             取消
           </Btn>
           <Btn
             full
             variant="danger"
+            disabled={submitting || submitCount === 0}
             onClick={() => {
-              setConfirming(false);
               setSubmitting(true);
-              void onTriggerFullReclassification(selectedLockedIds)
-                .then(() => {
-                  setToastMessage("重分类任务已入队，AI 正在处理中");
-                  setSelectedLockedIds([]);
+              void onSubmitFullReclassification(selectedLockedIds)
+                .then((result) => {
+                  if (result.affectedTxIds.length === 0 || result.dirtyDates.length === 0) {
+                    setConfirmingCommit(false);
+                    setSelectedLockedIds([]);
+                    setSubmittedDirtyDates([]);
+                    setToastMessage("当前没有可提交的重分类任务");
+                    window.setTimeout(() => setToastMessage(""), 2200);
+                    return;
+                  }
+                  setSubmittedDirtyDates(result.dirtyDates);
+                  setConfirmingCommit(false);
+                  if (running) {
+                    setSelectedLockedIds([]);
+                    setSubmittedDirtyDates([]);
+                    setToastMessage("任务已入队，AI 会继续处理");
+                    window.setTimeout(() => setToastMessage(""), 2200);
+                    return;
+                  }
+                  setConfirmingStart(true);
                 })
                 .catch(() => {
-                  setToastMessage("重分类触发失败，请稍后重试");
+                  setToastMessage("重分类提交失败，请稍后重试");
+                  window.setTimeout(() => setToastMessage(""), 2200);
                 })
                 .finally(() => {
                   setSubmitting(false);
+                });
+            }}
+          >
+            {submitting ? "提交中…" : "确认提交"}
+          </Btn>
+        </div>
+      </Dialog>
+
+      <Dialog visible={confirmingStart} title="是否立即开始处理" onClose={() => setConfirmingStart(false)}>
+        <div style={{ fontSize: 13, color: C.dark, lineHeight: 1.7, marginBottom: 14 }}>
+          现在开始进行分类吗？
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn
+            full
+            variant="secondary"
+            disabled={starting}
+            onClick={() => {
+              setConfirmingStart(false);
+              setSelectedLockedIds([]);
+              setSubmittedDirtyDates([]);
+              setToastMessage(`已入队 ${submittedDirtyDates.length} 天任务，你可以稍后再开始处理`);
+              window.setTimeout(() => setToastMessage(""), 2200);
+            }}
+          >
+            稍后处理
+          </Btn>
+          <Btn
+            full
+            disabled={starting || running}
+            onClick={() => {
+              setStarting(true);
+              void onStartQueuedClassification()
+                .then(() => {
+                  setConfirmingStart(false);
+                  setSelectedLockedIds([]);
+                  setSubmittedDirtyDates([]);
+                  setToastMessage(running ? "AI 已在处理中" : `已通知 AI 开始处理 ${submittedDirtyDates.length} 天任务`);
+                })
+                .catch(() => {
+                  setToastMessage("启动 AI 处理失败，请稍后重试");
+                })
+                .finally(() => {
+                  setStarting(false);
                   window.setTimeout(() => setToastMessage(""), 2200);
                 });
             }}
           >
-            确认开始
+            {starting ? "启动中…" : running ? "AI 已在处理中" : "现在开始"}
           </Btn>
         </div>
       </Dialog>
 
       <Toast visible={Boolean(toastMessage)} message={toastMessage} />
+      {detailTx ? (
+        <TransactionDetailPage
+          transaction={{
+            id: detailTx.homeTransaction.id,
+            originalId: detailTx.homeTransaction.originalId,
+            n: detailTx.homeTransaction.title,
+            a: detailTx.homeTransaction.amount,
+            t: detailTx.homeTransaction.time,
+            fullTimeLabel: detailTx.homeTransaction.fullTime,
+            sourceType: detailTx.homeTransaction.sourceType,
+            sourceLabel: detailTx.homeTransaction.sourceLabel,
+            pay: detailTx.homeTransaction.paymentMethod,
+            rawClass: detailTx.homeTransaction.rawClass,
+            counterparty: detailTx.homeTransaction.counterparty,
+            product: detailTx.homeTransaction.product,
+            transactionStatus: detailTx.homeTransaction.transactionStatus,
+            userCat: detailTx.homeTransaction.userCategory,
+            aiCat: detailTx.homeTransaction.aiCategory,
+            reason: detailTx.homeTransaction.reasoning,
+            userNote: detailTx.homeTransaction.userNote,
+            remark: detailTx.homeTransaction.remark,
+            direction: detailTx.homeTransaction.direction,
+            isVerified: detailTx.homeTransaction.isVerified,
+            updatedAt: detailTx.homeTransaction.updatedAt,
+            ih: detailTx.homeTransaction.sequence,
+          } as HomeTransaction}
+          dayId={detailTx.date}
+          availableCategories={availableCategories}
+          onClose={() => setDetailTx(null)}
+          onUpdateCategory={onUpdateCategory}
+          onUpdateUserReasoning={onUpdateUserReasoning}
+          onSetTransactionVerification={onSetTransactionVerification}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2685,6 +2875,10 @@ export default function MoniSettings({
       toggleAutoLearn,
       updateCompressionThreshold,
       triggerFullReclassification,
+      startQueuedClassification,
+      updateCategory,
+      updateUserReasoning,
+      setTransactionVerification,
       updateProvider,
       updateApiKey,
       updateBaseUrl,
@@ -2728,6 +2922,10 @@ export default function MoniSettings({
   }, [currentBudget.monthly]);
   const currentLedgerTransactions = ledgerTransactionsByLedger[activeLedgerId] || [];
   const currentClassifyQueueDates = classifyQueueByLedger[activeLedgerId] || [];
+  const currentAvailableCategories = useMemo(
+    () => Array.from(new Set([...currentCustomTags.map((tag) => tag.key), "其他"])),
+    [currentCustomTags]
+  );
   const aiProviderName = useMemo(
     () => PROVIDERS.find((item) => item.id === aiConfig.provider)?.name || aiConfig.provider || "未配置",
     [aiConfig.provider]
@@ -3040,7 +3238,12 @@ export default function MoniSettings({
         return (
           <FullReclassPage
             onBack={() => setPage("root")}
-            onTriggerFullReclassification={triggerFullReclassification}
+            onSubmitFullReclassification={triggerFullReclassification}
+            onStartQueuedClassification={startQueuedClassification}
+            onUpdateCategory={updateCategory}
+            onUpdateUserReasoning={updateUserReasoning}
+            onSetTransactionVerification={setTransactionVerification}
+            availableCategories={currentAvailableCategories}
             aiStatus={aiEngineStatus}
             ledgerTransactions={ledgerTransactions}
           />

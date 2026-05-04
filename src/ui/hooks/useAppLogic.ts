@@ -56,8 +56,11 @@ export function useAppLogic() {
   };
 
   const setUserNote = (id: string, userNote: string) => {
-    // 将备注更新走专用通道，避免连带写入用户分类
-    appFacade.updateTransactionRemark(id, userNote);
+    /**
+     * 当前正式口径里，这里对应的是“说明 / 理由”输入，
+     * 应写入 user_note，而不是去改原始账单 remark。
+     */
+    appFacade.updateUserReasoning(id, userNote);
   };
 
   const setVerification = (id: string, isVerified: boolean) => {

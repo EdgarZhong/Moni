@@ -1,6 +1,5 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
 import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
-import { classifyTrigger } from '@logic/application/ai/ClassifyTrigger';
 import { CompressionSession } from '@logic/application/ai/CompressionSession';
 import { LearningAutomationService, type AutoLearningEvent } from '@logic/application/ai/LearningAutomationService';
 import { LearningSession } from '@logic/application/ai/LearningSession';
@@ -25,6 +24,7 @@ import type {
   BillImportProbeResult,
   EntryPageReadModel,
   EntryRecentReference,
+  FullReclassificationSubmitResult,
   HomeAiEngineUiState,
   HomeBudgetCardReadModel,
   HomeDayGroupReadModel,
@@ -289,6 +289,7 @@ export class AppFacade {
 
     const dayMap = new Map<string, HomeTransactionReadModel[]>();
     const income: MoniHomeReadModel['income'] = [];
+    let totalTransactionCount = 0;
 
     let itemIndex = 0;
     for (const [txId, record] of sortedEntries) {
@@ -297,6 +298,9 @@ export class AppFacade {
       }
 
       const dateKey = toDateKey(record.time);
+      if (isDateKeyInRange(dateKey, selectedHomeDateRange)) {
+        totalTransactionCount += 1;
+      }
       if (record.direction === 'out') {
         if (!dayMap.has(dateKey)) {
           dayMap.set(dateKey, []);
@@ -350,6 +354,7 @@ export class AppFacade {
       categoryDefinitions,
       dailyTransactionGroups,
       income,
+      totalTransactionCount,
       trendCard,
       hintCards,
       budget: {
@@ -457,8 +462,11 @@ export class AppFacade {
   }
 
   public updateUserNote(id: string, note: string): void {
-    // 兼容旧调用：默认作为备注写入 remark，不再混用 user_note。
-    this.ledgerService.updateRemark(id, note);
+    /**
+     * 当前正式口径中，用户只可编辑“说明 / 理由”，写入 user_note；
+     * 原始账单里的 remark 继续只读展示，不再允许旧兼容路径把用户输入混写到 remark。
+     */
+    this.ledgerService.updateUserReasoning(id, note);
   }
 
   public setTransactionVerification(id: string, isVerified: boolean): void {
@@ -487,13 +495,13 @@ export class AppFacade {
       
       if (pendingCount === 0) {
         const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
-        const outgoingRecords = Object.values(records).filter((record) =>
-          record.transactionStatus === 'SUCCESS' && record.direction === 'out'
+        const successRecords = Object.values(records).filter((record) =>
+          record.transactionStatus === 'SUCCESS'
         );
 
         const candidateDates = Array.from(
           new Set(
-            outgoingRecords
+            successRecords
               .filter((record) => {
                 const finalCategory = record.user_category || record.ai_category || record.category;
                 const isUnclassified = !finalCategory || finalCategory === 'uncategorized';
@@ -811,13 +819,14 @@ export class AppFacade {
     const records = ledgerState.ledgerMemory?.records ?? {};
     const ledgerTransactions = Object.entries(records)
       .filter(([, r]) => r.transactionStatus === 'SUCCESS')
-      .map(([id, r]) => ({
+      .map(([id, r], index) => ({
         id,
         date: r.time.slice(0, 10),
         title: r.product?.trim() || r.counterparty?.trim() || '未知',
         amount: r.amount,
         category: r.user_category || r.ai_category || r.category || '其他',
         isVerified: r.is_verified ?? false,
+        homeTransaction: toHomeTransaction(id, r, index),
       }));
 
     return {
@@ -1126,30 +1135,43 @@ export class AppFacade {
   }
 
   // Reclassification
-  public async triggerFullReclassification(unlockTxIds: string[] = []): Promise<void> {
-    const ledgerId = this.ledgerManager.getActiveLedgerName();
-    if (!ledgerId) return;
-
+  public async triggerFullReclassification(unlockTxIds: string[] = []): Promise<FullReclassificationSubmitResult> {
     /**
-     * 全量重分类的生产边界仍然是“当前所有未锁定交易”；
-     * 若用户在设置页额外勾选了部分锁定条目，则先显式解锁，再把这些日期并入 dirtyDates。
-     * 这样 UI 仍通过 facade 触发，不直接下潜到底层分类运行态。
+     * 设置页全量重分类在新的三段式交互里，当前方法只负责：
+     * 1. 执行真正的数据提交（解锁 / 分类字段重置 / 实例库清理）
+     * 2. 将 dirtyDates 入队
+     *
+     * 注意：这里故意不再自动启动 BatchProcessor。
+     * “是否立即通知 AI 开始消费”由 UI 在提交成功后单独再问一次用户。
      */
-    const dirtyDates = this.ledgerService.collectDirtyDatesForAll();
-    if (unlockTxIds.length > 0) {
-      const result = await this.ledgerService.unlockTransactionsAndReclassify(
-        unlockTxIds,
-        dirtyDates,
-        'full_reclassification'
-      );
-      if (!result.success || !result.enqueueSuccess) {
-        throw new Error('unlock_transactions_and_reclassify_failed');
-      }
-    } else if (dirtyDates.length > 0) {
-      await classifyTrigger.enqueueConfirmedDates(ledgerId, dirtyDates, 'full_reclassification');
+    const result = await this.ledgerService.submitFullReclassification(unlockTxIds);
+    if (!result.success || !result.enqueueSuccess) {
+      throw new Error('submit_full_reclassification_failed');
     }
+    this.notify();
+    return {
+      affectedTxIds: result.affectedTxIds,
+      dirtyDates: result.dirtyDates,
+      enqueueSuccess: result.enqueueSuccess
+    };
+  }
 
-    await this.batchProcessor.run();
+  /**
+   * 显式通知 AI 引擎开始消费当前账本的已入队日期。
+   * 该入口专门给设置页“全量重分类”提交成功后的第三步确认使用。
+   */
+  public async startQueuedClassification(): Promise<void> {
+    try {
+      await this.batchProcessor.run();
+    } catch (error) {
+      /**
+       * 若处理器已经在运行，这里保持幂等：
+       * 用户点“现在开始”时不应把“已在运行”视为失败。
+       */
+      if (!(error instanceof Error) || error.message !== 'Processor is already running') {
+        throw error;
+      }
+    }
     this.notify();
   }
 

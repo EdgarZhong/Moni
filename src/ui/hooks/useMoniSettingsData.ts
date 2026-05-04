@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appFacade } from '@bootstrap/appFacade';
 import type {
+  FullReclassificationSubmitResult,
   SettingsAiConfig,
   SettingsExampleLibrarySummary,
   SettingsLearningConfig,
@@ -96,7 +97,11 @@ export interface MoniSettingsData {
     updateMonthlyBudget: (amount: number) => Promise<void>;
     updateCategoryBudget: (tag: string, amount: number) => Promise<void>;
     // Reclassification
-    triggerFullReclassification: (unlockTxIds?: string[]) => Promise<void>;
+    triggerFullReclassification: (unlockTxIds?: string[]) => Promise<FullReclassificationSubmitResult>;
+    startQueuedClassification: () => Promise<void>;
+    updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
+    updateUserReasoning: (transactionId: string, note: string) => void;
+    setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
     // Refresh
     refresh: () => void;
   };
@@ -276,7 +281,19 @@ export function useMoniSettingsData(): MoniSettingsData {
 
   // Reclassification
   const triggerFullReclassification = useCallback(async (unlockTxIds: string[] = []) => {
-    await appFacade.triggerFullReclassification(unlockTxIds);
+    return appFacade.triggerFullReclassification(unlockTxIds);
+  }, []);
+  const startQueuedClassification = useCallback(async () => {
+    await appFacade.startQueuedClassification();
+  }, []);
+  const updateCategory = useCallback((transactionId: string, category: string, reasoning?: string) => {
+    appFacade.updateTransactionCategory(transactionId, category, reasoning);
+  }, []);
+  const updateUserReasoning = useCallback((transactionId: string, note: string) => {
+    appFacade.updateUserReasoning(transactionId, note);
+  }, []);
+  const setTransactionVerification = useCallback((transactionId: string, isVerified: boolean) => {
+    appFacade.setTransactionVerification(transactionId, isVerified);
   }, []);
 
   return {
@@ -321,6 +338,10 @@ export function useMoniSettingsData(): MoniSettingsData {
       updateMonthlyBudget,
       updateCategoryBudget,
       triggerFullReclassification,
+      startQueuedClassification,
+      updateCategory,
+      updateUserReasoning,
+      setTransactionVerification,
       refresh: load,
     },
   };

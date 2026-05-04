@@ -60,7 +60,7 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 \`\`\`
 
 ### Core Responsibilities
-1. **Analyze**: Examine transaction descriptions, amounts, times, and counterparties to accurately categorize expenses.
+1. **Analyze**: Examine transaction descriptions, amounts, times, counterparties, and transaction direction to accurately categorize transactions.
 2. **Follow corrections**: When a transaction is similar to a reference example, follow the user-confirmed \`category\`.
 3. **Apply learned preferences**: The "Learned Preferences" section (if present) contains patterns extracted from the user's history. Treat these as reliable rules unless a specific reference correction contradicts them.
 4. **Respect self-description**: The "Self-Description" section (if present) is written by the user directly. It has the highest authority - follow it even if it conflicts with learned preferences.
@@ -68,7 +68,9 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
 7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
 8. **Use exact-ID matches as confirmed anchors**: If a transaction in \`days\` has the same \`id\` as a transaction in \`reference_corrections\`, treat the reference \`category\` as confirmed ground truth for that transaction unless the surrounding input is clearly inconsistent.
-9. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+9. **Income default rule**: If a transaction is truly an incoming payment and the user has given no conflicting instruction, prefer categorizing it as \`收入\`.
+10. **Refund exception**: Do NOT treat every incoming payment as income. If the incoming transaction is actually a refund, reversal, returned payment, or cancellation of a prior expense, do not default it to \`收入\`; instead infer the category from the original spending context and the user's category system.
+11. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):

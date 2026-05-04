@@ -129,7 +129,8 @@ Directory.Data/
 {
   "defined_categories": {
     "正餐": "日常正餐支出（早午晚），仅限双人用餐，不含大餐和零食",
-    "其他": "所有未落入用户显式标签的兜底支出"
+    "收入": "用户实际获得的入账收入，如工资、报销到账、转账收款、奖金等；若是消费撤销、售后返还、订单退款等逆向冲回，不归为收入，应按原消费语义判断",
+    "其他": "所有未落入用户显式标签的兜底项目；若 direction = out，表示兜底支出；若 direction = in，表示兜底入账"
   }
 }
 ```
@@ -137,7 +138,10 @@ Directory.Data/
 补充口径：
 
 - 分类键直接使用账本内存储键，UI 与 AI 都忠实消费该键，不额外维护英文显示映射
-- 默认手动预置标签为十类中文键；`其他` 不是手动预置项，而是在存在用户标签定义时由系统自动追加的兜底类别
+- 默认手动预置标签包含 `收入` 在内的一组中文键；`收入` 与其他普通标签完全一致，可改名、细分、删除，不是系统保护项
+- `其他` 不是手动预置项，而是在存在用户标签定义时由系统自动追加的唯一系统兜底类别
+- `uncategorized` 只是运行态 / 显示层使用的“未分类”状态，不进入用户可维护的 `defined_categories`
+- 交易原始字段 `remark` 只读展示，不允许用户编辑；用户可编辑的只有“说明 / 理由”，统一写入 `user_note`
 
 **三重作用**：
 
@@ -695,6 +699,7 @@ Directory.Data/ledgers/{ledger}/memory/
 - 锁定保护是一套**独立于 `USER > RULE_ENGINE > AI_AGENT` 提案优先级**的冻结机制；优先级负责“谁更高”，锁定负责“自动化流程能不能动”。
 - “某一天会重新入队”与“该天某条锁定交易仍受保护”并不矛盾：日期级任务可以重新生产，条目级冻结仍然成立。
 - 分类会话中不需要为锁定条目新增专门约束字段；`days[]` 继续注入完整交易，锁定保护由生产边界和写回边界共同承担。
+- 分类会话当前也**不按 `direction` 预先拆成“仅支出”或“仅收入”两路**；收入条目必须进入同一会话，否则退款、撤销、逆向冲回等入账会被错误预过滤。默认情况下，真实入账可优先归为 `收入`，但退款不默认算 `收入`，仍需结合原消费语义判断。
 
 **允许解锁的路径（当前冻结）**：
 
@@ -738,9 +743,11 @@ Directory.Data/ledgers/{ledger}/memory/
       → [仅受影响的交易（原属于被删标签）]
       → [真全量重分类（全账本所有未锁定交易）] →
           展示锁定交易列表，允许用户当场勾选并解锁，**提供快捷全选按钮**
-          → 用户确认对应范围按钮
+      → 用户确认对应范围按钮
               → 同步完成该范围的前置处理与 dirtyDates 入队
-              → 通知消费端开始消费（若当前空闲）
+              → 弹出二次确认："已加入重分类队列，是否现在开始处理？"
+                  → [稍后处理]：仅保留已入队任务，不通知消费端
+                  → [现在开始]：通知消费端开始消费（若当前空闲）
       → 关闭弹窗 / 返回上一步 → 结束
 ```
 
@@ -983,12 +990,22 @@ UI 调用学习后重分类接口
 
 ```
 UI 调用“设置页-全量重分类”接口
-  → 扫描全量日期
-  → 筛选：该天有未锁定条目
   → 展示锁定交易列表，允许用户当场勾选并解锁，提供快捷全选按钮
-  → 前置处理：入选日期中所有未锁定条目，以及用户当场解锁的锁定条目，按 `id` 清理实例库
-  → dirtyDates += date
-  → 入队 { date }
+  → 用户可全选、部分勾选或完全不勾选；在此之前不改任何真实数据
+  → 用户点击“继续提交”
+      → 弹出显式二次确认："即将执行解锁、分类重置、实例库清理与入队，是否继续？"
+          → [取消]：结束；不改数据
+          → [确认提交]：
+              → 扫描全量日期
+              → 筛选：该天有未锁定条目
+              → 以前述未锁定条目 + 用户勾选解锁的锁定条目为本次提交范围
+              → 对提交范围内条目执行分类字段重置；被勾选的锁定条目同时正式解锁
+              → 将上述“被解锁并 / 或被分类重置”的条目按 `id` 从实例库删除
+              → dirtyDates += date
+              → 入队 { date }
+              → 弹出下一步确认："数据已提交，是否现在通知 AI 开始处理？"
+                  → [稍后处理]：结束；保留已入队任务，不通知消费端
+                  → [现在开始]：通知消费端尝试启动
 ```
 
 **生产范围与当前消费范围不一致时的统一提示约束**：
@@ -1022,7 +1039,7 @@ UI 调用“设置页-全量重分类”接口
 | 删除标签 → [真全量重分类] | 对全账本未锁定条目生产任务 | 无额外条目重置 | 清理入选日期中所有未锁定条目的样本 + 当场解锁条目的样本 | 全账本日期 | 是 | 是 | 弹出全账本锁定交易列表；仅用户勾选条目解锁，可全选 |
 | 修改标签描述 → [该标签下仅未锁定交易] | 对该标签范围生产任务 | 无 | 清理该标签下未锁定条目的样本 | 该标签涉及日期 | 是 | 是 | 锁定条目不参与 |
 | 修改标签描述 → [该标签下所有交易] | 对该标签范围生产任务 | 当场解锁用户勾选的该标签锁定条目 | 清理该标签下未锁定条目 + 当场解锁条目的样本 | 该标签涉及日期 | 是 | 是 | 仅该标签下的锁定条目进入解锁列表，可全选 |
-| 设置页账本区 → [全量重分类] | 生产真全量任务 | 当场解锁用户勾选的锁定条目 | 清理全账本未锁定条目的样本 + 当场解锁条目的样本 | 全账本日期 | 是 | 是 | 弹出全账本锁定交易列表；仅用户勾选条目解锁，可全选 |
+| 设置页账本区 → [全量重分类] | 生产真全量任务 | 用户提交后二次确认通过后：重置提交范围内条目的分类字段；对用户勾选的锁定条目同时解锁 | 提交范围内凡是“被解锁并 / 或被分类重置”的条目，其实例库样本都删除 | 全账本日期 | 是 | 数据提交完成后再次确认 | 先展示全账本锁定交易列表；可全选 / 部分勾选 / 不勾选；提交前不改数据 |
 
 **按动作类型归类**：
 
@@ -1042,7 +1059,7 @@ UI 调用“设置页-全量重分类”接口
 4. **前置处理必须同步落盘**：所有解锁与分类元数据联动改写在入队前完成。
 5. **范围按钮即完成生产**：凡是会生成任务的范围按钮，点击当场必须完成该范围对应的入队，不得把“范围选择”延迟到后续按钮或后台推断。
 6. **新增标签是特例**：新增标签后的“现在启动分类”不生成新任务，只尝试启动当前已有消费流程。
-7. **消费启动自动衔接**：需要入队的按钮在入队成功后应自动通知消费端启动；若消费端已在运行，则不重复唤起。
+7. **消费启动默认自动衔接，但设置页账本区“全量重分类”改为三段式确认**：除明确特例外，需要入队的按钮在入队成功后应自动通知消费端启动；设置页账本区“全量重分类”必须先让用户在锁定列表中选择范围，再经过一次“是否真的提交破坏性数据变更”的显式确认，待数据提交与入队完成后，再由用户确认是否立即开始消费；若消费端已在运行，则“现在开始”也只做幂等尝试，不重复唤起。
 8. **触发接口按按钮拆分**：不强制抽象为统一聚合入口；每个按钮可拥有独立触发层接口，以保持语义清晰、实现可审计。
 9. **`data range` 永远不限制生产范围**：`data range` 只约束消费，不得反向限制 dirtyDates 生产、队列入队与补偿恢复。CSV 导入的特殊性仅在于：导入完成后 UI 会自动把 `data range` 调整回最大日期范围，因此消费限制会被自动放宽；这不是生产层例外。
 10. **范围外 backlog 需可感知**：若队列中仍有超出当前 `data range` 的待处理任务，系统必须提供统一的待处理提示能力。
@@ -1132,6 +1149,7 @@ UI 调用“设置页-全量重分类”接口
 **补充冻结说明**：
 
 - “执行重分类”在本阶段通常指：**完成该按钮对应的前置处理 + dirtyDates 入队，并自动通知消费端开始消费**
+- 设置页账本区“全量重分类”是当前唯一例外：**先选择锁定条目范围，再显式确认是否提交破坏性数据变更；提交完成后，再额外确认是否立即通知消费端开始消费**
 - `新增标签 → 现在启动分类` 属于特例：**只通知消费，不生产新任务**
 - “真全量”一词只用于：删除标签路径中的全账本重分类，以及设置页账本区的独立全量重分类入口
 - 修改标签描述场景禁止复用“全量”一词；只能使用“该标签下仅未锁定交易 / 该标签下所有交易”
@@ -1218,7 +1236,9 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 6. **Reasoning language**: The \`reasoning\` field MUST be written in ${config.language}.
 7. **Reasoning length**: The \`reasoning\` field MUST stay within 20 characters and should be as concise as possible.
 8. **Use exact-ID matches as confirmed anchors**: If a transaction in \`days\` has the same \`id\` as a transaction in \`reference_corrections\`, treat the reference \`category\` as confirmed ground truth for that transaction unless the surrounding input is clearly inconsistent.
-9. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+9. **Income default rule**: If a transaction is truly an incoming payment and the user has given no conflicting instruction, prefer categorizing it as \`收入\`.
+10. **Refund exception**: Do NOT treat every incoming payment as income. If the incoming transaction is actually a refund, reversal, returned payment, or cancellation of a prior expense, do not default it to \`收入\`; instead infer the category based on the original spending context and the user's category system.
+11. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):

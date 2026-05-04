@@ -21,6 +21,7 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
   categoryDefinitions: [],
   dailyTransactionGroups: [],
   income: [],
+  totalTransactionCount: 0,
   trendCard: {
     windowSize: 7,
     points: [],
@@ -131,6 +132,7 @@ function toHomeTransaction(dayId: string, item: MoniHomeReadModel['dailyTransact
 export interface MoniHomeData {
   days: Omit<HomeDayGroup, 'visibleItems'>[];
   income: MoniHomeReadModel['income'];
+  totalTransactionCount: number;
   trendCard: MoniHomeReadModel['trendCard'];
   currentLedger: LedgerOption;
   availableLedgers: LedgerOption[];
@@ -150,7 +152,6 @@ export interface MoniHomeData {
     switchLedger: (ledgerId: string) => Promise<boolean>;
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
     updateUserReasoning: (transactionId: string, note: string) => void;
-    updateRemark: (transactionId: string, note: string) => void;
     setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
@@ -245,9 +246,6 @@ export function useMoniHomeData(): MoniHomeData {
   const updateUserReasoning = useCallback((transactionId: string, note: string) => {
     appFacade.updateUserReasoning(transactionId, note);
   }, []);
-  const updateRemark = useCallback((transactionId: string, note: string) => {
-    appFacade.updateTransactionRemark(transactionId, note);
-  }, []);
   const setTransactionVerification = useCallback((transactionId: string, isVerified: boolean) => {
     appFacade.setTransactionVerification(transactionId, isVerified);
   }, []);
@@ -277,7 +275,6 @@ export function useMoniHomeData(): MoniHomeData {
       switchLedger,
       updateCategory,
       updateUserReasoning,
-      updateRemark,
       setTransactionVerification,
       startAiProcessing,
       stopAiProcessing,
@@ -292,7 +289,6 @@ export function useMoniHomeData(): MoniHomeData {
       stopAiProcessing,
       switchLedger,
       updateCategory,
-      updateRemark,
       updateHomeDateRange,
       updateTrendWindowOffset,
       updateUserReasoning,
@@ -302,6 +298,7 @@ export function useMoniHomeData(): MoniHomeData {
   return {
     days,
     income: readModel.income,
+    totalTransactionCount: readModel.totalTransactionCount,
     trendCard: readModel.trendCard,
     currentLedger: readModel.currentLedger,
     availableLedgers: readModel.availableLedgers,

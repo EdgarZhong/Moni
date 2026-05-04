@@ -46,11 +46,12 @@ const DEFAULT_CATEGORIES: Record<string, string> = {
   购物: '日用品、服装、电子产品、网购等购物消费',
   教育: '书籍、课程、培训、考试等教育支出',
   居住: '房租、水电煤、物业、维修等居住费用',
-  旅行: '旅游、酒店、机票、景点门票等旅行支出'
+  旅行: '旅游、酒店、机票、景点门票等旅行支出',
+  收入: '真实入账收入，如工资、奖金、报销到账、转账收款等；退款、撤销、逆向冲回不默认归入收入'
 };
 
 export const DEFAULT_MEMORY: LedgerMemory = {
-  version: '1.1', // 版本升级，表示数据结构变化
+  version: '1.2', // 版本升级，表示默认分类与运行口径变化
   last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   defined_categories: DEFAULT_CATEGORIES,
   records: {}

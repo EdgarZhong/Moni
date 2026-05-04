@@ -143,6 +143,7 @@ export interface MoniHomeReadModel {
   categoryDefinitions: LedgerCategoryDefinition[];
   dailyTransactionGroups: HomeDayGroupReadModel[];
   income: HomeIncomeEntry[];
+  totalTransactionCount: number;
   trendCard: HomeTrendCardReadModel;
   hintCards: HomeHintCardReadModel[];
   budget: HomeBudgetSummaryReadModel;
@@ -266,6 +267,13 @@ export interface SettingsLedgerTransaction {
   amount: number;
   category: string;
   isVerified: boolean;
+  homeTransaction: HomeTransactionReadModel;
+}
+
+export interface FullReclassificationSubmitResult {
+  affectedTxIds: string[];
+  dirtyDates: string[];
+  enqueueSuccess: boolean;
 }
 
 export interface SettingsPageReadModel {

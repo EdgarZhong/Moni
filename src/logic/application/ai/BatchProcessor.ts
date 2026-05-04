@@ -185,7 +185,7 @@ export class BatchProcessor {
 
     for (const date of dates) {
       const transactions = Object.entries(memory.records)
-        .filter(([, record]) => record.time.startsWith(date) && record.transactionStatus === 'SUCCESS' && record.direction === 'out')
+        .filter(([, record]) => record.time.startsWith(date) && record.transactionStatus === 'SUCCESS')
         .map(([id, record]) => ({ ...record, id }));
 
       if (transactions.length === 0) {

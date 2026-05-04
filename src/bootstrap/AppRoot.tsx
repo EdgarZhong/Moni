@@ -44,6 +44,7 @@ function RuntimeApp() {
   const [exitToastVisible, setExitToastVisible] = useState(false);
   const lastBackTimeRef = useRef(0);
   const exitToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoLearningNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 监听 Android 系统返回键（仅在 Capacitor native 环境下生效）
   useEffect(() => {
@@ -95,6 +96,31 @@ function RuntimeApp() {
   const handleNavigate = useCallback((page: Page) => {
     setActivePage(page);
   }, []);
+
+  useEffect(() => {
+    if (!autoLearningNotice.visible) {
+      if (autoLearningNoticeTimerRef.current != null) {
+        clearTimeout(autoLearningNoticeTimerRef.current);
+        autoLearningNoticeTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (autoLearningNoticeTimerRef.current != null) {
+      clearTimeout(autoLearningNoticeTimerRef.current);
+    }
+    autoLearningNoticeTimerRef.current = setTimeout(() => {
+      setAutoLearningNotice((value) => ({ ...value, visible: false }));
+      autoLearningNoticeTimerRef.current = null;
+    }, 3200);
+
+    return () => {
+      if (autoLearningNoticeTimerRef.current != null) {
+        clearTimeout(autoLearningNoticeTimerRef.current);
+        autoLearningNoticeTimerRef.current = null;
+      }
+    };
+  }, [autoLearningNotice.visible]);
 
   useEffect(() => {
     const unsubscribe = appFacade.subscribeAutoLearningEvents((event) => {
@@ -164,50 +190,28 @@ function RuntimeApp() {
         <div
           style={{
             position: 'fixed',
-            inset: 0,
+            top: 'max(12px, env(safe-area-inset-top, 0px))',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'min(320px, calc(100vw - 24px))',
             zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0, 0, 0, 0.32)',
-            padding: 12,
+            pointerEvents: 'none',
           }}
-          onClick={() => setAutoLearningNotice((value) => ({ ...value, visible: false }))}
         >
           <div
-            onClick={(event) => event.stopPropagation()}
             style={{
-              width: 'min(320px, calc(100% - 16px))',
-              background: '#ffffff',
-              border: '2px solid #222222',
-              borderRadius: 12,
-              boxShadow: '0 12px 32px rgba(0,0,0,0.22)',
-              padding: '14px 12px 12px',
+              background: '#e9fbf8',
+              border: '1.5px solid #9ee7dd',
+              borderRadius: 14,
+              boxShadow: '0 10px 24px rgba(60, 120, 116, 0.16)',
+              padding: '11px 14px 12px',
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#111111', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#126b63', marginBottom: 4 }}>
               自动学习已触发
             </div>
-            <div style={{ fontSize: 12, lineHeight: 1.5, color: '#303030', marginBottom: 12, wordBreak: 'break-word' }}>
+            <div style={{ fontSize: 12, lineHeight: 1.5, color: '#24534e', wordBreak: 'break-word' }}>
               {autoLearningNotice.message}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setAutoLearningNotice((value) => ({ ...value, visible: false }))}
-                style={{
-                  border: '2px solid #222222',
-                  borderRadius: 10,
-                  background: '#111111',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  padding: '6px 12px',
-                  cursor: 'pointer',
-                }}
-              >
-                知道了
-              </button>
             </div>
           </div>
         </div>

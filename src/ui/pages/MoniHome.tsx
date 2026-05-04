@@ -91,6 +91,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const {
     days: realDays,
     income: realIncome,
+    totalTransactionCount,
     trendCard,
     currentLedger,
     availableLedgers,
@@ -347,7 +348,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const incomeTotal = committedRangeSelection.applied.isEmpty
     ? 0
     : realIncome.filter((item) => isInRange(item.date, committedIncomeRange)).reduce((sum, item) => sum + item.amount, 0);
-  const txCount = expenseItems.length;
+  const txCount = committedRangeSelection.applied.isEmpty ? 0 : totalTransactionCount;
   const overview = useMemo(() => buildOverview(expenseItems), [expenseItems]);
 
   const budgetPct = budgetCard ? Math.round(budgetCard.usageRatio * 100) : 0;

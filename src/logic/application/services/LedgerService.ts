@@ -512,8 +512,11 @@ export class LedgerService {
   }
 
   public updateUserNote(id: string, userNote: string) {
-    // 兼容旧调用：默认作为备注处理
-    globalArbiter.updateRemark(id, userNote);
+    /**
+     * 当前正式口径中，用户输入的这一路是“说明 / 理由”，
+     * 统一写入 user_note；remark 继续保持原始解析值只读。
+     */
+    globalArbiter.updateUserNote(id, userNote);
   }
 
   public setVerification(id: string, isVerified: boolean) {
@@ -1057,6 +1060,51 @@ export class LedgerService {
         kind: 'reset_to_uncategorized',
         txIds: affectedTxIds,
         forceUnlock: false,
+        cleanupExamples: true
+      }
+    });
+  }
+
+  /**
+   * 设置页账本区“全量重分类”的真正提交动作。
+   * 这里在用户完成锁定列表选择并通过破坏性二次确认后统一执行：
+   * 1. 选中范围 = 当前全部未锁定条目 + 用户本次显式勾选解锁的锁定条目
+   * 2. 将选中范围内条目的分类字段统一重置为未分类
+   * 3. 若条目原本被锁定，则在这一步正式解锁
+   * 4. 将上述“被解锁并 / 或被分类重置”的条目样本从实例库删除
+   * 5. 按日期生成 dirtyDates 并完成入队
+   *
+   * 注意：该方法只负责数据提交与入队，不负责启动 AI 消费。
+   */
+  public async submitFullReclassification(unlockTxIds: string[] = []): Promise<AtomicReclassifyResult> {
+    if (!this.memoryFileHandle || !this.state.ledgerMemory) {
+      return { success: false, affectedTxIds: [], dirtyDates: [], enqueueSuccess: false };
+    }
+
+    // 全量重分类的主体范围始终是“当前所有未锁定条目”。
+    const unlockedTxIds = this.collectTxIdsByPredicate((record) => !record.is_verified);
+
+    // 锁定条目只有用户本次显式勾选后，才会被纳入提交范围。
+    const selectedLockedTxIds = Array.from(new Set(unlockTxIds)).filter(
+      (txId) => !!this.state.ledgerMemory?.records[txId]?.is_verified
+    );
+
+    // 最终提交范围 = 全部未锁定条目 + 用户勾选解锁的锁定条目。
+    const affectedTxIds = Array.from(new Set([...unlockedTxIds, ...selectedLockedTxIds]));
+    if (affectedTxIds.length === 0) {
+      return { success: true, affectedTxIds: [], dirtyDates: [], enqueueSuccess: true };
+    }
+
+    const dirtyDates = this.collectDirtyDatesForTxIds(affectedTxIds);
+    return this.executeAtomicReclassify({
+      dirtyDates,
+      reason: 'full_reclassification',
+      mutation: {
+        kind: 'reset_to_uncategorized',
+        txIds: affectedTxIds,
+        // 仅用户勾选的锁定条目会真正从锁定态切到未锁定；
+        // 原本未锁定的条目在 buildResetRecords 中保持未锁定即可。
+        forceUnlock: true,
         cleanupExamples: true
       }
     });
@@ -1685,10 +1733,11 @@ export class LedgerService {
       教育: '书籍、课程、培训、考试等教育支出',
       居住: '房租、水电煤、物业、维修等居住费用',
       旅行: '旅游、酒店、机票、景点门票等旅行支出',
-      其他: '其他未分类支出'
+      收入: '真实入账收入，如工资、奖金、报销到账、转账收款等；退款、撤销、逆向冲回不默认归入收入',
+      其他: '所有未落入用户显式标签的兜底项目'
     } as Record<string, string>;
 
-    return fallback[categoryName] || `${categoryName} 相关支出`;
+    return fallback[categoryName] || `${categoryName} 相关项目`;
   }
 
   private hasOwnCategory(categories: Record<string, string>, name: string): boolean {
@@ -1956,14 +2005,29 @@ export class LedgerService {
    */
   private normalizeLedgerMemoryForRuntime(memory: LedgerMemory): { memory: LedgerMemory; migrated: boolean } {
     const normalized = this.normalizeDefinedCategories(memory.defined_categories as LedgerMemory['defined_categories'] | string[]);
-    if (!normalized.migrated) {
+    /**
+     * `1.2` 之前的账本没有“收入”默认分类。
+     * 这里仅在旧版本账本首次升级时补一次默认分类，
+     * 升级完成后版本进入 `1.2`，用户后续若主动删除“收入”，就不会被反复自动补回。
+     */
+    const shouldInjectIncome =
+      memory.version !== '1.2' &&
+      !Object.prototype.hasOwnProperty.call(normalized.categories, '收入');
+
+    if (!normalized.migrated && !shouldInjectIncome) {
       return { memory, migrated: false };
     }
+    const nextCategories = shouldInjectIncome
+      ? this.orderDefinedCategories({
+          ...normalized.categories,
+          收入: LedgerService.sanitizeCategoryDescription(undefined, '收入')
+        })
+      : normalized.categories;
     return {
       memory: {
         ...memory,
-        defined_categories: normalized.categories,
-        version: '1.1'
+        defined_categories: nextCategories,
+        version: '1.2'
       },
       migrated: true
     };
