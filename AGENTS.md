@@ -129,6 +129,6 @@ Release 固定约定：
 
 当前版本：
 
-- `version`：`0.3.0`
-- `versionCode`：`3`
-- 当前 APK：`release/moni-alpha-v0.3.0.apk`
+- `version`：`0.3.1`
+- `versionCode`：`4`
+- 当前 APK：`release/moni-alpha-v0.3.1.apk`
