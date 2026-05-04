@@ -709,22 +709,14 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
       {(isExpanded || isAi) && (
         <div className="fi" style={{ marginTop: 6 }}>
           {day.visibleItems.map((item, index) => {
-            // AI 处理中：第一条正常渲染，其余显示骨架屏
-            if (isAi && index >= 1) {
-              return (
-                <div key={item.id} style={{ display: "flex", alignItems: "center", padding: "7px 0", borderBottom: index < day.visibleItems.length - 1 ? `0.5px solid ${C.line}` : "none" }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "#F5F5F5", marginRight: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <div className="sk" style={{ width: 14, height: 3 }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div className="sk" style={{ width: 90, height: 10, marginBottom: 4 }} />
-                    <div className="sk" style={{ width: 54, height: 8 }} />
-                  </div>
-                  <div className="sk" style={{ width: 32, height: 10 }} />
-                </div>
-              );
-            }
-
+            /**
+             * 旧实现会在 AI 工作态下只保留第一条真实流水，其余全部替换成骨架。
+             * 这会把同一天剩余条目直接“遮掉”，用户无法继续查看完整上下文。
+             *
+             * 当前口径改为：
+             * - AI 工作态只负责高亮整张日卡与头部状态提示；
+             * - 卡片体继续完整展示当天真实流水，不再用骨架覆盖后续条目。
+             */
             const category = getCategory(item);
             const meta = category ? CAT[category] : null;
             // aiOnly：只有 AI 分类，没有用户确认分类
@@ -836,6 +828,21 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
 
   return (
     <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM, display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
+      {(aiOn || aiStop) ? (
+        <style>{`
+          @keyframes rbs {
+            0%   { box-shadow: 0 0 0 2.5px ${C.coral},0 0 12px ${C.coral}44; }
+            25%  { box-shadow: 0 0 0 2.5px ${C.yellow},0 0 12px ${C.yellow}44; }
+            50%  { box-shadow: 0 0 0 2.5px ${C.blue},0 0 12px ${C.blue}44; }
+            75%  { box-shadow: 0 0 0 2.5px ${C.mint},0 0 12px ${C.mint}44; }
+            100% { box-shadow: 0 0 0 2.5px ${C.coral},0 0 12px ${C.coral}44; }
+          }
+          .ag {
+            animation: rbs 3s linear infinite;
+          }
+        `}</style>
+      ) : null}
+
       {/* 左：设置 */}
       <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
         <GearIcon active={isSettingsActive} />
@@ -1380,21 +1387,6 @@ function addDays(value: string, days: number): string {
 
 function diffDays(start: string, end: string): number {
   return Math.round((toDateNumber(end) - toDateNumber(start)) / 86_400_000);
-}
-
-/**
- * 日期字符串统一是 YYYY-MM-DD，可直接按字典序比较。
- * 这里抽成工具函数，避免各处手写三元表达式导致边界口径漂移。
- */
-function minDateString(...values: string[]): string {
-  return values.reduce((currentMin, value) => (value < currentMin ? value : currentMin));
-}
-
-/**
- * 与 minDateString 成对使用，返回一组日期中的最晚值。
- */
-function maxDateString(...values: string[]): string {
-  return values.reduce((currentMax, value) => (value > currentMax ? value : currentMax));
 }
 
 interface DateRangeDialogProps {

@@ -155,7 +155,7 @@ export interface MoniHomeData {
     setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
-    setHomeDateRange: (range: { start: Date | null; end: Date | null }) => void;
+    setHomeDateRange: (range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => void;
     setTrendWindowOffset: (offset: number) => void;
     refresh: () => Promise<void>;
   };
@@ -254,18 +254,31 @@ export function useMoniHomeData(): MoniHomeData {
     appFacade.stopAiProcessing();
   }, []);
   const updateHomeDateRange = useCallback((range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => {
-    const currentStart = homeDateRange.start?.getTime() ?? null;
-    const currentEnd = homeDateRange.end?.getTime() ?? null;
-    const currentEmpty = homeDateRange.isEmpty === true;
-    const nextStart = range.start?.getTime() ?? null;
-    const nextEnd = range.end?.getTime() ?? null;
-    const nextEmpty = range.isEmpty === true;
-    if (currentStart === nextStart && currentEnd === nextEnd && currentEmpty === nextEmpty) {
-      return;
-    }
-    appFacade.setDateRange(range);
-    setHomeDateRange(range);
-  }, [homeDateRange.end, homeDateRange.isEmpty, homeDateRange.start]);
+    /**
+     * 这里必须保持回调稳定，不能把 `homeDateRange` 本身放进依赖里。
+     * 否则页面每次写回日期范围，都会生成一个新的 action 引用，
+     * 进一步触发首页 restore effect 反复执行，表现成刷新后 range picker 快速来回跳。
+     *
+     * 因此改为函数式 setState：
+     * - 先基于上一帧状态判断本次范围是否真的变化；
+     * - 只有发生真实变化时，才同步写入 facade 和本地 state。
+     */
+    setHomeDateRange((previous) => {
+      const currentStart = previous.start?.getTime() ?? null;
+      const currentEnd = previous.end?.getTime() ?? null;
+      const currentEmpty = previous.isEmpty === true;
+      const nextStart = range.start?.getTime() ?? null;
+      const nextEnd = range.end?.getTime() ?? null;
+      const nextEmpty = range.isEmpty === true;
+
+      if (currentStart === nextStart && currentEnd === nextEnd && currentEmpty === nextEmpty) {
+        return previous;
+      }
+
+      appFacade.setDateRange(range);
+      return range;
+    });
+  }, []);
   const updateTrendWindowOffset = useCallback((offset: number) => {
     setTrendWindowOffset((previous) => (previous === offset ? previous : offset));
   }, []);

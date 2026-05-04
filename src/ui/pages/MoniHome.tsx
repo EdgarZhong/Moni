@@ -87,6 +87,81 @@ interface DetailContext {
   dayLabel: string;
 }
 
+/**
+ * 首页 Data Range Picker 的 UI 态需要跨页面切换保留，
+ * 但当前需求并不要求“杀进程后恢复”。
+ * 因此这里采用“模块级会话缓存”：
+ * - 切到设置/记账页再回来时，仍保留当前账本的 rangeMode / 草稿态 / 已提交态；
+ * - 应用被彻底关闭后自然丢失，不额外写入持久化存储；
+ * - 以账本 id 为 key，避免切换账本时互相污染。
+ */
+type HomeRangeUiSessionState = {
+  rangeMode: string;
+  customStart: string;
+  customEnd: string;
+  draftRangeMode: string;
+  draftCustomStart: string;
+  draftCustomEnd: string;
+};
+
+const homeRangeUiSessionStateByLedger = new Map<string, HomeRangeUiSessionState>();
+
+/**
+ * 将 Date 统一转回 YYYY-MM-DD。
+ * 这里放在组件外层，既能给初始化逻辑复用，也能避免在推导预设模式时重复创建函数。
+ */
+function toLocalDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * 尝试把一个“起止日期”反推回快捷模式。
+ * 这样当首页页面被卸载再挂载时，如果当前已提交范围本来就是“今天/本周/本月/近三月/全部”，
+ * 我们可以把 picker 的模式标签也一并恢复，而不是粗暴退回“本月”或强行显示成“自定义”。
+ */
+function inferRangeModeFromDates(start: string, end: string, minDate: string, maxDate: string): string {
+  const presetModes = ["今天", "本周", "本月", "近三月", "全部"] as const;
+  for (const mode of presetModes) {
+    const matched = getRange(mode, start, end, minDate, maxDate);
+    if (toLocalDateKey(matched.start) === start && toLocalDateKey(matched.end) === end) {
+      return mode;
+    }
+  }
+  return "自定义";
+}
+
+/**
+ * 在当前会话里为某个账本恢复首页日期范围 UI 状态。
+ * 若该账本还没有缓存，则从 facade 已知的 `homeDateRange + dataRange` 推导出一个稳定初值。
+ */
+function restoreHomeRangeUiSessionState(params: {
+  ledgerId: string;
+  minDate: string;
+  maxDate: string;
+  homeDateRange: { start: string | null; end: string | null };
+}): HomeRangeUiSessionState {
+  const cached = homeRangeUiSessionStateByLedger.get(params.ledgerId);
+  if (cached) {
+    return cached;
+  }
+
+  const initialStart = params.homeDateRange.start ?? params.minDate;
+  const initialEnd = params.homeDateRange.end ?? params.maxDate;
+  const initialMode = inferRangeModeFromDates(initialStart, initialEnd, params.minDate, params.maxDate);
+
+  return {
+    rangeMode: initialMode,
+    customStart: initialStart,
+    customEnd: initialEnd,
+    draftRangeMode: initialMode,
+    draftCustomStart: initialStart,
+    draftCustomEnd: initialEnd,
+  };
+}
+
 export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const {
     days: realDays,
@@ -149,6 +224,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const dragExpandArmedRef = useRef(false);
   const pendingDropRef = useRef<{ txId: string; category: string } | null>(null);
   const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
+  const restoredRangeSessionKeyRef = useRef<string | null>(null);
 
   const primaryHint = hintCards[0] ?? null;
   const aiStop = aiEngineUiState.status === "draining";
@@ -167,15 +243,10 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     return value;
   }, []);
   /**
-   * Date 对象统一回写成 YYYY-MM-DD 字符串，避免同一页面里反复手写格式化逻辑。
-   * 这里固定使用本地日期口径，与首页 `dataRange` / `homeDateRange` 保持一致。
+   * 组件内部继续使用稳定的日期格式化 helper，
+   * 但实现直接复用外层的 `toLocalDateKey`，避免存在两套口径。
    */
-  const toDateKey = useCallback((value: Date) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }, []);
+  const toDateKey = useCallback((value: Date) => toLocalDateKey(value), []);
 
   const railFilters = useMemo(() => {
     const categories = availableCategories.filter((category) => category && category !== "uncategorized");
@@ -283,20 +354,70 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     if (!rangeBounds.min || !rangeBounds.max) {
       return;
     }
-    setCustomStart(rangeBounds.min);
-    setCustomEnd(rangeBounds.max);
-    setDraftCustomStart(rangeBounds.min);
-    setDraftCustomEnd(rangeBounds.max);
-    if (homeDateRange.start && homeDateRange.end) {
-      setCustomStart(homeDateRange.start);
-      setCustomEnd(homeDateRange.end);
-      setDraftCustomStart(homeDateRange.start);
-      setDraftCustomEnd(homeDateRange.end);
+
+    /**
+     * 首页范围 UI 只应该在“进入一个新的账本上下文”时恢复一次：
+     * - 首次加载该账本；
+     * - 切换到账本；
+     * - 账本真实数据边界发生变化。
+     *
+     * 不能把 facade 回写出来的 `homeDateRange` 继续作为 restore 触发源，
+     * 否则一次正常的范围提交也会反向触发 restore，
+     * 造成 picker 在“今天 / 本月 / 全部”等模式之间来回跳。
+     */
+    const restoreSessionKey = `${currentLedger.id}::${rangeBounds.min}::${rangeBounds.max}`;
+    if (restoredRangeSessionKeyRef.current === restoreSessionKey) {
+      return;
     }
-    setRangeMode("本月");
-    setDraftRangeMode("本月");
+
+    const restored = restoreHomeRangeUiSessionState({
+      ledgerId: currentLedger.id,
+      minDate: rangeBounds.min,
+      maxDate: rangeBounds.max,
+      homeDateRange: {
+        start: homeDateRange.start,
+        end: homeDateRange.end,
+      },
+    });
+
+    restoredRangeSessionKeyRef.current = restoreSessionKey;
+    setRangeMode(restored.rangeMode);
+    setCustomStart(restored.customStart);
+    setCustomEnd(restored.customEnd);
+    setDraftRangeMode(restored.draftRangeMode);
+    setDraftCustomStart(restored.draftCustomStart);
+    setDraftCustomEnd(restored.draftCustomEnd);
     actions.setTrendWindowOffset(0);
-  }, [currentLedger.id, rangeBounds.max, rangeBounds.min]);
+  }, [actions.setTrendWindowOffset, currentLedger.id, homeDateRange.end, homeDateRange.start, rangeBounds.max, rangeBounds.min]);
+
+  useEffect(() => {
+    if (!currentLedger.id || !dataRange.min || !dataRange.max) {
+      return;
+    }
+
+    /**
+     * 只在拿到真实账本边界后写会话缓存，避免初始加载阶段用“今天兜底值”污染缓存。
+     * 缓存内容包含 committed + draft 两套状态，确保重新进入首页时弹窗草稿也保持原样。
+     */
+    homeRangeUiSessionStateByLedger.set(currentLedger.id, {
+      rangeMode,
+      customStart,
+      customEnd,
+      draftRangeMode,
+      draftCustomStart,
+      draftCustomEnd,
+    });
+  }, [
+    currentLedger.id,
+    customEnd,
+    customStart,
+    dataRange.max,
+    dataRange.min,
+    draftCustomEnd,
+    draftCustomStart,
+    draftRangeMode,
+    rangeMode,
+  ]);
 
   const trendTrackMax = Math.max(...trendCard.points.map((item) => item.amount), 1);
 
