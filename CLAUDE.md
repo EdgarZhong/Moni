@@ -10,7 +10,7 @@
 ## 当前版本状态
 
 - 当前已发布稳定版本：`0.3.5`
-- 下一版本：`0.3.6`
+- 下一版本：`0.3.7`
 - 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
 ## 当前阶段基线
@@ -26,8 +26,10 @@
 
 ## 本轮阶段决策
 
-- 本轮目标版本固定为 `0.3.6`；当前迭代先处理恶性 bug 与设计系统回归，再处理增强项与 release 链路排查
-- 执行顺序固定为：`AI 数据归零止血 -> Root 导航/覆盖层架构收口 -> 顶部安全区统一 -> 记账页拖拽面板收口 -> 返回手势修复 -> AI 零记忆提示 -> demo seed / release 数据携带排查`
+- 本轮目标版本固定为 `0.3.7`，拆成两个连续 patch 里程碑：
+  - `0.3.6`：先修导航/覆盖层时序、Android 返回手势、顶部安全区与导入指南对齐问题
+  - `0.3.7`：再补 AI 零记忆风险提示与 demo seed / release 数据携带排查
+- 执行顺序固定为：`全覆盖二级页 chrome 时序修复 -> Android 返回手势修复 -> 顶部安全区统一 -> AI 零记忆提示 -> demo seed 首装导入/落盘排查`
 - 本轮实现禁止继续沿用“AppRoot 常驻全局 header/footer 套住所有页面”的做法；页面/面板显隐必须回归各自语义
 - Root 层实现方案固定为三段：
   - `State Host`：只承载账本状态、AI 状态、返回栈、全局 toast、viewport lock
@@ -42,7 +44,7 @@
   - 详情页：无 header、无 footer
   - 记账页随手记拖拽面板：与首页同类，但简化为“分类区覆盖全屏 + 底部安全带”，不再保留首页细则面板父容器语义
   - 压缩包密码输入页：无 header、无 footer，但顶部 safe area 必须正确留白
-  - 导入指南页：无 header、保留 footer；正文主体居中，不得整体右偏
+  - 导入指南页：无 header、保留 footer；沿用当前视觉结构，不再追加“正文整体居中”专项调整任务
 
 ## Release Changelog
 
@@ -53,8 +55,8 @@
 - 修复首页拖拽触发时"大餐"分类被误选：移除分类格子的 onPointerEnter/onPointerLeave
 - 记账页分类格子高度改为 gridAutoRows: max-content，与首页样式对齐
 - AppRoot 重构为三段架构（State Host / Chrome Controller / Overlay Host），页面级 header 下放各页面
-- 顶部安全区 APP_HEADER_PADDING_TOP 贯通所有二级层（密码页/指南页/详情页/设置子页）
-- Android 返回手势完整接入：首页三个覆盖层（拖拽蒙版/理由对话框/日期范围对话框）补入 useBackHandler，记账页覆盖层链完整（指南页 > 密码页 > 表单覆盖层），详情页分类模态框 > 关闭详情页
+- 顶部安全区统一常量已接入首页/记账页/设置页/部分二级层；真机顶部留白仍待继续收口，当前不能视为完全完成
+- `backHandler` 栈与 `useBackHandler` hook 已接入主要覆盖层；Android 真机系统返回手势仍未完成闭环，当前不能视为已修复
 - 修复 DateRangePicker 状态恢复逻辑，避免初始值污染缓存
 - Demo seed manifest 排除 llm_logs，体积从 56 个文件缩减至 16 个文件，消除低内存设备偶发加载失败风险
 - 首页交易列表手势状态机重构：抽离 `useHomeListGestureController` 独立 hook；状态机 `idle→pressing→scrolling/dragging→inertia`；跟手滚动改为 `startScrollTop - deltaY`（位置无关）；惯性滚动改为 `rAF + velocity * dt + exponential decay`（刷新率无关）；释放速度用 100ms 样本窗口；`handleScroll` rAF 节流
@@ -118,30 +120,38 @@
 - 建立 `window.__MONI_DEBUG__ / window.__MONI_E2E__` 浏览器调试入口与 Playwright / MCP 页面验证链路
 - 收口 Android 关键修复，包括账本创建写盘、软键盘稳定画布与主要页面布局问题
 
+## 当前进度同步
+
+- 用户已确认：详情页与压缩包密码输入页的全屏覆盖语义已明显改善，当前交互体感“舒服多了”；本轮不再把 `BottomNav` 作为这两类页面的主动隐藏对象，而是改由全屏覆盖层自身接管画布
+- 用户已确认：顶部 safe area 的最新口径收敛为“浏览器可见的基础 header padding 不变，仅 Android 原生环境额外的 safe area 统一回收约 `15%`”
+- 用户已确认：首页列表“快速滑动后按住停住再松手仍触发惯性”的问题已明显缓解，当前暂未发现新的交互问题
+- 用户已确认：教程页当前视觉结构冻结，以当前代码为准；本轮不再继续追加对齐细则任务
+- 上述四项仍属于本轮未 release 的动态进度，不进入 `Release Changelog`，待本轮正式发布后再归并
+
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| AI 引擎状态切换导致首页数据归零 | Done | 已确认为首页 `useMoniHomeData` 的订阅陈旧闭包：`appFacade.subscribe()` 持有首帧 `loadReadModel`，AI `notify()` 时把页面错误刷回“默认本月空态”；已改为通过 ref 调用最新 `loadReadModel`，MCP 复现与回归通过 |
-| Root 导航与二级层形态回退 | Done | `AppRoot` 只保留状态宿主与可控 `BottomNav`；首页/记账页 header DOM 已下放回页面自身；首页拖拽层、记账页拖拽层与详情页已改为 portal/fixed 全屏覆盖；设置页全量重分类内拉起的详情页也会隐藏底部导航 |
-| 顶部安全区统一与导入指南对齐 | Done | `APP_HEADER_PADDING_TOP` 贯通所有二级层；密码页 BottomNav 在页面显示时正确隐藏，顶部安全区 `calc(env(safe-area-inset-top)+6px)` 已应用；真机复核留待 release 后 |
-| 记账页拖拽面板对齐首页系统 | Done | 首页/记账页拖拽蒙版 z-index 提升至 400（高于 BottomNav 300），字体显式覆盖为 Nunito，记账页分类格子改为 gridAutoRows: max-content 自适应高度，移除首页误触发的 onPointerEnter/onPointerLeave |
-| Android 返回手势修复 | Done | `backHandler` 栈 + `useBackHandler` hook 已建立；TransactionDetailPage / MoniEntry 各覆盖层已接入；MoniHome 补入三个覆盖层（拖拽蒙版、理由对话框、日期范围对话框）；AppRoot 一级页两次返回退出逻辑已就位 |
+| 分类引擎跳过 `2026-03-25 / 2026-03-24 / 2026-03-23` 异常排查 | Pending | 用户复现报告：`date range = 全部`，开启分类引擎后这三天的未分类条目会被本轮跳过，更早日期被持续处理并在处理完后自动停机；再次开启后，`2026-03-25` 会单独处理，随后 `2026-03-24 / 2026-03-23` 会一起处理；用户已反复做“丢掉、更改、重新测试”，现象稳定复现 |
+| Android 返回手势修复 | Pending | 当前真机系统返回手势仍会直接退桌面；目标是“二级页优先返回、一级页首次返回弹提示、二次返回才退出” |
 | AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供“先消费一周并自动停止”选项 |
-| Demo seed / release 数据携带排查 | Pending | 最近两次构建仅带 `secure_config`，账本数据未随包进入；需定位 manifest 生成/打包/首启安装链路 |
+| Demo seed 首装导入 / 落盘排查 | Pending | 当前判断已更新：安装包本身带着 demo seed 数据；问题是同一 APK 在部分安装场景下首装自动导入/落盘偶发失败，需定位首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
-| 首页手势状态机重构 | Done | 抽离 `useHomeListGestureController` 独立 hook；状态机 `idle→pressing→scrolling/dragging→inertia` 完整实现；跟手滚动改用 `startScrollTop - deltaY` 公式（位置无关）；惯性滚动改为 `rAF + velocity * dt + exponential decay`（刷新率无关）；释放速度用 100ms 样本窗口；`handleScroll` rAF 节流 |
-| DateRange 过滤逻辑未彻底收口 | Done | 修复 DateRangePicker 状态恢复逻辑，避免初始值污染缓存 |
 
 ## 当前优先级
 
-1. AI 零记忆消费风险提示
-2. Demo seed / release 数据携带排查
-3. Android 文件选择器真机验收
+1. 分类引擎跳过 `2026-03-25 / 2026-03-24 / 2026-03-23` 异常排查
+2. Android 返回手势修复
+3. AI 零记忆消费风险提示
+4. Demo seed 首装导入 / 落盘排查
+5. Android 文件选择器真机验收
 
 ## 当前阶段风险
 
-- Android 返回手势当前真机行为仍可能直接退桌面；浏览器开发态无法等价证明原生返回链路
+- 分类引擎当前存在一条新的高优先级异常：`date range = 全部` 时，`2026-03-25 / 2026-03-24 / 2026-03-23` 会在首轮运行中被跳过，而更早日期继续被处理；重复启动后才分批补处理，说明 dirtyDates 生产、入队顺序、停机判定或单次会话上限之间可能存在边界问题
+- Android 返回手势当前真机行为仍会直接退桌面；浏览器开发态无法等价证明原生返回链路
+- AI 零记忆提示与“先消费一周并自动停止”保护尚未接入，当前仍存在无记忆状态下误耗 token 的风险
+- Demo seed 首装自动导入/落盘链路仍未排查；当前已知现象是“同一 APK 有时能成功带出用户数据，有时不能”，更像首启安装链路偶发失败，而不是构建产物本身缺数据
 - Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 - 引入 `xlsx` 与 `zip.js` 后，`npm run build` 仍会出现 chunk size warning
 
@@ -180,6 +190,7 @@
 - 账单导入入口当前固定为记账页现有“微信账单 / 支付宝账单”两个按钮，不新增导入舱或重做表面结构
 - 账单导入两个按钮的实现差异仅为 `expectedSource` 与平台化密码提示文案，后续统一走 `probeBillImportFiles()` 与 `importBillFiles()`
 - 记账一级页中的账单解析中、导入中、导入成功提示统一复用导入卡片底部提示条；这些提示出现时，默认“查看导入指南”提示需要让位
+- 顶部安全区当前固定口径：浏览器里可见的基础 header padding 不变；仅 Android 原生环境额外的 `safe area` 统一回收约 `15%`
 - 浏览器开发态文件系统 mock 当前只保留 `Directory.Data -> virtual_android_filesys/sandbox_path`；旧的独立 `Documents_path` 已退出运行时路径
 - 本项目语境中的端到端测试默认指 agent 通过 `Playwright MCP` 在浏览器开发态做自动化页面验证
 - Playwright MCP 默认移动端测试视口以 `./.codex/playwright.mcp.json` 为准，当前为 `390 x 844`

@@ -14,7 +14,7 @@ import clsx from "clsx";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleAlert, Clock3, LockKeyhole, LockKeyholeOpen, MessageCircle, MessageSquareQuote, PencilLine, ReceiptText, Sparkles, Tags, Wallet } from "lucide-react";
-import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, CAT } from "@ui/features/moni-home/config";
+import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, CAT, FULL_SCREEN_OVERLAY_Z_INDEX } from "@ui/features/moni-home/config";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
 import {
   getCategory,
@@ -859,8 +859,15 @@ export function TransactionDetailPage({
 
   const contentCardClassName = "rounded-card-sm border-secondary border-muted bg-white p-3.5";
 
-  return (
-    <div className="pointer-events-auto absolute inset-0 z-[70] font-brand text-ink">
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="pointer-events-auto fixed inset-0 font-brand text-ink"
+      style={{ zIndex: FULL_SCREEN_OVERLAY_Z_INDEX }}
+    >
       <div
         onClick={() => requestClose("backdrop")}
         className="absolute inset-0 transition-opacity duration-200"
@@ -1084,6 +1091,7 @@ export function TransactionDetailPage({
         onClose={() => setIsCategoryModalOpen(false)}
         onSelect={handleSelectCategory}
       />
-    </div>
+    </div>,
+    document.body
   );
 }

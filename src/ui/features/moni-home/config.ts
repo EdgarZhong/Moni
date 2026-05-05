@@ -119,18 +119,33 @@ export const PHONE_FRAME_HEIGHT_CSS = "var(--app-root-height)";
 /** 手机帧容器宽度（屏幕自适配） */
 export const PHONE_FRAME_WIDTH_CSS = "100vw";
 
+/** 浏览器与通用画布内都保持不变的基础顶部留白。 */
+export const APP_HEADER_BASE_PADDING_TOP_PX = 6;
+
 /**
  * 统一顶栏顶部留白。
- * 这里不再把 safe area 直接塞进页面根容器，而是只让顶栏自己吃掉安全区，
- * 这样三页切换时标题不会因为外层 padding 不一致而上下跳动。
+ * 这里仍坚持“两层语义”：
+ * 1. 设备自身的 safe area
+ * 2. 画布内标题区基础顶边距
+ *
+ * Android 原生环境额外通过 `--app-header-native-safe-area-trim` 对“safe area 那一层”
+ * 做统一回收；浏览器里可见的基础 padding 不在这里被改动。
  */
-export const APP_HEADER_PADDING_TOP = "calc(env(safe-area-inset-top) + 6px)";
+export const APP_HEADER_PADDING_TOP = `calc(env(safe-area-inset-top, 0px) + ${APP_HEADER_BASE_PADDING_TOP_PX}px + var(--app-header-native-safe-area-trim, 0px))`;
 
 /**
  * 统一顶栏最小高度。
  * 无论右侧是账本胶囊、设置标签还是返回按钮，标题行都保持同一高度。
  */
 export const APP_HEADER_MIN_HEIGHT = 36;
+
+/**
+ * 全屏覆盖二级页的统一层级。
+ * 必须明确高于 Root 层 `BottomNav`（当前为 300），
+ * 这样详情页、密码页这类“无 footer”的页面才能像覆盖底下 header 一样，
+ * 在滑入/滑出过程中自然盖住底部导航，而不是先把导航卸载掉。
+ */
+export const FULL_SCREEN_OVERLAY_Z_INDEX = 420;
 
 /**
  * 首页与记账页右上角账本选择器的统一宽度。

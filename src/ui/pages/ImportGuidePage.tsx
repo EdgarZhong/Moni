@@ -504,55 +504,6 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
           position: "relative",
         }}
       >
-        {/* 引导卡：暖色 Hint Card 语法 */}
-        <div
-          key={`intro-${activeSource}`}
-          className="guide-step-enter"
-          style={{
-            background: C.warmBg,
-            border: `1.5px solid ${C.warmBd}`,
-            borderRadius: 14,
-            padding: "12px 14px",
-            display: "flex",
-            gap: 12,
-            alignItems: "flex-start",
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: C.white,
-              border: `1.5px solid ${theme.accent}55`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-              flexShrink: 0,
-            }}
-          >
-            ☕
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: C.dark,
-                fontFamily: "'Nunito',sans-serif",
-                marginBottom: 4,
-              }}
-            >
-              开始之前
-            </div>
-            <div style={{ fontSize: 12, color: "#8B5E2B", lineHeight: 1.55 }}>
-              {theme.intro}
-            </div>
-          </div>
-        </div>
-
         {/* 步骤列表 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {theme.steps.map((step, idx) => (

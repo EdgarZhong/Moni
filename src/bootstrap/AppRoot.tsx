@@ -65,6 +65,29 @@ function RuntimeApp() {
   const exitToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoLearningNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    /**
+     * 顶部 safe area 的“设备额外下沉”统一在 Root 层写成一个 CSS 变量。
+     * 这样所有 header / 二级页只消费同一套 `APP_HEADER_PADDING_TOP`，
+     * 不再让每个页面自己判断 Android、自己减像素。
+     *
+     * 用户当前要求只回收“Android 专属那一层 safe area”，
+     * 不动浏览器里肉眼可见的基础顶边距。
+     */
+    if (typeof document === 'undefined') return;
+
+    const root = document.documentElement;
+    const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+    root.style.setProperty(
+      '--app-header-native-safe-area-trim',
+      isNativeAndroid ? 'calc(env(safe-area-inset-top, 0px) * -0.15)' : '0px'
+    );
+
+    return () => {
+      root.style.removeProperty('--app-header-native-safe-area-trim');
+    };
+  }, []);
+
   // 监听 Android 系统返回键（仅在 Capacitor native 环境下生效）
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || !canRegisterNativeBackButtonListener()) return;

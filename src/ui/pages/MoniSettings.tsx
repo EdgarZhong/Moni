@@ -2515,7 +2515,6 @@ function FullReclassPage({
   availableCategories,
   aiStatus,
   ledgerTransactions,
-  onBottomNavVisibilityChange,
 }: {
   onBack: () => void;
   onSubmitFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
@@ -2526,7 +2525,6 @@ function FullReclassPage({
   availableCategories: string[];
   aiStatus: string;
   ledgerTransactions: SettingsLedgerTransaction[];
-  onBottomNavVisibilityChange?: (visible: boolean) => void;
 }) {
   const [selectingLocked, setSelectingLocked] = useState(false);
   const [confirmingCommit, setConfirmingCommit] = useState(false);
@@ -2545,18 +2543,6 @@ function FullReclassPage({
   const lockedCount = lockedTransactions.length;
   const selectedLockedCount = selectedLockedIds.length;
   const submitCount = unlockedCount + selectedLockedCount;
-
-  useEffect(() => {
-    /**
-     * 设置页二级页默认保留底部导航；
-     * 只有这里拉起的交易详情页需要临时隐藏底部导航，才能满足“详情页无 footer”。
-     */
-    onBottomNavVisibilityChange?.(detailTx === null);
-
-    return () => {
-      onBottomNavVisibilityChange?.(true);
-    };
-  }, [detailTx, onBottomNavVisibilityChange]);
 
   const toggleLockedSelected = (txId: string) => {
     setSelectedLockedIds((current) => (current.includes(txId) ? current.filter((id) => id !== txId) : [...current, txId]));
@@ -2852,13 +2838,11 @@ function AboutPage({ onBack }: { onBack: () => void }) {
  * 2. 与首页、记账页共享同一外框规格
  * 3. 通过底部导航把三页串成一个完整原型流
  */
-export default function MoniSettings({
-  onNavigate: _onNavigate,
-  onBottomNavVisibilityChange,
-}: {
+export default function MoniSettings(props: {
   onNavigate: (page: "home" | "entry" | "settings") => void;
   onBottomNavVisibilityChange?: (visible: boolean) => void;
 }) {
+  const { onNavigate: _onNavigate } = props;
   const {
     aiConfig,
     selfDescription: selfDescriptionFromReadModel,
@@ -3262,7 +3246,6 @@ export default function MoniSettings({
             availableCategories={currentAvailableCategories}
             aiStatus={aiEngineStatus}
             ledgerTransactions={ledgerTransactions}
-            onBottomNavVisibilityChange={onBottomNavVisibilityChange}
           />
         );
       case "about":

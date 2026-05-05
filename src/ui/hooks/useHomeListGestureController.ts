@@ -60,10 +60,14 @@ export type HomeListGestureControllerOptions<TItem> = {
 };
 
 export type HomeListGestureController<TItem> = {
-  onItemPointerDown: (item: TItem, event: React.PointerEvent<HTMLElement>) => void;
-  onItemPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
-  onItemPointerUp: (event: React.PointerEvent<HTMLElement>) => void;
-  onItemPointerCancel: (event: React.PointerEvent<HTMLElement>) => void;
+  /**
+   * DayCard 当前把事件参数声明为 `React.PointerEvent<Element>`。
+   * 这里同步收口到同一层级，避免控制器对具体 DOM 标签类型做不必要的假设。
+   */
+  onItemPointerDown: (item: TItem, event: React.PointerEvent<Element>) => void;
+  onItemPointerMove: (event: React.PointerEvent<Element>) => void;
+  onItemPointerUp: (event: React.PointerEvent<Element>) => void;
+  onItemPointerCancel: (event: React.PointerEvent<Element>) => void;
   stopInertia: () => void;
   resetGesture: () => void;
 };
@@ -79,6 +83,8 @@ const INERTIA_TAU = 325; // ms，惯性衰减时间常数
 const MIN_VELOCITY = 0.025; // px/ms，惯性停止阈值
 const MAX_VELOCITY = 3.0; // px/ms，防止异常样本
 const MAX_DT = 32; // ms，防止主线程卡顿后跳帧
+const RELEASE_STILL_TIME_MS = 48; // 手指停住超过这段时间再松手，应视为“停驻释放”
+const RELEASE_STILL_DISTANCE_PX = 1.5; // 释放点与最后一次移动点几乎重合时，判定为停驻
 
 // ─── 工具函数 ───────────────────────────────────────────────
 
@@ -92,6 +98,17 @@ function getMaxScrollTop(scroller: HTMLElement) {
 
 function clampScrollTop(scroller: HTMLElement, value: number) {
   return clamp(value, 0, getMaxScrollTop(scroller));
+}
+
+function pushVelocitySample(samples: MoveSample[], sample: MoveSample) {
+  samples.push(sample);
+
+  while (
+    samples.length > 2 &&
+    sample.t - samples[0].t > VELOCITY_WINDOW_MS
+  ) {
+    samples.shift();
+  }
 }
 
 /**
@@ -253,7 +270,7 @@ export function useHomeListGestureController<TItem>(
   // ─── pointerdown ────────────────────────────────────────
 
   const onItemPointerDown = useCallback(
-    (item: TItem, event: React.PointerEvent<HTMLElement>) => {
+    (item: TItem, event: React.PointerEvent<Element>) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
       const scroller = scrollRef.current;
@@ -326,7 +343,7 @@ export function useHomeListGestureController<TItem>(
   // ─── pointermove ────────────────────────────────────────
 
   const onItemPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+    (event: React.PointerEvent<Element>) => {
       const state = stateRef.current;
       const scroller = scrollRef.current;
 
@@ -370,15 +387,7 @@ export function useHomeListGestureController<TItem>(
         const now = performance.now();
 
         // 记录速度样本
-        state.samples.push({ t: now, y: event.clientY });
-
-        // 只保留最近 VELOCITY_WINDOW_MS 的样本
-        while (
-          state.samples.length > 2 &&
-          now - state.samples[0].t > VELOCITY_WINDOW_MS
-        ) {
-          state.samples.shift();
-        }
+        pushVelocitySample(state.samples, { t: now, y: event.clientY });
 
         // 跟手滚动公式：startScrollTop - deltaY（位置无关）
         const nextScrollTop = state.startScrollTop - dy;
@@ -411,7 +420,7 @@ export function useHomeListGestureController<TItem>(
   // ─── pointerup ──────────────────────────────────────────
 
   const onItemPointerUp = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+    (event: React.PointerEvent<Element>) => {
       const state = stateRef.current;
 
       if (state.pointerId !== event.pointerId) return;
@@ -436,7 +445,24 @@ export function useHomeListGestureController<TItem>(
 
       // ── scrolling → 判断是否启动惯性 ──
       if (state.mode === "scrolling") {
-        const velocity = computeReleaseVelocity(state.samples);
+        const releaseTime = performance.now();
+        const lastSample = state.samples[state.samples.length - 1] ?? null;
+        const releaseDistance = lastSample ? Math.abs(event.clientY - lastSample.y) : 0;
+        const releaseIdleTime = lastSample ? releaseTime - lastSample.t : Infinity;
+
+        /**
+         * 关键修复：
+         * - 快速滑动后若手指已经停住，再松手，不应继续触发惯性；
+         * - 仅当“释放前最后一小段时间仍在持续移动”时，才允许进入惯性滚动。
+         */
+        const velocity = (lastSample
+          && releaseIdleTime >= RELEASE_STILL_TIME_MS
+          && releaseDistance <= RELEASE_STILL_DISTANCE_PX)
+          ? 0
+          : (() => {
+              pushVelocitySample(state.samples, { t: releaseTime, y: event.clientY });
+              return computeReleaseVelocity(state.samples);
+            })();
 
         state.mode = "idle";
         state.pointerId = null;
@@ -480,7 +506,7 @@ export function useHomeListGestureController<TItem>(
   // ─── pointercancel ──────────────────────────────────────
 
   const onItemPointerCancel = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+    (event: React.PointerEvent<Element>) => {
       const state = stateRef.current;
 
       if (state.pointerId !== event.pointerId) return;

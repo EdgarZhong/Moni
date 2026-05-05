@@ -14,6 +14,7 @@ import {
   APP_HEADER_PADDING_TOP,
   C,
   CAT,
+  FULL_SCREEN_OVERLAY_Z_INDEX,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
 import { Decor, RootLedgerPageHeader } from "@ui/features/moni-home/components";
@@ -273,7 +274,12 @@ function ImportPasswordPage({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 60,
+        /**
+         * 密码页属于“无 footer”的全屏覆盖二级页。
+         * 这里必须高于 Root 层 BottomNav，让导航在转场期间被页面自然盖住，
+         * 而不是先被卸载、再在退场后重新挂回。
+         */
+        zIndex: FULL_SCREEN_OVERLAY_Z_INDEX,
         background: C.bg,
         display: "flex",
         flexDirection: "column",
@@ -1264,12 +1270,17 @@ export default function MoniEntry({
   useEffect(() => {
     /**
      * 记账 Root 默认保留底部导航；
-     * 最新口径里，分类拖拽态继续保留底部导航，只在密码页与录入表单阶段隐藏。
+     * 最新口径里，分类拖拽态继续保留底部导航；录入表单仍然隐藏底部导航。
+     * 但“压缩包密码输入页”现在已经改为真正的全屏覆盖页，它会自己盖住底部导航，
+     * 因此这里不能再把 BottomNav 主动隐藏掉，否则就会出现“先消失、后补出现”的时序断裂。
      * 导入指南页继续保留底部导航。
      */
     const shouldShowBottomNav =
       guideSource !== null
-      || (pendingPasswordImport === null && (phase === "idle" || phase === "selecting" || phase === "dragging"));
+      || pendingPasswordImport !== null
+      || phase === "idle"
+      || phase === "selecting"
+      || phase === "dragging";
     onBottomNavVisibilityChange?.(shouldShowBottomNav);
 
     return () => {

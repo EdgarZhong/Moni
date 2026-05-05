@@ -139,7 +139,7 @@ npm run build:release
 
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：
 
-- [docs/Moni_E2E_RECORD_INT1.md](D:/Code/Moni/docs/Moni_E2E_RECORD_INT1.md)
+- [docs/Moni_E2E_RECORD_INT1.md](./docs/Moni_E2E_RECORD_INT1.md)
 
 当前默认 E2E 测试画像：
 
@@ -231,4 +231,3 @@ npm run build:release
 
 - 浏览器 F12 虚拟文件系统是高保真开发替身，但不是 Android 真机行为的完全等价物
 - 首页读模型虽然已收口 `homeDateRange / trendCard / 手记展示字段 / AI backlog`，仍需继续做浏览器人工回归和 Android 真环境验收
-

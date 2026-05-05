@@ -137,7 +137,6 @@ export default function MoniHome({
   currentLedger: shellCurrentLedger,
   availableLedgers,
   onSwitchLedger,
-  onBottomNavVisibilityChange,
 }: MoniHomeProps) {
   const {
     days: realDays,
@@ -799,19 +798,6 @@ export default function MoniHome({
     setDraftCustomEnd(customEnd);
     setRangeDialogOpen(true);
   }, [customEnd, customStart, rangeMode]);
-
-  useEffect(() => {
-    /**
-     * 首页最新口径：
-     * - 交易详情页仍然是完整接管画布的二级页，需要隐藏底部导航；
-     * - 拖拽蒙版与拖拽后的理由弹层不再主动隐藏底部导航，避免出现背景跳变。
-     */
-    onBottomNavVisibilityChange?.(detailContext === null);
-
-    return () => {
-      onBottomNavVisibilityChange?.(true);
-    };
-  }, [detailContext, onBottomNavVisibilityChange]);
 
   // 返回键优先级（从低到高 push，互斥状态，确保每次只有一个激活）：
   // 日期范围对话框 → 理由对话框 → 拖拽蒙版
