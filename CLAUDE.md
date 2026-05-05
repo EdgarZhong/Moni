@@ -91,6 +91,7 @@
 |------|------|------|
 | 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
 | 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
+| 账单导入指南页（ImportGuidePage）完成与接入 | Done | 收口到 `0.3.4`；微信 / 支付宝双 Tab 图文步骤，全屏覆盖不共享全局 header，BottomNav z-index 修复，底部邮箱导出补充说明 |
 | Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
 | 设计规格体系切换与核心文档收口 | Done | 新的四层设计规格体系已落地：`DESIGN_SPEC_SYSTEM.md` 为总入口，`docs/design/Moni_Brand_Identity.md` / `docs/design/SURFACE_SYSTEM.md` / `tailwind.config.js` 分别承接 Layer 0/1/2；核心文档中的旧设计系统残留口径已移除，现行规则入口已统一收口 |
 | 首页拖拽细则面板与交易详情页规格收口 | Done | 拖拽面板展开阈值、详情页 Surface System 重构、字体收口、Header 简化、单一 `user_note` 编辑区、分类选择器圆角裁切等全部收口；`2026-05-04` 详情页视觉精修已由用户现场验证完成 |
@@ -102,8 +103,6 @@
 
 1. 表现层稳定性收口（剩余：`MoniHome` 按交互域拆分、根层 AI 控件独立状态链路）
 2. Android 文件选择器真机验收
-3. 账单导入指南页（`ImportGuidePage`）完成与接入
-4. 下一版本号与 release 范围定义
 
 ## 当前阶段风险
 
