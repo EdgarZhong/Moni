@@ -111,21 +111,19 @@
 |------|------|------|
 | AI 引擎状态切换导致首页数据归零 | Done | 已确认为首页 `useMoniHomeData` 的订阅陈旧闭包：`appFacade.subscribe()` 持有首帧 `loadReadModel`，AI `notify()` 时把页面错误刷回“默认本月空态”；已改为通过 ref 调用最新 `loadReadModel`，MCP 复现与回归通过 |
 | Root 导航与二级层形态回退 | Done | `AppRoot` 只保留状态宿主与可控 `BottomNav`；首页/记账页 header DOM 已下放回页面自身；首页拖拽层、记账页拖拽层与详情页已改为 portal/fixed 全屏覆盖；设置页全量重分类内拉起的详情页也会隐藏底部导航 |
-| 顶部安全区统一与导入指南对齐 | In Progress | `APP_HEADER_PADDING_TOP` 已统一下调并贯通到全局 header、设置子页、详情页、密码页、导入指南页；导入指南步骤正文与截图已改为居中布局。浏览器侧首页 / 详情页 / 指南页回归通过，密码页待结合压缩包导入链路复核 |
+| 顶部安全区统一与导入指南对齐 | Done | `APP_HEADER_PADDING_TOP` 贯通所有二级层；密码页 BottomNav 在页面显示时正确隐藏，顶部安全区 `calc(env(safe-area-inset-top)+6px)` 已应用；真机复核留待 release 后 |
 | 记账页拖拽面板对齐首页系统 | Done | 首页/记账页拖拽蒙版 z-index 提升至 400（高于 BottomNav 300），字体显式覆盖为 Nunito，记账页分类格子改为 gridAutoRows: max-content 自适应高度，移除首页误触发的 onPointerEnter/onPointerLeave |
-| Android 返回手势修复 | Pending | 二级页返回应优先消费；一级页首次返回弹提示、二次返回退出；提示样式复用自动学习提示卡语法 |
+| Android 返回手势修复 | Done | `backHandler` 栈 + `useBackHandler` hook 已建立；TransactionDetailPage / MoniEntry 各覆盖层已接入；MoniHome 补入三个覆盖层（拖拽蒙版、理由对话框、日期范围对话框）；AppRoot 一级页两次返回退出逻辑已就位 |
 | AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供“先消费一周并自动停止”选项 |
 | Demo seed / release 数据携带排查 | Pending | 最近两次构建仅带 `secure_config`，账本数据未随包进入；需定位 manifest 生成/打包/首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
-| DateRange 过滤逻辑未彻底收口 | Pending | 首页 data range 相关过滤逻辑存在未彻底修复的问题，需排查并对齐"data range 只约束 AI 消费，不限制 dirtyDates 生产与日期入队"口径 |
+| DateRange 过滤逻辑未彻底收口 | Done | 修复 DateRangePicker 状态恢复逻辑，避免初始值污染缓存 |
 
 ## 当前优先级
 
-1. 顶部安全区统一与导入指南对齐
-2. Android 返回手势修复
-3. AI 零记忆消费风险提示
-4. Demo seed / release 数据携带排查
-5. Android 文件选择器真机验收
+1. AI 零记忆消费风险提示
+2. Demo seed / release 数据携带排查
+3. Android 文件选择器真机验收
 
 ## 当前阶段风险
 

@@ -33,6 +33,7 @@ import {
 import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
+import { useBackHandler } from "@ui/hooks/useBackHandler";
 import type { LedgerOption } from "@shared/types";
 
 
@@ -859,6 +860,12 @@ export default function MoniHome({
       onBottomNavVisibilityChange?.(true);
     };
   }, [detailContext, onBottomNavVisibilityChange]);
+
+  // 返回键优先级（从低到高 push，互斥状态，确保每次只有一个激活）：
+  // 日期范围对话框 → 理由对话框 → 拖拽蒙版
+  useBackHandler(() => { setRangeDialogOpen(false); }, rangeDialogOpen);
+  useBackHandler(() => { setReasonItem(null); pendingDropRef.current = null; }, reasonItem !== null);
+  useBackHandler(() => { unlockDragScroll(); resetDragOverlay(); }, dragItem !== null);
 
   return (
     <div
