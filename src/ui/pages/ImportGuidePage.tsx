@@ -352,9 +352,9 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
   return (
     <div
       style={{
-        position: "absolute",
+        position: "fixed",
         inset: 0,
-        zIndex: 60,
+        zIndex: 200,
         background: C.bg,
         display: "flex",
         flexDirection: "column",
@@ -381,7 +381,7 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
       <header
         style={{
           position: "relative",
-          padding: "max(18px, env(safe-area-inset-top, 0px)) 16px 14px",
+          padding: "12px 16px 12px",
           display: "flex",
           alignItems: "flex-start",
           gap: 12,
@@ -484,7 +484,7 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "14px 16px 28px",
+          padding: "14px 16px 88px",
           position: "relative",
         }}
       >

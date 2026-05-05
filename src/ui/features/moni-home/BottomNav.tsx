@@ -89,7 +89,7 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
   };
 
   return (
-    <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM, display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 20 }}>
+    <div style={{ background: C.white, borderTop: `1.5px solid ${C.border}`, paddingTop: 3, paddingBottom: BOTTOM_NAV_PADDING_BOTTOM, display: "flex", justifyContent: "space-around", alignItems: "flex-end", flexShrink: 0, zIndex: 300, position: "relative" }}>
       {(aiOn || aiStop) ? (
         <style>{`
           @keyframes rbs {
