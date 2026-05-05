@@ -174,6 +174,8 @@ export default function MoniHome({
   const [draftRangeMode, setDraftRangeMode] = useState("本月");
   const [draftCustomStart, setDraftCustomStart] = useState(dataRange.min ?? new Date().toISOString().slice(0, 10));
   const [draftCustomEnd, setDraftCustomEnd] = useState(dataRange.max ?? new Date().toISOString().slice(0, 10));
+  // restore effect 完成后置为当前账本 ID，save effect 用它判断"恢复已完成"再写缓存
+  const [restoredLedgerId, setRestoredLedgerId] = useState<string | null>(null);
 
   const [hintVisible, setHintVisible] = useState(true);
   const [dragItem, setDragItem] = useState<HomeTransaction | null>(null);
@@ -310,74 +312,41 @@ export default function MoniHome({
   }, [actions.setHomeDateRange, committedRangeSelection, dataRange.max, dataRange.min]);
 
   useEffect(() => {
-    if (!rangeBounds.min || !rangeBounds.max) {
-      return;
-    }
-
     /**
-     * `customStart/customEnd` 既承载"自定义范围草稿"，也承载快捷范围映射出的真实起止日期。
-     * 若在这里无条件按账本 dataRange 强行夹回，`本周/本月/近三月/今天` 这类按系统当前日期计算的快捷项
-     * 会在写入后立刻被改回到账本最后一笔交易日，表现成两个 thumb 一起顶到右侧。
-     *
-     * 因此这里只在"自定义"模式下兜底收口输入边界；快捷模式允许超出 dataRange，
-     * 列表是否有数据由实际交易日期过滤结果自然决定。
+     * 首页范围 UI 只在"切换到新账本"时恢复一次。
+     * session key 只用账本 ID，不带数据边界：
+     * - 账本边界是数据派生，不代表用户意图；
+     * - 原先把边界混入 key，导致数据加载时触发二次 restore，
+     *   用错误时机写入的"本月"覆盖了用户真实选择。
+     * 账本边界变化（导入新数据）时交集由 committedRangeSelection 重算即可，无需再触发 restore。
      */
-    if (rangeMode !== "自定义") {
-      return;
-    }
-
-    const nextStart = clampDateString(customStart, rangeBounds.min, rangeBounds.max);
-    const nextEnd = clampDateString(customEnd, rangeBounds.min, rangeBounds.max);
-
-    if (nextStart !== customStart) {
-      setCustomStart(nextStart);
-    }
-    if (nextEnd !== customEnd) {
-      setCustomEnd(nextEnd < nextStart ? nextStart : nextEnd);
-    }
-  }, [clampDateString, customEnd, customStart, rangeBounds.max, rangeBounds.min, rangeMode]);
-
-  useEffect(() => {
-    if (!rangeBounds.min || !rangeBounds.max) {
-      return;
-    }
-
-    /**
-     * 首页范围 UI 只应该在"进入一个新的账本上下文"时恢复一次：
-     * - 首次加载该账本；
-     * - 切换到账本；
-     * - 账本真实数据边界发生变化。
-     *
-     * 不能把 facade 回写出来的 `homeDateRange` 继续作为 restore 触发源，
-     * 否则一次正常的范围提交也会反向触发 restore，
-     * 造成 picker 在"今天 / 本月 / 全部"等模式之间来回跳。
-     */
-    const restoreSessionKey = `${currentLedger.id}::${rangeBounds.min}::${rangeBounds.max}`;
-    if (restoredRangeSessionKeyRef.current === restoreSessionKey) {
+    if (restoredRangeSessionKeyRef.current === currentLedger.id) {
       return;
     }
 
     const restored = restoreHomeRangeUiSessionState(currentLedger.id);
 
-    restoredRangeSessionKeyRef.current = restoreSessionKey;
+    restoredRangeSessionKeyRef.current = currentLedger.id;
     setRangeMode(restored.rangeMode);
     setCustomStart(restored.customStart);
     setCustomEnd(restored.customEnd);
     setDraftRangeMode(restored.draftRangeMode);
     setDraftCustomStart(restored.draftCustomStart);
     setDraftCustomEnd(restored.draftCustomEnd);
+    setRestoredLedgerId(currentLedger.id);
     actions.setTrendWindowOffset(0);
-  }, [actions.setTrendWindowOffset, currentLedger.id, rangeBounds.max, rangeBounds.min]);
+  }, [actions.setTrendWindowOffset, currentLedger.id]);
 
   useEffect(() => {
-    if (!currentLedger.id || !dataRange.min || !dataRange.max) {
+    /**
+     * restoredLedgerId 在 restore effect 完成后才被置为 currentLedger.id。
+     * 在此之前跳过写缓存，避免把 Render 1 的初始占位值（today/本月）污染缓存。
+     * 这样空账本（dataRange 永远为 null）的用户选择也能正确持久化。
+     */
+    if (!currentLedger.id || restoredLedgerId !== currentLedger.id) {
       return;
     }
 
-    /**
-     * 只在拿到真实账本边界后写会话缓存，避免初始加载阶段用"今天兜底值"污染缓存。
-     * 缓存内容包含 committed + draft 两套状态，确保重新进入首页时弹窗草稿也保持原样。
-     */
     homeRangeUiSessionStateByLedger.set(currentLedger.id, {
       rangeMode,
       customStart,
@@ -388,10 +357,9 @@ export default function MoniHome({
     });
   }, [
     currentLedger.id,
+    restoredLedgerId,
     customEnd,
     customStart,
-    dataRange.max,
-    dataRange.min,
     draftCustomEnd,
     draftCustomStart,
     draftRangeMode,
