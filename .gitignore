@@ -29,6 +29,7 @@ dist-ssr
 .worktrees
 .worktrees/**
 test-img/
+test-log/
 .codex/artifacts/
 .claude/
 # private data

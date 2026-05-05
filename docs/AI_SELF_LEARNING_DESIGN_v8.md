@@ -1,8 +1,8 @@
-# PixelBill AI 自学习系统设计文档
+# Moni AI 自学习系统设计文档
 
-**版本**: v7
-**日期**: 2026-04-08
-**状态**: 目标规格已升版至 v7
+**版本**: v8
+**日期**: 2026-05-05
+**状态**: 目标规格已升版至 v8
 
 ***
 
@@ -660,7 +660,7 @@ Directory.Data/ledgers/{ledger}/memory/
 ```
 读取当前选中账本 currentLedger
   → 读取当前 AI 消费窗口（当前继续与 UI 的 data range 绑定，但只在“取下一批任务”时生效）
-  → 从当前账本运行时内存中的 classify queue 读取待处理日期集合
+  → 从当前账本运行时内存中的 classify index 读取待处理日期集合
       → classify_runtime.json 仅作为持久化镜像 / 恢复来源，不作为高频调度真源
   → 按当前 data range 过滤出“本轮允许消费”的日期
       → 按日期倒序排序（最近日期优先）
@@ -813,25 +813,24 @@ Directory.Data/ledgers/{ledger}/memory/
 └──────────────────────────────────────────────────┘
 ```
 
-**运行态持久化（最新冻结口径）**：每个账本独立存于 `ledgers/{ledger}/classify_runtime.json`。持久化主状态不再只是“待处理日期数组”，而是**按日期维护的脏条目精确计数 `dirtyCountByDate`**；运行时 pending dates 由 `dirtyCountByDate[date] > 0` 派生。App 重启后先从该文件恢复运行时索引；恢复完成后，运行期调度以**内存运行态索引**为单一事实源，`classify_runtime.json` 只作为持久化镜像。
+**运行态持久化（最新冻结口径）**：每个账本独立存于 `ledgers/{ledger}/classify_runtime.json`。持久化主状态不再只是“待处理日期数组”，而是**按日期维护的脏条目精确计数 `dirtyCountByDate`**；运行时 pending dates 由 `dirtyCountByDate[date] > 0` 派生。App 重启后先从该文件恢复运行时 classify index；恢复完成后，运行期调度以**内存 classify index** 为单一事实源，`classify_runtime.json` 只作为持久化镜像。
 
-**天内增量合并规则（唯一规则）**：在**当前账本的 `classify_runtime.queue`** 中，同一天只保留一个任务。反复入队同一天时，不新增第二条，视为“并入已有当日任务”。
+**天内增量合并规则（唯一规则）**：在**当前账本的 classify index 派生 pending dates 视图** 中，同一天只保留一个待处理日期。反复命中同一天时，不新增第二个日期元素，视为“并入已有当日日期槽”。
 
-**工程实现说明**：虽然命名仍沿用 `queue`，但消费模型本质上更接近“按天缓冲区视图”而不是严格 FIFO 队列。生产端日常不做全账本重算，而是维护 `dirtyCountByDate`；消费端从 `dirtyCountByDate > 0` 派生当前 pending dates，再按当前 `data range` 过滤，并从可消费日期中按最近日期倒序抽取最多 3 天执行。磁盘写回允许存在实现层的防抖 / 延迟；但“是否已成功生产待处理日期”的判断以**内存脏索引 / queue 视图已更新**为准，不以持久化是否已完成为准。
+**工程实现说明**：虽然部分兼容代码仍沿用旧 `queue` 命名，但正式业务语义已经切到 **classify index**。生产端日常不做全账本重算，而是维护 `dirtyCountByDate`；消费端从 `dirtyCountByDate > 0` 派生当前 pending dates，再按当前 `data range` 过滤，并从可消费日期中按最近日期倒序抽取最多 3 天执行。磁盘写回允许存在实现层的防抖 / 延迟；但“是否已成功生产待处理日期”的判断以**内存 classify index / pending dates 视图已更新**为准，不以持久化是否已完成为准。
 
 **脏索引数据结构（新增冻结口径）**：
 
-- `dirtyCountByDate[date]` 的值必须精确等于”该日满足 `未锁定 && 最终分类为空 / uncategorized` 的脏条目个数”
+- `dirtyCountByDate[date]` 的值必须精确等于“该日满足 `未锁定 && 最终分类为空 / uncategorized` 的脏条目个数”
 - `pending dates = { date | dirtyCountByDate[date] > 0 }`
-- `dirtyCountByDate[date] === 0` 时，该日期必须从 pending dates / queue 视图中移除
-- `dirtyCountByDate` 是生产侧的持久化主状态；按天 queue 只是消费视图，不再作为唯一真实来源独立维护第二套语义
+- `dirtyCountByDate[date] === 0` 时，该日期必须从 pending dates / index 视图中移除
+- `dirtyCountByDate` 是生产侧的持久化主状态；按天 pending dates 只是 classify index 派生出的消费视图，不再作为唯一真实来源独立维护第二套语义
 
 **脏条目唯一判定（新增冻结口径）**：
 
 - `is_verified === false`
 - `finalCategory = user_category || ai_category || category`
 - `finalCategory` 为空或 `finalCategory === "uncategorized"`
-- 注：`transactionStatus` 不参与生产侧脏判定；AI 消费时会向会话注入当天完整交易上下文（含非 SUCCESS 记录），锁定保护在仲裁 / 写回阶段生效
 
 **条目级增量更新规则（新增冻结口径）**：
 
@@ -847,9 +846,61 @@ Directory.Data/ledgers/{ledger}/memory/
 **实现边界（新增冻结口径）**：
 
 - 所有会改动 `transactionStatus / is_verified / category / ai_category / user_category / time` 的链路，都必须走统一账本 mutation 入口
-- 账本正文写入、`dirtyCountByDate` 更新、queue 视图刷新、`revision` 递增必须在同一账本串行临界区内完成
+- 账本正文写入、`dirtyCountByDate` 更新、pending dates / index 视图刷新、`revision` 递增必须在同一账本串行临界区内完成
 - `BatchProcessor` 不再承担“每轮全账本 reconcile 脏日期”的日常职责，只消费当前索引视图
 - 全量重建仅用于恢复 / 损坏修复 / 手动校验，不进入日常热路径
+
+**兜底与恢复原则（新增冻结口径）**：
+
+- 最终真相始终是账本交易记录 `records`
+- `dirtyCountByDate` 是**可重建索引**，不是不可丢失的业务主数据
+- 系统允许索引损坏；一旦怀疑索引不可信，必须降级到“按真相重建”，宁可变慢，不可继续带错运行
+- 兜底目标不是维持增量逻辑永不出错，而是保证“增量逻辑一旦被破坏，系统仍可自动恢复到正确状态”
+
+**写时硬约束（新增冻结口径）**：
+
+- 每次账本 mutation 完成后，必须至少校验以下不变量：
+- `dirtyCountByDate[date] >= 0`
+- `dirtyCountByDate[date] === 0` 的日期不得继续出现在 pending dates / index 视图中
+- `dirtyCountByDate[date] > 0` 的日期必须可在 pending dates / index 视图中观察到
+- 同一 mutation 不得重复提交第二次
+- 一旦上述任一校验失败，不得继续假设本次增量结果可信；必须立刻降级到局部按日重算或整本重建
+
+**局部按日重算触发条件（新增冻结口径）**：
+
+- 本次 mutation 涉及的 old/new 记录不完整，无法安全计算贡献差
+- 某个受影响日期在增量更新后出现负数、`NaN`、非整数等非法计数
+- 某条批量 mutation 中途失败，导致单条贡献更新未能完整提交
+- 版本升级、旧数据迁移或异常恢复中，只能确认“少量受影响日期”可能失真
+- 局部按日重算的实现要求：
+- 只对本次 mutation 影响到的日期集合执行重扫
+- 重扫结果必须直接覆盖这些日期的 `dirtyCountByDate`
+- 若某日重算结果为 `0`，必须同步从 pending dates / index 视图中移除
+
+**整本重建触发条件（新增冻结口径）**：
+
+- `classify_runtime.json` 缺失、损坏、JSON 解析失败
+- `dirtyCountByDate` 结构不合法，无法可靠恢复
+- 发现 pending dates / index 视图与 `dirtyCountByDate` 大面积不一致
+- 发现 `revision` 回退、写盘乱序或恢复链路无法判断当前索引可信度
+- 用户显式触发“修复分类索引” / debug 重建入口
+- 整本重建的实现要求：
+- 丢弃当前内存脏索引的可信度
+- 从账本 `records` 按唯一 dirty predicate 重新扫描并生成完整 `dirtyCountByDate`
+- 再由新索引派生 pending dates / index 视图并覆盖运行态与持久化镜像
+
+**消费阻断规则（新增冻结口径）**：
+
+- 若当前账本运行态被标记为 `needs_rebuild`、`index_corrupted` 或等价故障态，`BatchProcessor` 不得继续启动消费
+- 必须先完成局部按日重算或整本重建，确认索引重新可信后，才允许恢复消费
+- “拒绝启动消费”属于正确兜底行为，不视为功能退化；功能退化只允许表现为“先修复，后消费”，不允许表现为“带错继续消费”
+
+**`inflight` 恢复口径（新增冻结口径）**：
+
+- `inflight` 只表示运行时租约，不是最终事实源
+- App 崩溃、重启或切账本恢复时，不得假设旧 `inflight` 仍然有效执行
+- 若恢复时发现过期或不可信的 `inflight`，必须清理该租约，再由 `dirtyCountByDate > 0` 重新派生 pending dates
+- 目标：即使崩溃发生在某个 batch 处理中途，也只会导致任务重跑，不会导致任务静默丢失
 
 **消费顺序与批次口径（当前冻结）**：
 
@@ -939,7 +990,7 @@ UI 点击某个会生产任务的按钮
   → 调用该按钮对应的触发层接口
   → 执行该场景要求的条目级数据改写（同步落盘）
   → 按受影响交易 old/new 状态增量更新 `dirtyCountByDate`
-  → 由 `dirtyCountByDate > 0` 刷新 pending dates / queue 视图（同日合并）
+  → 由 `dirtyCountByDate > 0` 刷新 pending dates / classify index 视图（同日合并）
   → 若入队成功，通知消费端开始消费（空闲则立即启动；运行中则跳过启动）
   → 结束
 ```
@@ -1064,6 +1115,7 @@ UI 调用“设置页-全量重分类”接口
 - 任务按“天”执行，单日成功后才出队
 - 中断/断网/崩溃时不出队，保留在队首
 - 恢复时继续消费队首任务，不重新计算 dirtyDates
+- 若恢复时发现索引已被标记为不可信，则先执行局部按日重算或整本重建，再恢复消费；禁止带着不可信索引继续跑
 
 **前置处理与入队原子性（强约束）**：
 
@@ -1071,6 +1123,7 @@ UI 调用“设置页-全量重分类”接口
 - 若前置改写成功但入队失败，必须立即进入补偿流程（重试或恢复任务登记），禁止静默丢失
 - 实施上可采用“触发事务日志”最小方案：记录 `triggerId + dirtyDates + enqueueState`，重启后自动补齐未完成入队
 - 验收标准：不存在“条目已重置/解锁，但对应日期未入队”的状态
+- 当增量维护失败时，允许把账本运行态直接标记为 `needs_rebuild`，阻止消费启动；此时首要目标是“避免错队列继续运行”，而不是强行维持热路径无感
 
 #### 5.6.3 按钮 → 触发层接口 → 副作用总表
 
@@ -1786,7 +1839,7 @@ ${JSON.stringify(currentExamples, null, 2)}`;
 ### v4.3 (2026-03-24)
 
 - 明确队列语义：任务元素业务语义固定为 `{ date }`
-- 修正文档残留冲突：移除 `ClassifyQueue` 的“优先级升级”描述
+- 修正文档残留冲突：移除 `ClassifyIndex` 的“优先级升级”描述
 - 新增并发防护：同日重入版本校验（防吞任务）
 - 新增竞态防护：AI 写回前 `is_verified` 二次校验
 - 新增前置处理与入队原子性约束及补偿要求
