@@ -165,16 +165,27 @@ export class LedgerService {
 
       const newMemory = this.applyPatch(patch, prevMemory);
 
-      // 在 applyPatch 之后处理实例库写入，确保获取的是更新后的记录
-      // 检查 patch 是否包含 user_category 更新（用户修正分类）
+      // 在 applyPatch 之后处理实例库写入，确保获取的是更新后的记录。
+      // 当前统一口径：用户分类、user_note、以及显式进入锁定态，都会改变学习样本当前真相。
+      const prevRecord = prevMemory.records[patch.id];
       const hasUserCategoryUpdate = patch.updates.user_category !== undefined && patch.updates.user_category !== '';
+      const hasUserNoteUpdate =
+        patch.updates.user_note !== undefined &&
+        patch.updates.user_note !== prevRecord?.user_note;
+      const hasVerificationPromotion =
+        patch.updates.is_verified === true &&
+        prevRecord?.is_verified !== true;
       console.log(`[LedgerService] Checking example store write for ${patch.id}:`, {
         hasUserCategoryUpdate,
+        hasUserNoteUpdate,
+        hasVerificationPromotion,
         user_category: patch.updates.user_category,
-        prev_user_category: prevMemory.records[patch.id]?.user_category
+        user_note: patch.updates.user_note,
+        prev_user_category: prevRecord?.user_category,
+        prev_user_note: prevRecord?.user_note
       });
 
-      if (hasUserCategoryUpdate) {
+      if (hasUserCategoryUpdate || hasUserNoteUpdate || hasVerificationPromotion) {
         const ledgerName = this.getCurrentLedgerName();
         console.log(`[LedgerService] Ledger name: ${ledgerName}`);
 
@@ -182,18 +193,19 @@ export class LedgerService {
           const updatedRecord = newMemory.records[patch.id];
           if (updatedRecord) {
             // 判断是否为修正：如果有 AI 分类且 AI 分类与新分类不同，视为修正
-            const prevRecord = prevMemory.records[patch.id];
-            const newCategory = patch.updates.user_category;
+            const newCategory = updatedRecord.user_category;
             const aiCategory = patch.updates.ai_category !== undefined
               ? patch.updates.ai_category
               : prevRecord?.ai_category;
-            const isCorrection = !!aiCategory && aiCategory !== newCategory;
+            const isCorrection = !!aiCategory && !!newCategory && aiCategory !== newCategory;
 
             console.log(`[LedgerService] Writing to example store:`, {
               txId: patch.id,
               category: updatedRecord.category,
               aiCategory,
-              userCategory: patch.updates.user_category,
+              userCategory: updatedRecord.user_category,
+              userNote: updatedRecord.user_note,
+              isVerified: updatedRecord.is_verified,
               isCorrection
             });
 
@@ -214,30 +226,6 @@ export class LedgerService {
           }
         } else {
           console.warn('[LedgerService] Cannot write to example store: no ledger name');
-        }
-      }
-
-      // 处理锁定确认时的实例库写入
-      // 只要 is_verified 被设为 true，就写入实例库（无论是否同时更新 user_category）
-      if (patch.updates.is_verified === true && !hasUserCategoryUpdate) {
-        const ledgerName = this.getCurrentLedgerName();
-        if (ledgerName) {
-          const updatedRecord = newMemory.records[patch.id];
-          if (updatedRecord) {
-            // 锁定确认不是修正，AI 分对时保留 ai_reasoning
-            ExampleStore.addOrUpdate(ledgerName, updatedRecord, false)
-              .then(() => {
-                console.log(`[LedgerService] Example store updated for lock confirmation ${patch.id}`);
-                /**
-                 * AI 分对后被用户锁定，同样会生成 A/C 类有效样本，
-                 * 因此也要参与自动学习阈值检查。
-                 */
-                this.scheduleAutoLearningEvaluation(ledgerName);
-              })
-              .catch(e => {
-                console.error('[LedgerService] Failed to write to example store:', e);
-              });
-          }
         }
       }
     });
@@ -528,21 +516,54 @@ export class LedgerService {
   // --- Public Actions ---
 
   public updateCategory(id: string, newCategory: string, newReasoning?: string) {
+    const normalizedCategory = newCategory.trim();
+    const currentRecord = this.state.ledgerMemory?.records[id];
+    /**
+     * 自动锁定的判断必须收口在统一服务入口，而不是散落在各个 UI 组件里。
+     *
+     * 当前固定口径：
+     * 1. 只要用户显式提交了“新的分类意图”，就默认锁定
+     * 2. 若此前只有 AI 分类，用户即便给出相同分类，也算一次确认，应锁定
+     * 3. 若当前已有相同的 user_category，再次提交同一分类不算新的分类意图，不自动锁定
+     * 4. 已经锁定的记录保持锁定，无需额外补写
+     */
+    const shouldAutoLock =
+      !!currentRecord &&
+      normalizedCategory.length > 0 &&
+      currentRecord.is_verified !== true &&
+      (
+        !currentRecord.user_category.trim() ||
+        currentRecord.user_category.trim() !== normalizedCategory
+      );
+
     const proposal = {
       source: 'USER' as const,
-      category: newCategory,
+      category: normalizedCategory,
       reasoning: newReasoning ?? "",
       timestamp: Date.now(),
       txId: id
     };
-    globalArbiter.ingest(id, proposal);
+    globalArbiter.ingest(id, proposal, false, { autoLock: shouldAutoLock });
     // Note: Ingest -> Patch -> Callback -> setState. 
     // We don't need to manually setState here.
   }
 
   public updateUserReasoning(id: string, userNote: string) {
-    // 仅更新修正理由（user_note），避免触发 user_category 写入
-    globalArbiter.updateUserNote(id, userNote);
+    const normalizedUserNote = userNote.trim();
+    const currentRecord = this.state.ledgerMemory?.records[id];
+    /**
+     * 当前固定口径：
+     * 1. user_note 本身也是学习信号，实例库需要随 note 变化同步
+     * 2. 若 note 从空到非空，且记录当前尚未锁定，则把这次输入视为一次新的确认动作并自动锁定
+     * 3. 仅修改已有 note 文本时，不额外改变锁定状态
+     */
+    const shouldAutoLock =
+      !!currentRecord &&
+      currentRecord.is_verified !== true &&
+      !currentRecord.user_note.trim() &&
+      normalizedUserNote.length > 0;
+
+    globalArbiter.updateUserNote(id, normalizedUserNote, { autoLock: shouldAutoLock });
   }
 
   public updateRemark(id: string, remark: string) {
@@ -554,7 +575,7 @@ export class LedgerService {
      * 当前正式口径中，用户输入的这一路是“说明 / 理由”，
      * 统一写入 user_note；remark 继续保持原始解析值只读。
      */
-    globalArbiter.updateUserNote(id, userNote);
+    this.updateUserReasoning(id, userNote);
   }
 
   public setVerification(id: string, isVerified: boolean) {

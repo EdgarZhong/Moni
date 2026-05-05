@@ -313,7 +313,8 @@ export class MemoryManager {
     try {
       // 1. 通过 SnapshotManager 回退（只更新指针）
       const content = await SnapshotManager.rollback(ledgerName, snapshotId);
-      if (!content) {
+      // 空快照会返回空字符串，这在“回退到空记忆”场景下是合法成功结果，只有 null 才表示失败。
+      if (content === null) {
         return false;
       }
 

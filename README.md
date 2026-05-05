@@ -56,6 +56,8 @@ src/
 - 表面系统规范：[docs/design/SURFACE_SYSTEM.md](./docs/design/SURFACE_SYSTEM.md)
 - Design Tokens 唯一代码注册表：[tailwind.config.js](./tailwind.config.js)
 - 首页集成规格：[docs/Moni_Homepage_Integration_Spec.md](./docs/Moni_Homepage_Integration_Spec.md)
+- 零记忆消费风险提示规格：[docs/ZERO_MEMORY_CONSUMPTION_WARNING_SPEC.md](./docs/ZERO_MEMORY_CONSUMPTION_WARNING_SPEC.md)
+- 零记忆弹窗设计页：[docs/design/SPEC_ZeroMemoryWarningDialog.md](./docs/design/SPEC_ZeroMemoryWarningDialog.md)
 - 产品需求总表：[docs/Moni_Requirements_v3.md](./docs/Moni_Requirements_v3.md)
 - AI 自学习系统 v8：[docs/AI_SELF_LEARNING_DESIGN_v8.md](./docs/AI_SELF_LEARNING_DESIGN_v8.md)
 - 预算系统规格：[docs/Moni_Budget_System_Spec_v2.md](./docs/Moni_Budget_System_Spec_v2.md)

@@ -42,6 +42,7 @@ import type { FullTransactionRecord } from '@shared/types/metadata';
 
 const HOME_TREND_DAYS = 30;
 const HOME_TREND_WINDOW_SIZE = 7;
+type ZeroMemoryWarningChoice = 'classify7days' | 'consumeAll' | 'cancel';
 
 function toDateKey(time: string): string {
   return time.slice(0, 10);
@@ -287,6 +288,12 @@ export class AppFacade {
     yesterday.setDate(now.getDate() - 1);
     const yesterdayKey = toLocalDateKey(yesterday);
 
+    /**
+     * 首页日流水列表当前口径已收敛为“收支混排”：
+     * - `dayMap` 承接当前范围内所有成功交易，不再只塞支出；
+     * - 这样二维码收款、红包收款等收入条目也会出现在当天日卡里；
+     * - 统计摘要里的收入聚合仍单独走 `income[]`，避免表现层自己重新猜收入。
+     */
     const dayMap = new Map<string, HomeTransactionReadModel[]>();
     const income: MoniHomeReadModel['income'] = [];
     let totalTransactionCount = 0;
@@ -301,20 +308,23 @@ export class AppFacade {
       if (isDateKeyInRange(dateKey, selectedHomeDateRange)) {
         totalTransactionCount += 1;
       }
-      if (record.direction === 'out') {
-        if (!dayMap.has(dateKey)) {
-          dayMap.set(dateKey, []);
-        }
-        dayMap.get(dateKey)?.push(toHomeTransaction(txId, record, itemIndex));
-        itemIndex += 1;
-        continue;
+      if (!dayMap.has(dateKey)) {
+        dayMap.set(dateKey, []);
       }
+      dayMap.get(dateKey)?.push(toHomeTransaction(txId, record, itemIndex));
+      itemIndex += 1;
 
-      const existingIncome = income.find((entry) => entry.date === dateKey);
-      if (existingIncome) {
-        existingIncome.amount += record.amount;
-      } else {
-        income.push({ date: dateKey, amount: record.amount });
+      /**
+       * 收入汇总卡仍只统计真实入账。
+       * 日卡现在已经混排收支，因此这里不能再把全部条目都累到 `income`，否则统计会失真。
+       */
+      if (record.direction === 'in') {
+        const existingIncome = income.find((entry) => entry.date === dateKey);
+        if (existingIncome) {
+          existingIncome.amount += record.amount;
+        } else {
+          income.push({ date: dateKey, amount: record.amount });
+        }
       }
     }
 
@@ -485,13 +495,15 @@ export class AppFacade {
     await this.ledgerService.reloadMemory();
   }
 
-  public async startAiProcessing(): Promise<void> {
+  public async startAiProcessing(
+    onShowZeroMemoryDialog?: (latestDate: Date, daysCount: number) => Promise<ZeroMemoryWarningChoice>
+  ): Promise<void> {
     const currentLedgerId = this.ledgerManager.getActiveLedgerName();
     console.log(`[MONI_AI_DEBUG][AppFacade] startAiProcessing triggered for ledger: ${currentLedgerId}`);
 
     if (currentLedgerId) {
       /**
-       * 新口径下，“开始消费”是纯只读启动信号：
+       * 新口径下，”开始消费”是纯只读启动信号：
        * - 只允许读取当前 queue 状态
        * - 不允许在 queue 为空时重扫账本并补生产任务
        *
@@ -499,6 +511,65 @@ export class AppFacade {
        */
       const pendingCount = await classifyIndex.size(currentLedgerId).catch(() => 0);
       console.log(`[MONI_AI_DEBUG][AppFacade] Existing pending queue size: ${pendingCount}`);
+
+      // 检查零记忆警告条件
+      if (onShowZeroMemoryDialog && pendingCount > 7) {
+        try {
+          // 获取当前 data range
+          const ledgerState = this.ledgerService.getState();
+          const currentDateRange = ledgerState.dateRange;
+
+          // 获取待处理任务列表并过滤到当前范围内
+          const pendingTasks = await classifyIndex.getPending(currentLedgerId);
+          const consumableDates = Array.from(
+            new Set(
+              pendingTasks
+                .filter((task) => isDateKeyInRange(task.date, currentDateRange))
+                .map((task) => task.date)
+            )
+          ).sort();
+
+          // 如果过滤后的消费日期数 > 7，显示零记忆警告弹窗
+          if (consumableDates.length > 7) {
+            const hasMemory = await this.checkHasMemory(currentLedgerId);
+
+            if (!hasMemory) {
+              // 最晚日期（最后一个待处理日期）
+              const latestDateStr = consumableDates[consumableDates.length - 1];
+              /**
+               * 这里必须按“本地自然日”解析日期键。
+               * 首页范围过滤、DateRangePicker 展示、消费窗口口径都基于本地日历日；
+               * 若改用 UTC 零点，在 UTC 负时区设备上会整体偏移一天。
+               */
+              const latestDate = new Date(`${latestDateStr}T00:00:00`);
+
+              // 显示弹窗，等待用户选择
+              const userChoice = await onShowZeroMemoryDialog(latestDate, consumableDates.length);
+
+              /**
+               * 关闭弹窗属于用户显式取消本次启动。
+               * 这里必须直接返回，不能继续跑 BatchProcessor。
+               */
+              if (userChoice === 'cancel') {
+                return;
+              }
+
+              if (userChoice === 'classify7days') {
+                // 用户选择只分类 7 天，自动调整 data range
+                const adjustedRange = this.computeAdjustedDateRangeFor7Days(latestDate);
+                this.ledgerService.setDateRange({
+                  start: adjustedRange.start,
+                  end: adjustedRange.end,
+                });
+              }
+              // 如果选择 'consumeAll'，保持原 data range，继续执行
+            }
+          }
+        } catch (err) {
+          console.warn('[MONI_AI_DEBUG][AppFacade] Zero memory check failed, continue:', err);
+          // 检查失败时不阻断消费，直接继续
+        }
+      }
     }
 
     console.log(`[MONI_AI_DEBUG][AppFacade] Invoking BatchProcessor.run()`);
@@ -512,6 +583,30 @@ export class AppFacade {
 
   public stopAiProcessing(): void {
     this.batchProcessor.stop();
+  }
+
+  /**
+   * 检查账本是否有激活的记忆
+   */
+  private async checkHasMemory(ledgerName: string): Promise<boolean> {
+    try {
+      const memories = await MemoryManager.load(ledgerName);
+      return memories.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 自动调整 data range 为 7 天窗口
+   * 从最晚日期往前倒 7 天
+   *
+   * 注：返回调整后的 start 和 end，UI 层负责同步更新 rangeMode 为 'custom'
+   */
+  public computeAdjustedDateRangeFor7Days(latestDate: Date): { start: Date; end: Date } {
+    const startDate = new Date(latestDate);
+    startDate.setDate(startDate.getDate() - 6);
+    return { start: startDate, end: latestDate };
   }
 
   private toHomeAiState(

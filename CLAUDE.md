@@ -126,6 +126,9 @@
 - 用户已确认：顶部 safe area 的最新口径收敛为“浏览器可见的基础 header padding 不变，仅 Android 原生环境额外的 safe area 统一回收约 `15%`”
 - 用户已确认：首页列表“快速滑动后按住停住再松手仍触发惯性”的问题已明显缓解，当前暂未发现新的交互问题
 - 用户已确认：教程页当前视觉结构冻结，以当前代码为准；本轮不再继续追加对齐细则任务
+- 用户已确认：首页日卡的最终展示口径改为“收入与支出按时间倒序混排在同一天流水列表里”；统计摘要继续分开显示支出 / 收入 / 笔数，分类概览继续只统计支出分布，日卡头部金额摘要优先显示当天支出总额，若当天只有收入则回退显示收入总额
+- 用户已进一步确认：首页日卡右上角金额摘要最终收敛为双值结构 `-¥支出 / +¥收入`；来源标签文案统一为 `微信 / 支付宝 / 随手记`，颜色必须复用 design token（微信绿、支付宝蓝、随手记黄），并在首页日卡、拖拽细则、详情页保持同一套 badge 语义
+- 用户已进一步确认：日卡右上角金额摘要在保持“支出 / 收入双值语义”的前提下，若某一天不存在收入或不存在支出，则对应金额与中间分隔符一起隐藏，不显示 `0` 占位
 - 已新增外部求助材料：`docs/2026-05-05-android-back-gesture-stuck-report.md`，用于向外部模型说明 Android 返回手势卡点、当前返回栈设计、已尝试路径与待检索问题
 - 用户已确认分类索引口径进一步收敛：生产仅由被动外部事件同步触发；`start consumption` 只启动消费不补生产；AI 消费窗口继续与 `data range` 绑定，但只在 `BatchProcessor` 取下一批任务时过滤；运行时单一事实源为内存 classify index，`classify_runtime.json` 仅作持久化镜像；需区分 `queue empty` 与 `no consumable tasks in current range`
 - 用户已确认 classify 生产侧的最终维护方案：放弃 `BatchProcessor` 热路径上的全账本重算；改为按交易条目 old/new 状态增量维护 `dirtyCountByDate`，其数值精确定义为“该日满足 `未锁定 && 最终分类为空 / uncategorized` 的脏条目个数”；待处理日期集合由 `dirtyCountByDate[date] > 0` 派生，所有交易改写与脏索引更新必须在同一账本串行临界区内完成
@@ -135,14 +138,18 @@
 - 浏览器 console 当前未发现新的 JS runtime error；残留错误仍是既有 `/api/fs` 404 噪音，尚未纳入本轮修复范围
 - 上述四项仍属于本轮未 release 的动态进度，不进入 `Release Changelog`，待本轮正式发布后再归并
 - **[2026-05-05] 修复 revision 冲突导致消费引擎单日停止的 bug**：BatchProcessor 在处理一个 batch 时，每个 arbiter patch 都触发了 `bumpRevision`，导致版本号从初始的16递增到45，最后 batch remove 检查失效。根本原因是 arbiter patch 不应该算作"新的生产动作"，修复方案是在 `ClassifyQueue.syncDirtyIndexForTouchedRecords` 添加 `bumpRevision` 参数，arbiter patch 时传入 `false`。修复后 BatchProcessor 能连续处理多个 batch。详见：`docs/2026-05-05-revision-system-analysis.md`
+- **[2026-05-05] AI 零记忆消费风险提示规格文档完成**：规格详见 `docs/ZERO_MEMORY_CONSUMPTION_WARNING_SPEC.md`。核心机制为：用户启动消费时，若当前账本无记忆且消费范围 > 7 天，显示弹窗（点击外侧关闭），提供两个按钮："只分类 7 天" 和 "确认全范围消费"；选择前者时，从待处理**最晚日期**往前倒 7 天，自动调整 data range（start = 最晚日期 - 6 days，end = 最晚日期，mode = custom），然后启动消费
+- **[2026-05-05] 修复空记忆快照回退误判失败**：`SnapshotManager.rollback()` 在目标快照为空时会返回空字符串，这本来代表“合法的空记忆内容”，但 `MemoryManager.rollbackToSnapshot()` 和旧 `SettingsPage` 直接把空字符串当作失败。现已改为仅 `null` 视为失败，保证“回退到空记忆”可以成功触发 UI 刷新与状态同步。
+- **[2026-05-05] 修复 AI 零记忆风险弹窗的启动时序与范围同步问题**：现已补齐三处关键链路：1）弹窗关闭显式返回 `cancel`，不再让 `startAiProcessing()` 悬空等待；2）“只分类 7 天”会同时同步 facade 的实际消费范围与 `MoniHome` 本地 `DateRangePicker` 会话态，避免 UI/业务范围错位；3）7 天窗口改为按本地自然日解析，不再使用 UTC 零点，消除跨时区错一天风险。`npm run typecheck` 与 `npm run build` 已通过。
 
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
+| 空记忆快照回退失败修复 | Done / 待 release | 根因是回退结果使用 truthy/falsy 判定，空快照返回 `""` 被误判为失败；现已改为仅 `null` 代表失败，并同步修补旧设置页的直接调用口径 |
+| AI 零记忆消费风险提示 | Done / 待 release | 规格与实现已对齐补完：弹窗关闭显式取消、7 天窗口按本地自然日计算、首页 `DateRangePicker` 与 facade 消费范围同步切到自定义 7 天；`typecheck`、`build` 已通过 |
 | classify 生产侧脏索引增量化改造 | Done / 待 release | 核心实现、`typecheck`、`build`、浏览器控制台专项与 Playwright 移动端验证已通过；代码审查已完成，文档 dirty predicate 描述已修正（移除 `transactionStatus === “SUCCESS”`）；待用户确认后并入 `0.3.7` release |
 | Android 返回手势修复 | Pending | 当前真机系统返回手势仍会直接退桌面；目标是”二级页优先返回、一级页首次返回弹提示、二次返回才退出”；已确认现方案以 `AppRoot` 监听 Capacitor `backButton` + JS 内存返回栈为主，`MainActivity` 仍是最小 `BridgeActivity`，尚无 `OnBackPressedDispatcher / OnBackInvokedDispatcher` 级原生接管；已整理外部求助报告待检索 |
-| AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供”先消费一周并自动停止”选项 |
 | Demo seed 首装导入 / 落盘排查 | Pending | 当前判断已更新：安装包本身带着 demo seed 数据；问题是同一 APK 在部分安装场景下首装自动导入/落盘偶发失败，需定位首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
 | 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式在 `MoniSettings.tsx`（当前实际渲染路径）中尚未接入；现有 `SettingsPage.tsx` 中的接线未被加载；本轮仅做不影响运行的最小修补（predicate 简化 + label 语义修正），完整接线推后；落实时需确认：① `MoniSettings.tsx` 中新增标签后改走 `ReclassifyConfirmDialog` 范围选择流程，② `SettingsPage.tsx` 中对应接线是否仍需保留 |
@@ -190,7 +197,7 @@
 - 分类 System Prompt 当前固定增强两条启发：`reference_corrections` 与 `days[]` 的 exact-ID 命中视为强锚点；同一时间段、同场景的多笔交易应先按同一消费事件联合判断，再决定是否同类
 - 分类会话当前固定不按 `direction` 预先拆成“仅支出”或“仅收入”两路；收入条目也必须进入同一分类会话，否则退款、撤销、逆向冲回等场景会被错误预过滤。若用户没有额外要求，真实入账可优先归为“收入”；但退款不默认算“收入”，仍需结合原消费语义判断
 - `收入` 当前固定作为默认普通标签加入分类体系，但与其他普通标签完全一致：允许用户改名、细分、删除；只有 `其他` 继续是系统兜底项，`uncategorized` 继续只属于显示 / 运行态，不进入 `defined_categories`
-- 交易原始 `remark` 当前固定只读展示；用户可编辑的只有“说明 / 理由”，统一写入 `user_note`。仅“改分类”自动锁定，改说明 / 理由不自动锁
+- 交易原始 `remark` 当前固定只读展示；用户可编辑的只有“说明 / 理由”，统一写入 `user_note`。用户显式提交新的分类意图时默认自动锁定：从未分类改到某个分类、从仅有 `ai_category` 状态显式确认同类结果、或把既有 `user_category` 改成另一分类，都要写入 `is_verified = true`；仅再次提交同一 `user_category`，不自动锁定。`user_note` 也是学习信号：只要用户修改了 `user_note`，实例库都要按 `id` 同步更新；若本次是 `user_note` 从空到非空，且当前尚未锁定，则应自动锁定后再写入实例库
 - 设置页账本区“全量重分类”当前固定为三段式渐进式确认：先展示锁定条目列表供用户决定是否解锁；真正执行解锁、分类字段重置、实例库清理与 dirtyDates 入队前，必须再做一次显式破坏性提交确认；数据提交完成后，是否正式通知引擎开始消费，必须由用户再次明确确认；提交前用户可随时取消，系统不得提前动数据
 - 首页 AI 工作态对外接口当前固定为 `HomeAiEngineUiState.activeDates`，由 `BatchProcessor -> AppFacade -> MoniHome` 贯通，显示层只消费该字段决定哪些日期高亮
 - Android 软键盘阶段当前固定口径：原生层不允许通过 `windowSoftInputMode` 改写 Activity 尺寸，Web 层再用 `--app-root-height` 锁定稳定画布高度

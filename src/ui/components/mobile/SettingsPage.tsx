@@ -1618,13 +1618,14 @@ const AIMemoryPanel: React.FC<AIMemoryPanelProps> = ({
   const handleRollback = useCallback(async (snapshotId: string) => {
     console.log(`[SettingsPage] 点击激活按钮: ${snapshotId}`);
     if (!confirm(`确定要切换到 ${snapshotId} 吗？`)) {
-      console.log('[SettingsPage] 用户取消回退');
+    console.log('[SettingsPage] 用户取消回退');
       return;
     }
 
     console.log(`[SettingsPage] 开始回退到 ${snapshotId}...`);
     await triggerHaptic(HapticFeedbackLevel.LIGHT);
-    const success = await SnapshotManager.rollback(ledgerName, snapshotId);
+    // 空快照回退时 SnapshotManager 会返回空字符串；只要不是 null，就应视为成功。
+    const success = (await SnapshotManager.rollback(ledgerName, snapshotId)) !== null;
     console.log(`[SettingsPage] 回退结果: ${success ? '成功' : '失败'}`);
 
     if (success) {

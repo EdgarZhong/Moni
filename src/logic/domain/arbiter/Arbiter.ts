@@ -21,6 +21,15 @@ export interface PersistencePatch {
 }
 
 /**
+ * 用户侧写回选项。
+ * 这里只承接“本次用户输入是否应一并视为锁定确认”的语义，
+ * 避免上层再拆成“先写业务字段、再补一个锁定 patch”的双写路径。
+ */
+export interface UserPersistenceOptions {
+  autoLock?: boolean;
+}
+
+/**
  * 实例库写入请求
  * 用于通知外部将交易记录写入实例库
  */
@@ -116,7 +125,12 @@ export class Arbiter {
   /**
    * Ingest a proposal from any source
    */
-  public ingest(txId: string, proposal: Proposal, skipPersistence = false) {
+  public ingest(
+    txId: string,
+    proposal: Proposal,
+    skipPersistence = false,
+    options?: UserPersistenceOptions
+  ) {
     if (!this.proposalCache[txId]) {
       this.proposalCache[txId] = {};
     }
@@ -135,7 +149,7 @@ export class Arbiter {
 
     // Trigger Persistence if needed
     if (!skipPersistence) {
-      this.dispatchPersistence(txId, proposal);
+      this.dispatchPersistence(txId, proposal, options);
     }
   }
 
@@ -160,8 +174,8 @@ export class Arbiter {
     }
   }
 
-  public updateUserNote(txId: string, userNote: string) {
-    // 仅更新用户备注，不改动用户分类与锁定状态，避免误写 user_category
+  public updateUserNote(txId: string, userNote: string, options?: UserPersistenceOptions) {
+    // 仅更新用户备注，不改动 user_category；是否自动锁定由上层显式决定
     if (!this.onPatchGenerated) return;
 
     const cache = this.proposalCache[txId];
@@ -174,8 +188,9 @@ export class Arbiter {
     }
 
     const updates: Partial<FullTransactionRecord> = {
-      // 只写入 user_note 与 updated_at，保持分类字段不变
+      // 只写入 user_note；是否自动锁定由上层显式传入
       user_note: userNote,
+      ...(options?.autoLock ? { is_verified: true } : {}),
       updated_at: new Date().toISOString()
     };
 
@@ -193,7 +208,11 @@ export class Arbiter {
     this.onPatchGenerated({ id: txId, updates });
   }
 
-  private dispatchPersistence(txId: string, proposal: Proposal) {
+  private dispatchPersistence(
+    txId: string,
+    proposal: Proposal,
+    options?: UserPersistenceOptions
+  ) {
     if (!this.onPatchGenerated) return;
 
     let updates: Partial<FullTransactionRecord> = {};
@@ -203,8 +222,13 @@ export class Arbiter {
       updates = {
         user_category: proposal.category,
         user_note: proposal.reasoning,
+        /**
+         * 用户显式改分类且满足自动锁定条件时，
+         * 在同一条 patch 中同步写入 is_verified，
+         * 避免“先改分类、再补锁定”带来的重复实例库写入与重复学习检查。
+         */
+        ...(options?.autoLock ? { is_verified: true } : {}),
         updated_at: new Date().toISOString()
-        // FIX: Do NOT auto-lock on edit. is_verified is handled separately.
       };
 
       // 触发实例库写入 - 用户修正分类

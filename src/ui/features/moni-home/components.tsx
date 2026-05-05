@@ -120,6 +120,43 @@ export interface HomeDayGroup {
   visibleItems: HomeTransaction[]; // 经过分类过滤后的可见条目
 }
 
+interface SourceBadgeVisual {
+  label: string;
+  chipClassName: string;
+}
+
+/**
+ * 来源标签是跨首页日卡、拖拽细则、详情页都会反复出现的视觉语义。
+ * 这里统一返回 design token class，避免首页继续散落“微信蓝/全部橙色”之类的历史硬编码。
+ */
+function getSourceBadgeVisual(sourceType?: HomeTransaction["sourceType"]): SourceBadgeVisual {
+  if (sourceType === "wechat") {
+    return {
+      label: "微信",
+      chipClassName: "bg-success-surface text-success-text",
+    };
+  }
+
+  if (sourceType === "alipay") {
+    return {
+      label: "支付宝",
+      chipClassName: "bg-info-surface text-ink",
+    };
+  }
+
+  if (sourceType === "manual") {
+    return {
+      label: "随手记",
+      chipClassName: "bg-warn-surface text-ink",
+    };
+  }
+
+  return {
+    label: "未知来源",
+    chipClassName: "bg-surface text-dim",
+  };
+}
+
 /** 看板轮播控制接口 */
 export interface ControlUpdateRef {
   ref: React.RefObject<HTMLDivElement | null>;
@@ -780,7 +817,21 @@ interface DayCardProps {
 
 /** DayCard — 按天分组流水卡片（三阶段展开：收起/展开/AI工作态） */
 export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, onItemPointerCancel, dayRef }: DayCardProps) {
-  const total = day.visibleItems.reduce((sum, item) => sum + item.a, 0);
+  /**
+   * 日卡条目已改为“收支混排”，因此头部摘要不能再默认把所有金额都当成支出。
+   * 当前展示策略：
+   * - 有支出时，头部主数值继续优先表达当天支出总额；
+   * - 若当天只有收入没有支出，则改为展示收入总额；
+   * - 条目行自身始终根据 `direction` 显示正负号与颜色。
+   */
+  const expenseTotal = day.visibleItems
+    .filter((item) => item.direction !== "in")
+    .reduce((sum, item) => sum + item.a, 0);
+  const incomeTotal = day.visibleItems
+    .filter((item) => item.direction === "in")
+    .reduce((sum, item) => sum + item.a, 0);
+  const hasExpense = expenseTotal > 0;
+  const hasIncome = incomeTotal > 0;
   const allClassified = day.items.every((item) => getCategory(item));
   // 完全收起摘要态：未展开 且 不是 AI 处理中
   const isCollapsedSummary = !isExpanded && !isAi;
@@ -799,7 +850,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
         transition: "all .25s ease",
       }}
     >
-      {/* 卡片头部：日期标签 + AI 处理指示 + 当天支出合计 */}
+      {/* 卡片头部：日期标签 + AI 处理指示 + 当天双值金额摘要 */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={onToggle}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: C.dark }}>{day.label}</span>
@@ -810,7 +861,11 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
             </span>
           )}
         </div>
-        <span style={{ fontSize: 12, color: C.coral, fontFamily: "'Space Mono',monospace", fontWeight: 500 }}>−¥{formatCurrencyAmount(total)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: "'Space Mono',monospace", fontWeight: 500 }}>
+          {hasExpense ? <span className="text-coral">-¥{formatCurrencyAmount(expenseTotal)}</span> : null}
+          {hasExpense && hasIncome ? <span className="text-dim">/</span> : null}
+          {hasIncome ? <span className="text-mint">+¥{formatCurrencyAmount(incomeTotal)}</span> : null}
+        </div>
       </div>
 
       {/* 收起摘要行 */}
@@ -834,6 +889,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
              */
             const category = getCategory(item);
             const meta = category ? CAT[category] : null;
+            const sourceBadge = getSourceBadgeVisual(item.sourceType);
             // aiOnly：只有 AI 分类，没有用户确认分类
             const aiOnly = !item.userCat;
 
@@ -868,8 +924,10 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                     >
                       {item.n}
                     </span>
-                    <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 999, background: C.blueBg, color: "#3A6EA5" }}>
-                      {item.sourceLabel ?? "来源未知"}
+                    <span
+                      className={`inline-flex items-center rounded-pill px-[5px] py-[1px] text-[9px] font-bold ${sourceBadge.chipClassName}`}
+                    >
+                      {item.sourceLabel?.trim() || sourceBadge.label}
                     </span>
                     {!hideCategoryTag && (category ? <TagChip category={category} /> : <TagChip warning />)}
                   </div>
@@ -887,7 +945,18 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                   </div>
                 </div>
                 {/* 右侧金额 */}
-                <div style={{ fontSize: 14, fontWeight: 600, color: category ? C.dark : "#D85A30", flexShrink: 0, marginLeft: 8, fontFamily: "'Space Mono',monospace" }}>¥{formatCurrencyAmount(item.a)}</div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: item.direction === "in" ? C.mint : (category ? C.dark : "#D85A30"),
+                    flexShrink: 0,
+                    marginLeft: 8,
+                    fontFamily: "'Space Mono',monospace"
+                  }}
+                >
+                  {item.direction === "in" ? "+" : "−"}¥{formatCurrencyAmount(item.a)}
+                </div>
               </div>
             );
           })}
@@ -965,6 +1034,7 @@ export function DragOverlay({
     : dragItem?.aiCat?.trim()
       ? (dragItem.reason?.trim() || "")
       : "";
+  const sourceBadge = getSourceBadgeVisual(dragItem?.sourceType);
   const directionLabel = dragItem?.direction === "in" ? "收入" : "支出";
   const amountLabel = `${directionLabel} ¥${formatCurrencyAmount(dragItem?.a ?? 0)}`;
   const remarkText = normalizeTransactionDetailText(dragItem?.remark);
@@ -973,8 +1043,8 @@ export function DragOverlay({
     ? "微信"
     : dragItem?.sourceType === "alipay"
       ? "支付宝"
-      : "手动";
-  const sourceLabelText = dragItem?.sourceLabel?.trim() || "来源未知";
+      : "随手记";
+  const sourceLabelText = dragItem?.sourceLabel?.trim() || sourceBadge.label;
   const productText = dragItem
     ? (resolveTransactionDisplayProductText(dragItem) || normalizeTransactionDetailText(dragItem.n) || "未知交易")
     : "未知交易";
@@ -1205,7 +1275,7 @@ export function DragOverlay({
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={panelHeadlineTitleStyle}>{displayTitle}</div>
                   <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, padding: "3px 7px", borderRadius: 999, background: C.orangeBg, color: C.dark, fontWeight: 800 }}>{sourceLabelText}</span>
+                    <span className={`inline-flex items-center rounded-pill px-[7px] py-[3px] text-[10px] font-extrabold ${sourceBadge.chipClassName}`}>{sourceLabelText || sourceBadge.label}</span>
                     <span style={{ fontSize: 10, color: C.muted }}>{fullTimeText}</span>
                     {shouldShowSourceTypeText ? (
                       <span style={{ fontSize: 10, color: C.muted }}>{sourceTypeText}</span>

@@ -30,6 +30,12 @@ import {
   type HomeDayGroup,
   type HomeTransaction,
 } from "@ui/features/moni-home/components";
+import {
+  restoreHomeRangeUiSessionState,
+  saveHomeRangeUiSessionState,
+  subscribeHomeRangeUiOverride,
+  toLocalDateKey,
+} from "@ui/features/moni-home/homeRangeUiSession";
 import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
@@ -78,58 +84,6 @@ interface DetailContext {
   item: HomeTransaction;
   dayId: string;
   dayLabel: string;
-}
-
-/**
- * 首页 Data Range Picker 的 UI 态需要跨页面切换保留，
- * 但当前需求并不要求"杀进程后恢复"。
- * 因此这里采用"模块级会话缓存"：
- * - 切到设置/记账页再回来时，仍保留当前账本的 rangeMode / 草稿态 / 已提交态；
- * - 应用被彻底关闭后自然丢失，不额外写入持久化存储；
- * - 以账本 id 为 key，避免切换账本时互相污染。
- */
-type HomeRangeUiSessionState = {
-  rangeMode: string;
-  customStart: string;
-  customEnd: string;
-  draftRangeMode: string;
-  draftCustomStart: string;
-  draftCustomEnd: string;
-};
-
-const homeRangeUiSessionStateByLedger = new Map<string, HomeRangeUiSessionState>();
-
-/**
- * 将 Date 统一转回 YYYY-MM-DD。
- * 这里放在组件外层，既能给初始化逻辑复用，也能避免在推导预设模式时重复创建函数。
- */
-function toLocalDateKey(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-/**
- * 在当前会话里为某个账本恢复首页日期范围 UI 状态。
- * 有缓存则恢复，否则硬编码"本月"作为默认值。
- * 不依赖 facade 回传的 homeDateRange，避免因 facade 初始化为全账本范围而覆盖默认值。
- */
-function restoreHomeRangeUiSessionState(ledgerId: string): HomeRangeUiSessionState {
-  const cached = homeRangeUiSessionStateByLedger.get(ledgerId);
-  if (cached) {
-    return cached;
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  return {
-    rangeMode: "本月",
-    customStart: today,
-    customEnd: today,
-    draftRangeMode: "本月",
-    draftCustomStart: today,
-    draftCustomEnd: today,
-  };
 }
 
 export default function MoniHome({
@@ -323,6 +277,27 @@ export default function MoniHome({
 
   useEffect(() => {
     /**
+     * 某些跨层交互（例如零记忆弹窗选择“只分类 7 天”）发生在 AppRoot，
+     * 当时并不持有 MoniHome 的本地 state setter。
+     * 这里订阅 UI 侧“外部范围覆盖”事件，让当前已挂载的首页实例也能立即同步到新范围，
+     * 避免只改 facade 的 data range、却遗漏了 DateRangePicker 本地显示态。
+     */
+    return subscribeHomeRangeUiOverride((payload) => {
+      if (payload.ledgerId !== currentLedger.id) {
+        return;
+      }
+      setRangeMode(payload.state.rangeMode);
+      setCustomStart(payload.state.customStart);
+      setCustomEnd(payload.state.customEnd);
+      setDraftRangeMode(payload.state.draftRangeMode);
+      setDraftCustomStart(payload.state.draftCustomStart);
+      setDraftCustomEnd(payload.state.draftCustomEnd);
+      setRestoredLedgerId(payload.ledgerId);
+    });
+  }, [currentLedger.id]);
+
+  useEffect(() => {
+    /**
      * restoredLedgerId 在 restore effect 完成后才被置为 currentLedger.id。
      * 在此之前跳过写缓存，避免把 Render 1 的初始占位值（today/本月）污染缓存。
      * 这样空账本（dataRange 永远为 null）的用户选择也能正确持久化。
@@ -331,7 +306,7 @@ export default function MoniHome({
       return;
     }
 
-    homeRangeUiSessionStateByLedger.set(currentLedger.id, {
+    saveHomeRangeUiSessionState(currentLedger.id, {
       rangeMode,
       customStart,
       customEnd,
@@ -387,7 +362,15 @@ export default function MoniHome({
   }, [detailTxId, realDays]);
 
   const latestId = renderDays[0]?.id;
-  const expenseItems = useMemo(() => rangeDays.flatMap((day) => day.items), [rangeDays]);
+  /**
+   * 首页日卡现在会同时展示收入与支出条目，
+   * 但“支出统计 / 分类概览 / 预算相关消费感知”仍只应基于真实支出计算。
+   * 因此这里显式把支出条目单独筛出来，避免收入混进 overview 和 expenseTotal。
+   */
+  const expenseItems = useMemo(
+    () => rangeDays.flatMap((day) => day.items).filter((item) => item.direction !== "in"),
+    [rangeDays],
+  );
   const expenseTotal = expenseItems.reduce((sum, item) => sum + item.a, 0);
   const committedIncomeRange = useMemo(
     () => ({

@@ -143,7 +143,7 @@ function getSourceBadgeMeta(sourceType: HomeTransaction["sourceType"]): SourceBa
   if (sourceType === "wechat") {
     return {
       icon: <MessageCircle size={12} strokeWidth={2.4} />,
-      label: "微信支付",
+      label: "微信",
       chipClassName: "bg-success-surface text-success-text",
       iconClassName: "bg-mint/25 text-ink",
     };
@@ -773,9 +773,18 @@ export function TransactionDetailPage({
   const persistReasoning = useCallback((nextValue: string) => {
     const normalized = nextValue.trim();
     if (normalized === persistedReasoningRef.current) return;
+    const previousReasoning = persistedReasoningRef.current;
     persistedReasoningRef.current = normalized;
+    /**
+     * 若这是用户第一次从空到非空填写 user_note，
+     * 服务层会按统一口径自动锁定。
+     * 这里同步更新本地状态，避免详情页锁定文案落后一拍。
+     */
+    if (!isVerified && !previousReasoning && normalized) {
+      setIsVerified(true);
+    }
     onUpdateUserReasoning(txId, normalized);
-  }, [onUpdateUserReasoning, txId]);
+  }, [isVerified, onUpdateUserReasoning, txId]);
 
   const requestClose = useCallback((source: "button" | "backdrop") => {
     if (isClosing) return;
@@ -810,18 +819,28 @@ export function TransactionDetailPage({
   /**
    * 分类更新遵循规格的副作用链：
    * - 立即写入 user_category
-   * - 若此前未锁定，则自动把 is_verified 置为 true
+   * - 由统一服务入口按规格判断是否自动锁定
    * - 若用户已写了理由，则一并作为学习信号传下去
    */
   const handleSelectCategory = useCallback((category: string) => {
     const reasoning = reasoningInput.trim();
+    /**
+     * 详情页本地态必须和服务层的自动锁定判定保持同一口径：
+     * - 之前没有 user_category 时，任何一次显式分类提交都视为确认
+     * - 已有 user_category 且这次改成了别的分类，也视为确认
+     * - 若只是对同一 user_category 再点一次，不应把未锁定状态误显示成“已锁定”
+     */
+    const shouldReflectAutoLock = !isVerified && (!transaction.userCat || transaction.userCat !== category);
     setSelectedCategory(category);
     setHasLocalCategorySelection(true);
     onUpdateCategory(txId, category, reasoning);
 
-    if (!isVerified) {
+    if (shouldReflectAutoLock) {
+      /**
+       * 服务层会在真正提交分类时按统一口径补写 is_verified。
+       * 这里仅做本地即时态更新，保证详情页开关与状态文案立刻反映“已确认”的交互结果。
+       */
       setIsVerified(true);
-      onSetTransactionVerification(txId, true);
     }
 
     if (reasoningTimerRef.current != null) {
@@ -830,7 +849,7 @@ export function TransactionDetailPage({
     }
 
     revealReasoningInput();
-  }, [isVerified, onSetTransactionVerification, onUpdateCategory, reasoningInput, revealReasoningInput, txId]);
+  }, [isVerified, onUpdateCategory, reasoningInput, revealReasoningInput, transaction.userCat, txId]);
 
   const handleToggleVerification = useCallback(() => {
     const next = !isVerified;

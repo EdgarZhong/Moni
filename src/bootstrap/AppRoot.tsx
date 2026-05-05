@@ -9,6 +9,7 @@ import { useAiEngineControl } from '@ui/hooks/useAiEngineControl';
 import { useKeyboard } from '@ui/hooks/useKeyboard';
 import { useLedgerControl } from '@ui/hooks/useLedgerControl';
 import { BottomNav } from '@ui/features/moni-home/BottomNav';
+import { ZeroMemoryWarningDialog } from '@ui/features/zero-memory-warning/ZeroMemoryWarningDialog';
 import {
   PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
@@ -264,6 +265,17 @@ function RuntimeApp() {
           style={{ position: 'absolute', inset: 0, zIndex: 25, background: 'transparent' }}
         />
       ) : null}
+
+      {/* 零记忆消费风险提示弹窗 */}
+      <ZeroMemoryWarningDialog
+        isOpen={aiEngineControl.zeroMemoryWarning.isOpen}
+        daysCount={aiEngineControl.zeroMemoryWarning.daysCount}
+        startDate={aiEngineControl.zeroMemoryWarning.startDate || new Date()}
+        endDate={aiEngineControl.zeroMemoryWarning.endDate || new Date()}
+        onClassify7Days={aiEngineControl.zeroMemoryWarning.handleClassify7Days}
+        onConsumeAll={aiEngineControl.zeroMemoryWarning.handleConsumeAll}
+        onClose={aiEngineControl.zeroMemoryWarning.handleClose}
+      />
 
       {autoLearningNotice.visible ? (
         <div

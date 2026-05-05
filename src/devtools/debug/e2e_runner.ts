@@ -697,8 +697,20 @@ async function runExampleStoreSpecTest(): Promise<DebugTestReport> {
 
   const report = createReport('runExampleStoreSpecTest');
   const ledgerManager = LedgerManager.getInstance();
+  const ledgerService = LedgerService.getInstance();
   const originalLedger = getActiveLedgerName();
   const tempLedger = buildTempLedgerName('实例库测试账本');
+  const waitFor = async <T>(reader: () => Promise<T | null> | T | null, timeoutMs: number = 3000): Promise<T | null> => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const current = await reader();
+      if (current !== null) {
+        return current;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    return null;
+  };
 
   try {
     const created = await ledgerManager.createLedger(tempLedger);
@@ -806,6 +818,83 @@ async function runExampleStoreSpecTest(): Promise<DebugTestReport> {
       ),
       references,
       '分类阶段运行时注入应符合 v7 rich schema：去掉 created_at，B 区块前缀化错误字段，A+C+D 区块保留 ai_reasoning 但去掉 ai_category'
+    );
+
+    /**
+     * user_note 也是学习信号：
+     * - 首次从空到非空时，应自动锁定并入库
+     * - 后续继续改 note 时，应刷新实例库中的同 id 样本
+     */
+    const noteDrivenRecordId = `spec_note_${Date.now().toString(36)}`;
+    await ledgerService.ingestSingleRecord({
+      id: noteDrivenRecordId,
+      time: formatNowForRecord(),
+      sourceType: 'wechat',
+      category: '零食',
+      rawClass: '商户消费',
+      counterparty: '实例库备注测试商户',
+      product: '实例库备注测试条目',
+      amount: 12.5,
+      direction: 'out',
+      paymentMethod: '零钱',
+      transactionStatus: TransactionStatus.SUCCESS,
+      remark: '',
+      ai_category: '零食',
+      ai_reasoning: 'AI 暂定零食',
+      user_category: '',
+      user_note: '',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    });
+
+    ledgerService.updateUserReasoning(noteDrivenRecordId, '首次补充说明');
+    const firstNoteRecord = await waitFor(() => {
+      const record = getCurrentLedgerMemory()?.records[noteDrivenRecordId];
+      return record?.user_note === '首次补充说明' ? record : null;
+    });
+    const firstNoteExample = await waitFor(async () => {
+      return (await ExampleStore.load(tempLedger)).find((entry) => entry.id === noteDrivenRecordId) ?? null;
+    });
+    assertStep(
+      report,
+      'firstUserNoteAutoLocksAndCreatesExample',
+      Boolean(
+        firstNoteRecord &&
+          firstNoteExample &&
+          firstNoteRecord.is_verified === true &&
+          firstNoteExample.user_note === '首次补充说明' &&
+          firstNoteExample.is_verified === true
+      ),
+      {
+        record: firstNoteRecord,
+        example: firstNoteExample,
+      },
+      '当 user_note 从空到非空时，应自动锁定，并把最新 note 写入实例库样本'
+    );
+
+    ledgerService.updateUserReasoning(noteDrivenRecordId, '二次补充说明');
+    const secondNoteRecord = await waitFor(() => {
+      const record = getCurrentLedgerMemory()?.records[noteDrivenRecordId];
+      return record?.user_note === '二次补充说明' ? record : null;
+    });
+    const secondNoteExample = await waitFor(async () => {
+      const entry = (await ExampleStore.load(tempLedger)).find((candidate) => candidate.id === noteDrivenRecordId) ?? null;
+      return entry?.user_note === '二次补充说明' ? entry : null;
+    });
+    assertStep(
+      report,
+      'laterUserNoteEditsRefreshExistingExample',
+      Boolean(
+        secondNoteRecord &&
+          secondNoteExample &&
+          secondNoteRecord.is_verified === true &&
+          secondNoteExample.user_note === '二次补充说明'
+      ),
+      {
+        record: secondNoteRecord,
+        example: secondNoteExample,
+      },
+      '后续修改 user_note 时，不要求再次改锁定状态，但实例库中的同 id 样本必须同步更新到最新 note'
     );
   } catch (error) {
     pushStep(report, {

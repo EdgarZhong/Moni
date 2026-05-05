@@ -462,7 +462,7 @@ export class SnapshotManager {
    * v6 变更：
    * - 只更新 current_snapshot_id 指针，不创建新快照
    * - 不再调用 MemoryManager.save()（避免循环依赖）
-   * - 返回快照内容，由调用方负责写入记忆文件
+   * - 返回快照内容，由调用方负责写入记忆文件；空快照会返回空字符串，属于合法成功结果
    *
    * @param ledgerName 账本名称
    * @param snapshotId 要回退到的快照 ID

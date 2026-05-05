@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { appFacade } from '@bootstrap/appFacade';
 import type { ControlUpdateRef } from '@ui/features/moni-home/components';
+import {
+  publishHomeRangeUiOverride,
+  toLocalDateKey,
+} from '@ui/features/moni-home/homeRangeUiSession';
 import type { HomeAiEngineUiState } from '@shared/types';
 import { triggerImpact } from '@system/device/impact';
+import { useZeroMemoryWarningDialog } from './useZeroMemoryWarningDialog';
 
 const EMPTY_AI_STATE: HomeAiEngineUiState = {
   status: 'idle',
@@ -26,6 +31,8 @@ export interface AiEngineControl {
   onEndControl: () => void;
   onCancelControl: () => void;
   onUpdateControlHit: ControlUpdateRef;
+  // 零记忆警告弹窗相关
+  zeroMemoryWarning: ReturnType<typeof useZeroMemoryWarningDialog>;
 }
 
 /**
@@ -41,6 +48,9 @@ export function useAiEngineControl(): AiEngineControl {
   const controlRef = useRef<HTMLDivElement | null>(null);
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+
+  // 零记忆警告弹窗
+  const zeroMemoryWarning = useZeroMemoryWarningDialog();
 
   // 订阅 appFacade，同步 AI 引擎状态
   useEffect(() => {
@@ -92,9 +102,39 @@ export function useAiEngineControl(): AiEngineControl {
     if (!controlOpen) return;
     if (controlHit === '开启') {
       setOptimisticStopping(false);
-      void appFacade.startAiProcessing().catch((err) => {
+
+      // 传入零记忆警告弹窗的 callback 给 AppFacade
+      void appFacade.startAiProcessing(
+        async (latestDate: Date, daysCount: number) => {
+          const choice = await zeroMemoryWarning.showDialog(latestDate, daysCount);
+
+          /**
+           * 当用户选择“只分类 7 天”时，除了让 facade 缩小实际消费范围，
+           * 还必须把首页 DateRangePicker 的本地会话态同步成同一窗口。
+           * 否则首页会出现“后台已切 7 天，但滑块仍显示旧范围”的错位。
+           */
+          if (choice === 'classify7days') {
+            const ledgerId = appFacade.getLedgerState().currentLedgerId;
+            const adjustedRange = appFacade.computeAdjustedDateRangeFor7Days(latestDate);
+            const startKey = toLocalDateKey(adjustedRange.start);
+            const endKey = toLocalDateKey(adjustedRange.end);
+
+            publishHomeRangeUiOverride(ledgerId, {
+              rangeMode: '自定义',
+              customStart: startKey,
+              customEnd: endKey,
+              draftRangeMode: '自定义',
+              draftCustomStart: startKey,
+              draftCustomEnd: endKey,
+            });
+          }
+
+          return choice;
+        }
+      ).catch((err) => {
         console.error('[useAiEngineControl] Failed to start AI:', err);
       });
+
       void triggerImpact('medium');
     }
     if (controlHit === '关闭' && aiOn) {
@@ -104,7 +144,7 @@ export function useAiEngineControl(): AiEngineControl {
     }
     setControlOpen(false);
     setControlHit(null);
-  }, [aiOn, controlHit, controlOpen, stopHold]);
+  }, [aiOn, controlHit, controlOpen, stopHold, zeroMemoryWarning]);
 
   const onCancelControl = useCallback(() => {
     stopHold();
@@ -130,5 +170,6 @@ export function useAiEngineControl(): AiEngineControl {
     onEndControl,
     onCancelControl,
     onUpdateControlHit: { ref: controlRef, move: updateControlHit },
+    zeroMemoryWarning,
   };
 }

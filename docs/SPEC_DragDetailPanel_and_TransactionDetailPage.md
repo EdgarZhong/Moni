@@ -214,6 +214,12 @@ else:
 - `direction + amount`：大号金额，格式同 Collapsed 态
 - `sourceLabel / 完整时间 / sourceType`：以紧凑标签或次级元信息形式展示，其中时间必须写成“X月X日 HH:mm”，而不是只保留“HH:mm”
 
+来源标签固定口径：
+
+1. 文案统一为：`微信` / `支付宝` / `随手记`
+2. 颜色统一为：微信绿、支付宝蓝、随手记黄
+3. 该来源标签语义与首页日卡保持完全一致，不得在详情页或拖拽细则里另起一套文案
+
 **块 B：交易细则**
 
 - `counterparty`：若与主标题不同，优先展示，帮助用户回忆交易对象
@@ -370,7 +376,7 @@ function updatePanelState(clientY: number, activationY: number) {
 | `product`（剥离前缀后）| 次级描述，若与 displayTitle 相同则不重复展示；字号应略高于正文信息卡，但仍低于主标题 | 不同时展示 |
 | `rawClass` | "交易类型：XX" | 始终 |
 | `time` | "交易时间：YYYY年M月D日 HH:mm" | 始终 |
-| `sourceType` | 图标 + 文字（微信支付 / 支付宝 / 随手记）| 始终 |
+| `sourceType` | 图标 + 文字（微信 / 支付宝 / 随手记）| 始终 |
 
 **子区 B：金额明细**
 
