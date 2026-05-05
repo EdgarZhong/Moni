@@ -7,10 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AUTO_CAROUSEL_MS,
-  APP_HEADER_MIN_HEIGHT,
-  APP_HEADER_PADDING_TOP,
   C,
-  LEDGER_HEADER_CONTROL_WIDTH,
   MANUAL_IDLE_LOCK_MS,
   MANUAL_RESUME_MS,
   PHONE_FRAME_WIDTH_CSS,
@@ -25,8 +22,6 @@ import {
   DisplayBoard,
   DragOverlay,
   HintCard,
-  LedgerHeaderControl,
-  Logo,
   OverviewCard,
   ReasonDialog,
   StatsBar,
@@ -57,7 +52,7 @@ interface TrendDragState extends SwipeState {
   /**
    * 趋势图当前跟手预览位移。
    * 我们先在 UI 层做有限位移预览，松手后再折算成真实日期偏移，
-   * 让用户感知到“自由滑动”，而不是每次只触发一个固定步长。
+   * 让用户感知到"自由滑动"，而不是每次只触发一个固定步长。
    */
   offsetPx: number;
 }
@@ -89,8 +84,8 @@ interface DetailContext {
 
 /**
  * 首页 Data Range Picker 的 UI 态需要跨页面切换保留，
- * 但当前需求并不要求“杀进程后恢复”。
- * 因此这里采用“模块级会话缓存”：
+ * 但当前需求并不要求"杀进程后恢复"。
+ * 因此这里采用"模块级会话缓存"：
  * - 切到设置/记账页再回来时，仍保留当前账本的 rangeMode / 草稿态 / 已提交态；
  * - 应用被彻底关闭后自然丢失，不额外写入持久化存储；
  * - 以账本 id 为 key，避免切换账本时互相污染。
@@ -118,47 +113,24 @@ function toLocalDateKey(value: Date): string {
 }
 
 /**
- * 尝试把一个“起止日期”反推回快捷模式。
- * 这样当首页页面被卸载再挂载时，如果当前已提交范围本来就是“今天/本周/本月/近三月/全部”，
- * 我们可以把 picker 的模式标签也一并恢复，而不是粗暴退回“本月”或强行显示成“自定义”。
- */
-function inferRangeModeFromDates(start: string, end: string, minDate: string, maxDate: string): string {
-  const presetModes = ["今天", "本周", "本月", "近三月", "全部"] as const;
-  for (const mode of presetModes) {
-    const matched = getRange(mode, start, end, minDate, maxDate);
-    if (toLocalDateKey(matched.start) === start && toLocalDateKey(matched.end) === end) {
-      return mode;
-    }
-  }
-  return "自定义";
-}
-
-/**
  * 在当前会话里为某个账本恢复首页日期范围 UI 状态。
- * 若该账本还没有缓存，则从 facade 已知的 `homeDateRange + dataRange` 推导出一个稳定初值。
+ * 有缓存则恢复，否则硬编码"本月"作为默认值。
+ * 不依赖 facade 回传的 homeDateRange，避免因 facade 初始化为全账本范围而覆盖默认值。
  */
-function restoreHomeRangeUiSessionState(params: {
-  ledgerId: string;
-  minDate: string;
-  maxDate: string;
-  homeDateRange: { start: string | null; end: string | null };
-}): HomeRangeUiSessionState {
-  const cached = homeRangeUiSessionStateByLedger.get(params.ledgerId);
+function restoreHomeRangeUiSessionState(ledgerId: string): HomeRangeUiSessionState {
+  const cached = homeRangeUiSessionStateByLedger.get(ledgerId);
   if (cached) {
     return cached;
   }
 
-  const initialStart = params.homeDateRange.start ?? params.minDate;
-  const initialEnd = params.homeDateRange.end ?? params.maxDate;
-  const initialMode = inferRangeModeFromDates(initialStart, initialEnd, params.minDate, params.maxDate);
-
+  const today = new Date().toISOString().slice(0, 10);
   return {
-    rangeMode: initialMode,
-    customStart: initialStart,
-    customEnd: initialEnd,
-    draftRangeMode: initialMode,
-    draftCustomStart: initialStart,
-    draftCustomEnd: initialEnd,
+    rangeMode: "本月",
+    customStart: today,
+    customEnd: today,
+    draftRangeMode: "本月",
+    draftCustomStart: today,
+    draftCustomEnd: today,
   };
 }
 
@@ -169,7 +141,6 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     totalTransactionCount,
     trendCard,
     currentLedger,
-    availableLedgers,
     hintCards,
     hasBudget,
     budgetCard,
@@ -178,7 +149,6 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     unclassifiedCount,
     aiEngineUiState,
     dataRange,
-    homeDateRange,
     actions,
   } = useMoniHomeData();
 
@@ -200,7 +170,6 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const [dragPanelState, setDragPanelState] = useState<"collapsed" | "expanded">("collapsed");
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
-  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
   const [trendDragOffsetPx, setTrendDragOffsetPx] = useState(0);
 
   const [stickyRail, setStickyRail] = useState(false);
@@ -223,15 +192,13 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   const dragActivationPointRef = useRef<{ x: number; y: number } | null>(null);
   const dragExpandArmedRef = useRef(false);
   const pendingDropRef = useRef<{ txId: string; category: string } | null>(null);
-  const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
   const restoredRangeSessionKeyRef = useRef<string | null>(null);
 
   const primaryHint = hintCards[0] ?? null;
   const aiStop = aiEngineUiState.status === "draining";
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
   const aiCurrentDates = aiEngineUiState.activeDates;
-  const currentLedgerName = currentLedger.name || availableLedgers.find((ledger) => ledger.id === currentLedger.id)?.name || "未设置账本";
-  /**
+/**
    * 趋势图每跨一格对应一天。
    * 这里复用 DisplayBoard 当前 260 宽度 / 6 间隔的视觉节奏，保证拖拽位移和日期位移直觉一致。
    */
@@ -268,7 +235,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   }, [dataRange.max, dataRange.min]);
 
   /**
-   * 统一计算“一个范围选择”在首页里的三层含义：
+   * 统一计算"一个范围选择"在首页里的三层含义：
    * 1. requested：快捷键/自定义真正要求的原始日期；
    * 2. visual：映射到滑块上的显示位置，永远限制在账本数据范围内；
    * 3. applied：真正提交给首页过滤和 AI 消费的范围，语义上等于交集；
@@ -319,8 +286,16 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   );
 
   useEffect(() => {
+    /**
+     * 真实账本边界加载完成前不提交范围：
+     * 未加载时 rangeBounds 是 today/today 兜底值，提交后 homeDateRange 变成"today"，
+     * restore effect 会把它误反推为"今天"，覆盖掉正确的"本月"默认值。
+     */
+    if (!dataRange.min || !dataRange.max) {
+      return;
+    }
     actions.setHomeDateRange(committedRangeSelection.applied);
-  }, [actions.setHomeDateRange, committedRangeSelection]);
+  }, [actions.setHomeDateRange, committedRangeSelection, dataRange.max, dataRange.min]);
 
   useEffect(() => {
     if (!rangeBounds.min || !rangeBounds.max) {
@@ -328,11 +303,11 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     }
 
     /**
-     * `customStart/customEnd` 既承载“自定义范围草稿”，也承载快捷范围映射出的真实起止日期。
+     * `customStart/customEnd` 既承载"自定义范围草稿"，也承载快捷范围映射出的真实起止日期。
      * 若在这里无条件按账本 dataRange 强行夹回，`本周/本月/近三月/今天` 这类按系统当前日期计算的快捷项
      * 会在写入后立刻被改回到账本最后一笔交易日，表现成两个 thumb 一起顶到右侧。
      *
-     * 因此这里只在“自定义”模式下兜底收口输入边界；快捷模式允许超出 dataRange，
+     * 因此这里只在"自定义"模式下兜底收口输入边界；快捷模式允许超出 dataRange，
      * 列表是否有数据由实际交易日期过滤结果自然决定。
      */
     if (rangeMode !== "自定义") {
@@ -356,29 +331,21 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     }
 
     /**
-     * 首页范围 UI 只应该在“进入一个新的账本上下文”时恢复一次：
+     * 首页范围 UI 只应该在"进入一个新的账本上下文"时恢复一次：
      * - 首次加载该账本；
      * - 切换到账本；
      * - 账本真实数据边界发生变化。
      *
      * 不能把 facade 回写出来的 `homeDateRange` 继续作为 restore 触发源，
      * 否则一次正常的范围提交也会反向触发 restore，
-     * 造成 picker 在“今天 / 本月 / 全部”等模式之间来回跳。
+     * 造成 picker 在"今天 / 本月 / 全部"等模式之间来回跳。
      */
     const restoreSessionKey = `${currentLedger.id}::${rangeBounds.min}::${rangeBounds.max}`;
     if (restoredRangeSessionKeyRef.current === restoreSessionKey) {
       return;
     }
 
-    const restored = restoreHomeRangeUiSessionState({
-      ledgerId: currentLedger.id,
-      minDate: rangeBounds.min,
-      maxDate: rangeBounds.max,
-      homeDateRange: {
-        start: homeDateRange.start,
-        end: homeDateRange.end,
-      },
-    });
+    const restored = restoreHomeRangeUiSessionState(currentLedger.id);
 
     restoredRangeSessionKeyRef.current = restoreSessionKey;
     setRangeMode(restored.rangeMode);
@@ -388,7 +355,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     setDraftCustomStart(restored.draftCustomStart);
     setDraftCustomEnd(restored.draftCustomEnd);
     actions.setTrendWindowOffset(0);
-  }, [actions.setTrendWindowOffset, currentLedger.id, homeDateRange.end, homeDateRange.start, rangeBounds.max, rangeBounds.min]);
+  }, [actions.setTrendWindowOffset, currentLedger.id, rangeBounds.max, rangeBounds.min]);
 
   useEffect(() => {
     if (!currentLedger.id || !dataRange.min || !dataRange.max) {
@@ -396,7 +363,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     }
 
     /**
-     * 只在拿到真实账本边界后写会话缓存，避免初始加载阶段用“今天兜底值”污染缓存。
+     * 只在拿到真实账本边界后写会话缓存，避免初始加载阶段用"今天兜底值"污染缓存。
      * 缓存内容包含 committed + draft 两套状态，确保重新进入首页时弹窗草稿也保持原样。
      */
     homeRangeUiSessionStateByLedger.set(currentLedger.id, {
@@ -423,7 +390,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
 
   /**
    * `realDays` 已经是 facade 按 `homeDateRange` 过滤后的结果。
-   * 这里不能再按滑块视觉位置二次过滤，否则会把“无交集”错误折叠成边界那一天。
+   * 这里不能再按滑块视觉位置二次过滤，否则会把"无交集"错误折叠成边界那一天。
    */
   const rangeDays = realDays;
 
@@ -599,7 +566,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     const deltaY = ey - sy;
     if (axis === "horizontal") {
       /**
-       * 过去是“只要横向划一下，就固定跳 1 天”。
+       * 过去是"只要横向划一下，就固定跳 1 天"。
        * 现在改成按真实拖拽距离折算天数，这样一次拖动可以连续跨过多天。
        */
       const offsetDays = Math.round(-offsetPx / TREND_DAY_STEP_PX);
@@ -795,7 +762,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
       const threshold = window.innerHeight - DRAG_PANEL_COLLAPSED_VISIBLE_PX;
       /**
        * 只有当用户在长按成立后真正向下拖出一小段位移时，才允许 Expanded 介入。
-       * 这样可以挡住“用户本来准备直接上拖去分类，面板却先自己弹开”的打扰。
+       * 这样可以挡住"用户本来准备直接上拖去分类，面板却先自己弹开"的打扰。
        */
       if (!dragExpandArmedRef.current) {
         const activationPoint = dragActivationPointRef.current;
@@ -814,7 +781,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
      *
      * 真机触摸流里，系统可能因为手势仲裁、滚动接管、来电/通知、WebView 自身策略等原因
      * 触发 pointercancel。此前这里把 pointercancel 与 pointerup 共用同一套逻辑，
-     * 导致“手指尚未松开，只是移动到分类框上方”时，一旦收到 cancel，
+     * 导致"手指尚未松开，只是移动到分类框上方"时，一旦收到 cancel，
      * 就会错误地把当前 hover 分类当成最终 drop 结果提交。
      *
      * 桌面浏览器用鼠标时通常只会在真实松手后触发 pointerup，
@@ -863,27 +830,6 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   }, [hoverCategory]);
 
   useEffect(() => {
-    if (!ledgerDropdownOpen) {
-      return undefined;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const root = ledgerDropdownWrapRef.current;
-      if (!root) {
-        return;
-      }
-      if (!root.contains(event.target as Node)) {
-        setLedgerDropdownOpen(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [ledgerDropdownOpen]);
-
-  useEffect(() => {
     setHintVisible(Boolean(primaryHint));
   }, [primaryHint]);
 
@@ -911,7 +857,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
   };
 
   /**
-   * 打开面板时，把“已提交生效态”复制成一份草稿。
+   * 打开面板时，把"已提交生效态"复制成一份草稿。
    * 后续快捷键/滑块/日期输入都只改草稿，不立刻影响首页内容。
    */
   const openRangeDialog = useCallback(() => {
@@ -936,8 +882,7 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
         flexDirection: "column",
       }}
     >
-      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`
+<style>{`
         @keyframes rb {
           0%   { border-color: ${C.coral} }
           25%  { border-color: ${C.yellow} }
@@ -966,80 +911,6 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
       `}</style>
 
       <Decor />
-
-      <div
-        style={{
-          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
-          minHeight: APP_HEADER_MIN_HEIGHT,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          background: C.bg,
-          zIndex: 20,
-          flexShrink: 0,
-          position: "relative",
-        }}
-      >
-        <Logo />
-        <div
-          ref={ledgerDropdownWrapRef}
-          style={{
-            width: LEDGER_HEADER_CONTROL_WIDTH,
-            display: "flex",
-            justifyContent: "flex-end",
-            position: "relative",
-          }}
-        >
-          <LedgerHeaderControl ledgerName={currentLedgerName} onClick={() => setLedgerDropdownOpen((open) => !open)} ariaLabel="切换账本" />
-          {ledgerDropdownOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: 40,
-                right: 0,
-                minWidth: 146,
-                maxWidth: 220,
-                background: C.white,
-                border: `2px solid ${C.dark}`,
-                borderRadius: 14,
-                boxShadow: "0 8px 20px rgba(0,0,0,.14)",
-                overflow: "hidden",
-                zIndex: 40,
-              }}
-            >
-              {availableLedgers.map((ledger, index) => {
-                const selected = ledger.id === currentLedger.id;
-                return (
-                  <div
-                    key={ledger.id}
-                    onClick={() => {
-                      void actions.switchLedger(ledger.id).catch((error) => {
-                        console.error("[MoniHome] Failed to switch ledger:", error);
-                      });
-                      setLedgerDropdownOpen(false);
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                      borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : "none",
-                      background: selected ? C.blueBg : C.white,
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {ledger.name}
-                    </div>
-                    <div style={{ fontSize: 12, color: selected ? C.dark : "transparent", fontWeight: 700 }}>✓</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
 
       <div
         ref={scrollRef}

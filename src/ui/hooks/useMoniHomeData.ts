@@ -15,6 +15,13 @@ const FALLBACK_LEDGER: LedgerOption = {
   name: '日常开销',
 };
 
+/**
+ * 跨页面切换时 MoniHome 会被卸载重挂，useState 初值会重置到 FALLBACK_LEDGER，
+ * 导致顶部账本名在真实数据加载前短暂闪回"日常开销"。
+ * 用模块级变量缓存上一次已知账本，重挂时直接用它初始化，消除闪烁。
+ */
+let lastKnownLedger: LedgerOption = FALLBACK_LEDGER;
+
 const EMPTY_READ_MODEL: MoniHomeReadModel = {
   currentLedger: FALLBACK_LEDGER,
   availableLedgers: [FALLBACK_LEDGER],
@@ -162,12 +169,18 @@ export interface MoniHomeData {
 }
 
 export function useMoniHomeData(): MoniHomeData {
-  const [readModel, setReadModel] = useState<MoniHomeReadModel>(EMPTY_READ_MODEL);
+  const [readModel, setReadModel] = useState<MoniHomeReadModel>(() => ({
+    ...EMPTY_READ_MODEL,
+    currentLedger: lastKnownLedger,
+  }));
   const [trendWindowOffset, setTrendWindowOffset] = useState(0);
-  const [homeDateRange, setHomeDateRange] = useState<{ start: Date | null; end: Date | null; isEmpty?: boolean }>({
-    start: null,
-    end: null,
-    isEmpty: false,
+  const [homeDateRange, setHomeDateRange] = useState<{ start: Date | null; end: Date | null; isEmpty?: boolean }>(() => {
+    // 初始值设为本月，确保第一次 facade 请求就带过滤条件，避免全量数据闪现。
+    const now = new Date();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
   });
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -184,6 +197,7 @@ export function useMoniHomeData(): MoniHomeData {
         return;
       }
 
+      lastKnownLedger = nextReadModel.currentLedger;
       startTransition(() => {
         setReadModel(nextReadModel);
       });

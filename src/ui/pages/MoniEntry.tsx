@@ -9,14 +9,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  APP_HEADER_MIN_HEIGHT,
-  APP_HEADER_PADDING_TOP,
   C,
   CAT,
-  LEDGER_HEADER_CONTROL_WIDTH,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
-import { Decor, LedgerHeaderControl, Logo } from "@ui/features/moni-home/components";
+import { Decor } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { appFacade } from "@bootstrap/appFacade";
@@ -856,8 +853,6 @@ interface MoniEntryProps {
 
 export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
   const {
-    currentLedger,
-    availableLedgers,
     recentReferences,
     categoryDefinitions,
     actions,
@@ -898,10 +893,8 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [selectedImportSource, setSelectedImportSource] = useState<BillImportSource | null>(null);
   const [pendingPasswordImport, setPendingPasswordImport] = useState<PendingPasswordImport | null>(null);
-  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
-
   /**
-   * 本轮 Android 真机修复要求首屏优先露出“记一笔”入口。
+   * 本轮 Android 真机修复要求首屏优先露出”记一笔”入口。
    * 因此这里暂时关闭“最近流水”参考区渲染，只保留实现以便后续再恢复。
    */
   const showRecentReferences = false;
@@ -1244,8 +1237,7 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
         height: "100%",
       }}
     >
-      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`
+<style>{`
         @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
         @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
         input[type="number"]::-webkit-inner-spin-button,
@@ -1275,62 +1267,6 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
       `}</style>
 
       <Decor />
-
-      <div
-        style={{
-          position: "sticky", top: 0, zIndex: 10, background: C.bg,
-          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`, borderBottom: `1px solid ${C.border}22`,
-          minHeight: APP_HEADER_MIN_HEIGHT,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Logo />
-          <div style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: "flex", justifyContent: "flex-end", position: "relative" }}>
-            <LedgerHeaderControl
-              ledgerName={currentLedger.name}
-              ariaLabel="切换账本"
-              onClick={() => setLedgerDropdownOpen((open) => !open)}
-            />
-            {ledgerDropdownOpen && (
-              <div
-                style={{
-                  position: "absolute", top: 40, right: 0,
-                  minWidth: 146, maxWidth: 220,
-                  background: C.white, border: `2px solid ${C.dark}`,
-                  borderRadius: 14, boxShadow: "0 8px 20px rgba(0,0,0,.14)",
-                  overflow: "hidden", zIndex: 40,
-                }}
-              >
-                {availableLedgers.map((ledger, index) => {
-                  const selected = ledger.id === currentLedger.id;
-                  return (
-                    <div
-                      key={ledger.id}
-                      onClick={() => {
-                        void actions.switchLedger(ledger.id).catch((err) => {
-                          console.error("[MoniEntry] Failed to switch ledger:", err);
-                        });
-                        setLedgerDropdownOpen(false);
-                      }}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: 10, padding: "10px 12px", cursor: "pointer",
-                        borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : "none",
-                        background: selected ? C.blueBg : C.white,
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {ledger.name}
-                      </div>
-                      <div style={{ fontSize: 12, color: selected ? C.dark : "transparent", fontWeight: 700 }}>✓</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       <div className="entry-scroll-container" style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
         <div style={{ padding: "10px 16px 4px" }}>

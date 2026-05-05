@@ -7,8 +7,17 @@ import MoniSettings from '@ui/pages/MoniSettings';
 import { useAppViewportLock } from '@ui/hooks/useAppViewportLock';
 import { useAiEngineControl } from '@ui/hooks/useAiEngineControl';
 import { useKeyboard } from '@ui/hooks/useKeyboard';
-import { BottomNav } from '@ui/features/moni-home/components';
-import { PHONE_FRAME_HEIGHT_CSS, PHONE_FRAME_WIDTH_CSS } from '@ui/features/moni-home/config';
+import { useLedgerControl } from '@ui/hooks/useLedgerControl';
+import { BottomNav } from '@ui/features/moni-home/BottomNav';
+import { LedgerHeaderControl, Logo } from '@ui/features/moni-home/components';
+import {
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
+  C,
+  LEDGER_HEADER_CONTROL_WIDTH,
+  PHONE_FRAME_HEIGHT_CSS,
+  PHONE_FRAME_WIDTH_CSS,
+} from '@ui/features/moni-home/config';
 import { invokeTopBackHandler } from '@system/device/backHandler';
 
 /** Capacitor App 插件（仅声明所需方法，无需安装 @capacitor/app 包） */
@@ -39,6 +48,10 @@ function RuntimeApp() {
    * 这样 AI 运行状态和动画在三个页面间保持完全连贯，不会出现闪烁或重置。
    */
   const aiEngineControl = useAiEngineControl();
+  const { currentLedger, availableLedgers, switchLedger } = useLedgerControl();
+
+  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
+  const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
 
   /** 是否显示"再次返回退出应用"提示条 */
   const [exitToastVisible, setExitToastVisible] = useState(false);
@@ -95,7 +108,19 @@ function RuntimeApp() {
 
   const handleNavigate = useCallback((page: Page) => {
     setActivePage(page);
+    setLedgerDropdownOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (!ledgerDropdownOpen) return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ledgerDropdownWrapRef.current?.contains(event.target as Node)) {
+        setLedgerDropdownOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [ledgerDropdownOpen]);
 
   useEffect(() => {
     if (!autoLearningNotice.visible) {
@@ -153,7 +178,74 @@ function RuntimeApp() {
         fontFamily: "'Nunito',-apple-system,sans-serif",
       }}
     >
-      {/* 页面内容区：占满 BottomNav 以上的全部高度 */}
+      {/* 共享 Header：首页与记账页常驻，设置页不显示。
+          提到 AppRoot 层确保切页时 currentLedger 永远不 reset 到 FALLBACK。 */}
+      {activePage !== 'settings' && (
+        <div
+          style={{
+            padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+            minHeight: APP_HEADER_MIN_HEIGHT,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: C.bg,
+            zIndex: 20,
+            flexShrink: 0,
+            position: 'relative',
+          }}
+        >
+          <Logo />
+          <div
+            ref={ledgerDropdownWrapRef}
+            style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}
+          >
+            <LedgerHeaderControl
+              ledgerName={currentLedger.name}
+              ariaLabel="切换账本"
+              onClick={() => setLedgerDropdownOpen((open) => !open)}
+            />
+            {ledgerDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute', top: 40, right: 0,
+                  minWidth: 146, maxWidth: 220,
+                  background: C.white, border: `2px solid ${C.dark}`,
+                  borderRadius: 14, boxShadow: '0 8px 20px rgba(0,0,0,.14)',
+                  overflow: 'hidden', zIndex: 40,
+                }}
+              >
+                {availableLedgers.map((ledger, index) => {
+                  const selected = ledger.id === currentLedger.id;
+                  return (
+                    <div
+                      key={ledger.id}
+                      onClick={() => {
+                        void switchLedger(ledger.id).catch((err) => {
+                          console.error('[AppRoot] Failed to switch ledger:', err);
+                        });
+                        setLedgerDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 10, padding: '10px 12px', cursor: 'pointer',
+                        borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : 'none',
+                        background: selected ? C.blueBg : C.white,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {ledger.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: selected ? C.dark : 'transparent', fontWeight: 700 }}>✓</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 页面内容区：占满 BottomNav 以上的剩余高度 */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {activePage === 'entry' ? <MoniEntry onNavigate={handleNavigate} /> : null}
         {activePage === 'settings' ? <MoniSettings onNavigate={handleNavigate} /> : null}

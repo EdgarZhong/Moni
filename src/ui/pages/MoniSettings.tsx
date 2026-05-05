@@ -3280,8 +3280,7 @@ export default function MoniSettings({
         flexDirection: "column",
       }}
     >
-      <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-      <Decor />
+<Decor />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", zIndex: 1, overflow: "hidden" }}>{renderPage()}</div>
     </div>
   );
