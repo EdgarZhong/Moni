@@ -9,7 +9,7 @@
 
 ## 当前版本状态
 
-- 当前已发布稳定版本：`0.3.4`
+- 当前已发布稳定版本：`0.3.5`
 - 下一版本：`0.3.6`
 - 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
@@ -45,6 +45,19 @@
   - 导入指南页：无 header、保留 footer；正文主体居中，不得整体右偏
 
 ## Release Changelog
+
+### `0.3.5`
+
+- 修复首页/记账页拖拽蒙版被底部导航栏遮挡问题：两个覆盖层 z-index 从 50 提升至 400
+- 修复拖拽蒙版字体污染（portal 根 div 显式设置 Nunito，消除 :root Space Mono 继承）
+- 修复首页拖拽触发时"大餐"分类被误选：移除分类格子的 onPointerEnter/onPointerLeave
+- 记账页分类格子高度改为 gridAutoRows: max-content，与首页样式对齐
+- AppRoot 重构为三段架构（State Host / Chrome Controller / Overlay Host），页面级 header 下放各页面
+- 顶部安全区 APP_HEADER_PADDING_TOP 贯通所有二级层（密码页/指南页/详情页/设置子页）
+- Android 返回手势完整接入：首页三个覆盖层（拖拽蒙版/理由对话框/日期范围对话框）补入 useBackHandler，记账页覆盖层链完整（指南页 > 密码页 > 表单覆盖层），详情页分类模态框 > 关闭详情页
+- 修复 DateRangePicker 状态恢复逻辑，避免初始值污染缓存
+- Demo seed manifest 排除 llm_logs，体积从 56 个文件缩减至 16 个文件，消除低内存设备偶发加载失败风险
+- 首页交易列表手势状态机重构：抽离 `useHomeListGestureController` 独立 hook；状态机 `idle→pressing→scrolling/dragging→inertia`；跟手滚动改为 `startScrollTop - deltaY`（位置无关）；惯性滚动改为 `rAF + velocity * dt + exponential decay`（刷新率无关）；释放速度用 100ms 样本窗口；`handleScroll` rAF 节流
 
 ### `0.3.4`
 
@@ -117,6 +130,7 @@
 | AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供“先消费一周并自动停止”选项 |
 | Demo seed / release 数据携带排查 | Pending | 最近两次构建仅带 `secure_config`，账本数据未随包进入；需定位 manifest 生成/打包/首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
+| 首页手势状态机重构 | Done | 抽离 `useHomeListGestureController` 独立 hook；状态机 `idle→pressing→scrolling/dragging→inertia` 完整实现；跟手滚动改用 `startScrollTop - deltaY` 公式（位置无关）；惯性滚动改为 `rAF + velocity * dt + exponential decay`（刷新率无关）；释放速度用 100ms 样本窗口；`handleScroll` rAF 节流 |
 | DateRange 过滤逻辑未彻底收口 | Done | 修复 DateRangePicker 状态恢复逻辑，避免初始值污染缓存 |
 
 ## 当前优先级

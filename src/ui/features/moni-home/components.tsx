@@ -774,11 +774,12 @@ interface DayCardProps {
   onItemPointerDown: (item: HomeTransaction, event: React.PointerEvent) => void;
   onItemPointerMove: (event: React.PointerEvent) => void;
   onItemPointerUp: (event: React.PointerEvent) => void;
+  onItemPointerCancel?: (event: React.PointerEvent) => void;
   dayRef: (node: HTMLDivElement | null) => void;
 }
 
 /** DayCard — 按天分组流水卡片（三阶段展开：收起/展开/AI工作态） */
-export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, dayRef }: DayCardProps) {
+export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, onItemPointerCancel, dayRef }: DayCardProps) {
   const total = day.visibleItems.reduce((sum, item) => sum + item.a, 0);
   const allClassified = day.items.every((item) => getCategory(item));
   // 完全收起摘要态：未展开 且 不是 AI 处理中
@@ -842,7 +843,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                 onPointerDown={(event) => onItemPointerDown(item, event)}
                 onPointerMove={onItemPointerMove}
                 onPointerUp={onItemPointerUp}
-                onPointerCancel={onItemPointerUp}
+                onPointerCancel={onItemPointerCancel ?? onItemPointerUp}
                 style={{ display: "flex", alignItems: "center", padding: "7px 0", borderBottom: index < day.visibleItems.length - 1 ? `0.5px solid ${C.line}` : "none", cursor: "pointer", userSelect: "none", touchAction: "none" }}
               >
                 {/* 左侧图标区：有分类用 emoji，无分类用斜杠纹 + 问号 */}
@@ -903,8 +904,6 @@ interface DragOverlayProps {
   dragPoint: { x: number; y: number } | null;
   hoverCategory: string | null;
   panelState?: "collapsed" | "expanded";
-  onHover: (category: string) => void;
-  onLeave: () => void;
   onDrop: (category: string) => void;
   onClose: () => void;
   /** 当前账本可用分类列表（来自 LedgerService，替代全局 CAT） */
@@ -943,8 +942,6 @@ export function DragOverlay({
   dragPoint,
   hoverCategory,
   panelState = "collapsed",
-  onHover,
-  onLeave,
   onDrop,
   onClose,
   availableCategories,

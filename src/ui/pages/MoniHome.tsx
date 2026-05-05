@@ -34,6 +34,7 @@ import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailP
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
+import { useHomeListGestureController } from "@ui/hooks/useHomeListGestureController";
 import type { LedgerOption } from "@shared/types";
 
 
@@ -58,16 +59,6 @@ interface TrendDragState extends SwipeState {
    * 让用户感知到"自由滑动"，而不是每次只触发一个固定步长。
    */
   offsetPx: number;
-}
-
-interface PressState {
-  item: HomeTransaction;
-  pointerId: number;
-  startX: number;
-  startY: number;
-  startScrollTop: number;
-  startedAt: number;
-  mode: "pending" | "scroll";
 }
 
 interface ReasonItem {
@@ -197,10 +188,8 @@ export default function MoniHome({
   const scrollRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boardSwipeRef = useRef<SwipeState | null>(null);
   const trendSwipeRef = useRef<TrendDragState | null>(null);
-  const pressRef = useRef<PressState | null>(null);
   const hoverCategoryRef = useRef<string | null>(null);
   const dragLockRef = useRef<DragLock | null>(null);
   const dragPanelStateRef = useRef<"collapsed" | "expanded">("collapsed");
@@ -219,11 +208,6 @@ export default function MoniHome({
    */
   const TREND_DAY_STEP_PX = 260 / 6;
   const MAX_TREND_DRAG_PREVIEW_PX = TREND_DAY_STEP_PX * 3;
-  const clampDateString = useCallback((value: string, min: string, max: string) => {
-    if (value < min) return min;
-    if (value > max) return max;
-    return value;
-  }, []);
   /**
    * 组件内部继续使用稳定的日期格式化 helper，
    * 但实现直接复用外层的 `toLocalDateKey`，避免存在两套口径。
@@ -462,20 +446,91 @@ export default function MoniHome({
     setExpandedDays(latestId ? [latestId] : []);
   }, [latestId]);
 
+  /**
+   * handleScroll 使用 rAF 节流，避免在滚动热路径中频繁 setState。
+   */
+  const handleScrollRef = useRef(false);
   const handleScroll = useCallback(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const stickyAt = railRef.current ? Math.max(railRef.current.offsetTop - 8, 120) : 240;
-    const sticky = container.scrollTop >= stickyAt;
-    const nextStage = container.scrollTop < 18 ? "初始" : container.scrollTop < stickyAt ? "过渡" : "完全";
-    setStickyRail(sticky);
-    setScrollStage((prev) => {
-      if (prev !== nextStage) syncExpandedDays(nextStage);
-      return nextStage;
+    if (handleScrollRef.current) return;
+    handleScrollRef.current = true;
+
+    requestAnimationFrame(() => {
+      handleScrollRef.current = false;
+      const container = scrollRef.current;
+      if (!container) return;
+      const stickyAt = railRef.current ? Math.max(railRef.current.offsetTop - 8, 120) : 240;
+      const sticky = container.scrollTop >= stickyAt;
+      const nextStage = container.scrollTop < 18 ? "初始" : container.scrollTop < stickyAt ? "过渡" : "完全";
+      setStickyRail(sticky);
+      setScrollStage((prev) => {
+        if (prev !== nextStage) syncExpandedDays(nextStage);
+        return nextStage;
+      });
+      if (nextStage === "过渡") expandVisibleCollapsedDays();
+      if (nextStage === "初始") resetInitialExpanded();
     });
-    if (nextStage === "过渡") expandVisibleCollapsedDays();
-    if (nextStage === "初始") resetInitialExpanded();
   }, [expandVisibleCollapsedDays, resetInitialExpanded, syncExpandedDays]);
+
+  const lockDragScroll = useCallback(() => {
+    if (dragLockRef.current) return;
+    dragLockRef.current = {
+      bodyOverflow: document.body.style.overflow,
+      containerOverflowY: scrollRef.current?.style.overflowY,
+      containerTouchAction: scrollRef.current?.style.touchAction,
+    };
+    document.body.style.overflow = "hidden";
+    if (scrollRef.current) {
+      scrollRef.current.style.overflowY = "hidden";
+      scrollRef.current.style.touchAction = "none";
+    }
+  }, []);
+
+  const unlockDragScroll = useCallback(() => {
+    if (!dragLockRef.current) return;
+    document.body.style.overflow = dragLockRef.current.bodyOverflow;
+    if (scrollRef.current) {
+      scrollRef.current.style.overflowY = dragLockRef.current.containerOverflowY ?? "auto";
+      scrollRef.current.style.touchAction = dragLockRef.current.containerTouchAction ?? "auto";
+    }
+    dragLockRef.current = null;
+  }, []);
+
+  // ─── 手势状态机集成 ────────────────────────────────────
+
+  const gesture = useHomeListGestureController<HomeTransaction>({
+    scrollRef,
+    longPressMs: 420,
+    moveThreshold: 8,
+    axisLockRatio: 1.15,
+    onTapItem: (item) => {
+      setDetailTxId(String(item.id));
+    },
+    onDragStart: ({ item, x, y }) => {
+      lockDragScroll();
+      dragPanelStateRef.current = "collapsed";
+      dragActivationPointRef.current = { x, y };
+      dragExpandArmedRef.current = false;
+      setDragPanelState("collapsed");
+      setDragItem(item);
+      setDragPoint({ x, y });
+      hoverCategoryRef.current = null;
+      setHoverCategory(null);
+      void triggerImpact("light");
+    },
+    onDragMove: () => {
+      // 拖拽移动由 window-level pointermove listener 处理（setDragPoint / resolveHoverCategory / 面板展开）
+    },
+    onDragEnd: () => {
+      // 分类 drop 由 window-level pointerup listener 处理，这里只释放滚动锁定
+      unlockDragScroll();
+    },
+    onDragCancel: () => {
+      unlockDragScroll();
+    },
+    lockHomeScroll: lockDragScroll,
+    unlockHomeScroll: unlockDragScroll,
+    onScroll: handleScroll, // rAF 节流后的滚动回调
+  });
 
   useEffect(() => {
     if (scrollStage === "初始") resetInitialExpanded();
@@ -592,43 +647,6 @@ export default function MoniHome({
     trendSwipeRef.current = next;
   }, [MAX_TREND_DRAG_PREVIEW_PX]);
 
-  const startHold = useCallback((callback: () => void) => {
-    if (holdRef.current != null) clearTimeout(holdRef.current);
-    holdRef.current = setTimeout(callback, 420);
-  }, []);
-
-  const stopHold = useCallback(() => {
-    if (holdRef.current != null) clearTimeout(holdRef.current);
-  }, []);
-
-  const cancelPendingPress = useCallback(() => {
-    pressRef.current = null;
-    stopHold();
-  }, [stopHold]);
-
-  const lockDragScroll = useCallback(() => {
-    if (dragLockRef.current) return;
-    dragLockRef.current = {
-      bodyOverflow: document.body.style.overflow,
-      containerOverflowY: scrollRef.current?.style.overflowY,
-      containerTouchAction: scrollRef.current?.style.touchAction,
-    };
-    document.body.style.overflow = "hidden";
-    if (scrollRef.current) {
-      scrollRef.current.style.overflowY = "hidden";
-      scrollRef.current.style.touchAction = "none";
-    }
-  }, []);
-
-  const unlockDragScroll = useCallback(() => {
-    if (!dragLockRef.current) return;
-    document.body.style.overflow = dragLockRef.current.bodyOverflow;
-    if (scrollRef.current) {
-      scrollRef.current.style.overflowY = dragLockRef.current.containerOverflowY ?? "auto";
-      scrollRef.current.style.touchAction = dragLockRef.current.containerTouchAction ?? "auto";
-    }
-    dragLockRef.current = null;
-  }, []);
 
   /**
    * 拖拽态退出时统一清理底部细则面板与拖拽浮层的瞬时状态。
@@ -652,71 +670,6 @@ export default function MoniHome({
     setHoverCategory(category);
   }, []);
 
-  const handleItemPointerDown = useCallback(
-    (item: HomeTransaction, event: React.PointerEvent) => {
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-      pressRef.current = {
-        item,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        startScrollTop: scrollRef.current?.scrollTop ?? 0,
-        startedAt: Date.now(),
-        mode: "pending",
-      };
-      startHold(() => {
-        const point = { x: pressRef.current?.startX ?? event.clientX, y: pressRef.current?.startY ?? event.clientY };
-        lockDragScroll();
-        dragPanelStateRef.current = "collapsed";
-        dragActivationPointRef.current = point;
-        dragExpandArmedRef.current = false;
-        setDragPanelState("collapsed");
-        setDragItem(item);
-        setDragPoint(point);
-        hoverCategoryRef.current = null;
-        setHoverCategory(null);
-        void triggerImpact("light");
-      });
-    },
-    [lockDragScroll, startHold],
-  );
-
-  const handleItemPointerMove = useCallback(
-    (event: React.PointerEvent) => {
-      if (!pressRef.current || pressRef.current.pointerId !== event.pointerId || dragItem) return;
-      const pressState = pressRef.current;
-      // 已进入滚动模式：不手动写 scrollTop，让浏览器原生惯性接管
-      if (pressState.mode === "scroll") return;
-      const deltaX = event.clientX - pressState.startX;
-      const deltaY = event.clientY - pressState.startY;
-      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
-        if (Math.abs(deltaY) > Math.abs(deltaX)) {
-          stopHold();
-          pressRef.current = { ...pressState, mode: "scroll" };
-          return;
-        }
-        cancelPendingPress();
-      }
-    },
-    [cancelPendingPress, dragItem, stopHold],
-  );
-
-  const handleItemPointerUp = useCallback((event: React.PointerEvent) => {
-    const pressState = pressRef.current;
-    if (pressRef.current) pressRef.current = null;
-    if (dragItem) return;
-
-    stopHold();
-    if (!pressState || pressState.pointerId !== event.pointerId || pressState.mode !== "pending") return;
-
-    const deltaX = Math.abs(event.clientX - pressState.startX);
-    const deltaY = Math.abs(event.clientY - pressState.startY);
-    const duration = Date.now() - pressState.startedAt;
-    const isTap = deltaX <= 8 && deltaY <= 8 && duration < 420;
-    if (isTap) {
-      setDetailTxId(String(pressState.item.id));
-    }
-  }, [dragItem, stopHold]);
 
   const handleDropCategory = useCallback(
     (category: string) => {
@@ -797,9 +750,8 @@ export default function MoniHome({
   }, [dragItem, handleDropCategory, resetDragOverlay, resolveHoverCategory, unlockDragScroll]);
 
   useEffect(() => () => {
-    stopHold();
     unlockDragScroll();
-  }, [stopHold, unlockDragScroll]);
+  }, [unlockDragScroll]);
 
   const toggleDay = useCallback((dayId: string) => {
     if (scrollStage === "完全") return;
@@ -994,9 +946,10 @@ export default function MoniHome({
               isAi={aiOn && aiCurrentDates.includes(day.id)}
               aiStop={aiStop}
               onToggle={() => toggleDay(day.id)}
-              onItemPointerDown={handleItemPointerDown}
-              onItemPointerMove={handleItemPointerMove}
-              onItemPointerUp={handleItemPointerUp}
+              onItemPointerDown={gesture.onItemPointerDown}
+              onItemPointerMove={gesture.onItemPointerMove}
+              onItemPointerUp={gesture.onItemPointerUp}
+              onItemPointerCancel={gesture.onItemPointerCancel}
               dayRef={(node) => { dayRefs.current[day.id] = node; }}
             />
           ))}
@@ -1004,6 +957,40 @@ export default function MoniHome({
           {!isLoading && renderDays.length === 0 && (
             <div style={{ padding: "24px 8px", textAlign: "center", fontSize: 12, color: C.muted }}>
               当前范围内暂无流水。
+            </div>
+          )}
+
+          {/* 快速返回顶部：仅当分类轮盘已贴住 header 时显示 */}
+          {scrollStage === "完全" && (
+            <div
+              onClick={() => {
+                const container = scrollRef.current;
+                if (!container) return;
+                const start = container.scrollTop;
+                if (start <= 0) return;
+                const startTime = performance.now();
+                const duration = 1000;
+                const scrollToTop = (now: number) => {
+                  const elapsed = now - startTime;
+                  const progress = Math.min(elapsed / duration, 1);
+                  const ease = 1 - Math.pow(1 - progress, 3);
+                  container.scrollTop = start * (1 - ease);
+                  if (progress < 1) {
+                    requestAnimationFrame(scrollToTop);
+                  }
+                };
+                requestAnimationFrame(scrollToTop);
+              }}
+              style={{
+                padding: "12px 0 8px",
+                textAlign: "center",
+                fontSize: 11,
+                color: C.muted,
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              点击此处可快速返回顶部↥
             </div>
           )}
         </div>
@@ -1014,8 +1001,6 @@ export default function MoniHome({
         dragPoint={dragPoint}
         hoverCategory={hoverCategory}
         panelState={dragPanelState}
-        onHover={setHoverCategory}
-        onLeave={() => { setHoverCategory(null); hoverCategoryRef.current = null; }}
         onDrop={handleDropCategory}
         onClose={() => { unlockDragScroll(); resetDragOverlay(); }}
         availableCategories={availableCategories}

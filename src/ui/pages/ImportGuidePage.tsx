@@ -289,7 +289,7 @@ function StepCard({
             fontSize: 13,
             color: C.sub,
             lineHeight: 1.6,
-            textAlign: "center",
+            textAlign: "left",
           }}
         >
           {step.desc}
@@ -613,10 +613,10 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
               拿到文件之后
             </div>
             <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, marginBottom: 14 }}>
-              回到这个页面，点上方的「{theme.tabLabel}」按钮，选刚才下载到 Downloads
-              里的那个 zip。Moni 会自动识别加密、解压并分类。
+              回到记账页面，点上方的「{theme.tabLabel}」按钮，选刚才下载到 Downloads
+              的文件。
               <br /><br />
-              如果你导出时选的是「发送到邮箱」，在邮件里把 zip 下载下来，同样直接选就好——不用手动解压，密码 Moni 会自己处理。
+              如果你导出时选的是「发送到邮箱」，在邮件里把 zip 下载下来，同样直接选就好——不用手动解压，Moni 会自动识别加密、请你输入密码以解压。解压密码可以在微信支付消息/支付宝交易流水证明申请记录中找到。
             </div>
             <button
               type="button"
