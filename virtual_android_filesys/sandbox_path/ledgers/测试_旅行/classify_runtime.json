@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "revision": 0,
+  "metrics": {
+    "emptyTaskConsumedCount": 0,
+    "lastEmptyTaskDate": null
+  },
+  "queue": [],
+  "dirty_count_by_date": {},
+  "needs_rebuild": true,
+  "rebuild_reason": "runtime_load_failed",
+  "enqueue_recovery": null,
+  "confirm_recovery": null
+}

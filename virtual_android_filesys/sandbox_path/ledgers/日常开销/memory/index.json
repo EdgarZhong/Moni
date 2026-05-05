@@ -1,5 +1,5 @@
 {
-  "current_snapshot_id": "2026-04-16_17-27-29-807",
+  "current_snapshot_id": "2026-05-05_22-44-47-644",
   "snapshots": [
     {
       "id": "2026-04-12_17-47-15-302",
@@ -16,6 +16,12 @@
     {
       "id": "2026-04-16_17-27-29-807",
       "timestamp": "2026-04-16T09:27:29.807Z",
+      "trigger": "user_edit",
+      "summary": "user_edit 触发的记忆更新"
+    },
+    {
+      "id": "2026-05-05_22-44-47-644",
+      "timestamp": "2026-05-05T14:44:47.644Z",
       "trigger": "user_edit",
       "summary": "user_edit 触发的记忆更新"
     }
