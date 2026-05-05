@@ -41,6 +41,11 @@ async function collectFiles(dir) {
       continue;
     }
 
+    // LLM 调试日志不打入 demo seed
+    if (absolutePath.includes(`${path.sep}llm_logs${path.sep}`) || absolutePath.includes('/llm_logs/')) {
+      continue;
+    }
+
     files.push(absolutePath);
   }
 
