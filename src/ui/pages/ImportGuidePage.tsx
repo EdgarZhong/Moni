@@ -11,7 +11,7 @@
  * 资源：截图位于 src/ui/pages/assets/guidance/，由 Vite 静态打包。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { C } from "@ui/features/moni-home/config";
+import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, C } from "@ui/features/moni-home/config";
 import type { BillImportSource } from "@shared/types";
 
 // ──────────────────────────────────────────────
@@ -279,46 +279,61 @@ function StepCard({
       {/* 行 2：说明文字 */}
       <div
         style={{
-          fontSize: 13,
-          color: C.sub,
-          lineHeight: 1.6,
-          paddingLeft: 48,
+          display: "flex",
+          justifyContent: "center",
         }}
       >
-        {step.desc}
+        <div
+          style={{
+            width: "min(100%, 286px)",
+            fontSize: 13,
+            color: C.sub,
+            lineHeight: 1.6,
+            textAlign: "center",
+          }}
+        >
+          {step.desc}
+        </div>
       </div>
 
       {/* 行 3：截图卡（仿手机屏外框） */}
       <div
         style={{
-          marginLeft: 48,
-          background: C.white,
-          border: `1.5px solid ${C.border}`,
-          borderRadius: 18,
-          padding: 6,
-          position: "relative",
+          display: "flex",
+          justifyContent: "center",
         }}
       >
-        {/* 平台主色细边在内层，强化品牌感 */}
         <div
           style={{
-            border: `1px solid ${theme.accent}30`,
-            borderRadius: 14,
-            overflow: "hidden",
-            background: theme.accentSoft,
+            width: "min(100%, 286px)",
+            background: C.white,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 18,
+            padding: 6,
+            position: "relative",
           }}
         >
-          <img
-            src={step.image}
-            alt={`${theme.name}步骤 ${step.index}：${step.title}`}
-            loading="lazy"
+          {/* 平台主色细边继续保留在内层，但容器本身改为居中，不再跟着左侧数字整体右偏。 */}
+          <div
             style={{
-              display: "block",
-              width: "100%",
-              height: "auto",
-              objectFit: "contain",
+              border: `1px solid ${theme.accent}30`,
+              borderRadius: 14,
+              overflow: "hidden",
+              background: theme.accentSoft,
             }}
-          />
+          >
+            <img
+              src={step.image}
+              alt={`${theme.name}步骤 ${step.index}：${step.title}`}
+              loading="lazy"
+              style={{
+                display: "block",
+                width: "100%",
+                height: "auto",
+                objectFit: "contain",
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -381,7 +396,8 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
       <header
         style={{
           position: "relative",
-          padding: "12px 16px 12px",
+          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+          minHeight: APP_HEADER_MIN_HEIGHT,
           display: "flex",
           alignItems: "flex-start",
           gap: 12,

@@ -10,7 +10,7 @@
 ## 当前版本状态
 
 - 当前已发布稳定版本：`0.3.4`
-- 下一版本：暂未定号
+- 下一版本：`0.3.6`
 - 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
 ## 当前阶段基线
@@ -23,6 +23,26 @@
 - 新体系下，表现层规则分层收口为 Brand Identity / Surface System / Design Tokens / Page Spec；旧 `DESIGN.md`、旧主仓库 `design/` 工作台、`/__design` 入口、独立原型仓库工作流均退出现行规则链
 - 表现层变更继续保持与业务逻辑层解耦，不得越过当前 `ui -> facade/read model` 边界
 - 表现层变更必须先更新对应 `docs/` 规格文档，经确认后再修改代码；若实现中发现需要波及当前 design scope 外的组件，必须先报告并获授权
+
+## 本轮阶段决策
+
+- 本轮目标版本固定为 `0.3.6`；当前迭代先处理恶性 bug 与设计系统回归，再处理增强项与 release 链路排查
+- 执行顺序固定为：`AI 数据归零止血 -> Root 导航/覆盖层架构收口 -> 顶部安全区统一 -> 记账页拖拽面板收口 -> 返回手势修复 -> AI 零记忆提示 -> demo seed / release 数据携带排查`
+- 本轮实现禁止继续沿用“AppRoot 常驻全局 header/footer 套住所有页面”的做法；页面/面板显隐必须回归各自语义
+- Root 层实现方案固定为三段：
+  - `State Host`：只承载账本状态、AI 状态、返回栈、全局 toast、viewport lock
+  - `Chrome Controller`：只负责 shell chrome 的可见性策略；允许 `BottomNav` 为连续性常驻，但不可强制所有场景一直显示
+  - `Overlay Host`：专门承接详情页、拖拽蒙版、密码页、导入指南等全屏或准全屏覆盖层
+- 页面级 header DOM 回归各自页面拥有；Home / Entry / Settings Root 自己渲染自己的 header，不再由 AppRoot 统一常驻渲染
+- 全屏或准全屏二级层必须通过 overlay host / portal 接管画布；共享状态可以常驻 root，但共享状态不再自动携带共享可视高度
+- 验收策略固定为“一个任务点完成并通过浏览器自动化回归后，再推进下一个任务点”；仅 Android 真机专属问题可延后到 release 后由用户补验
+- 本轮用户已确认的二级层形态口径：
+  - 设置页子页面：无 header、保留 footer
+  - 首页拖拽蒙版：整套蒙版与三个副容器覆盖全屏，不得被 header/footer 挤压
+  - 详情页：无 header、无 footer
+  - 记账页随手记拖拽面板：与首页同类，但简化为“分类区覆盖全屏 + 底部安全带”，不再保留首页细则面板父容器语义
+  - 压缩包密码输入页：无 header、无 footer，但顶部 safe area 必须正确留白
+  - 导入指南页：无 header、保留 footer；正文主体居中，不得整体右偏
 
 ## Release Changelog
 
@@ -89,16 +109,27 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
+| AI 引擎状态切换导致首页数据归零 | Done | 已确认为首页 `useMoniHomeData` 的订阅陈旧闭包：`appFacade.subscribe()` 持有首帧 `loadReadModel`，AI `notify()` 时把页面错误刷回“默认本月空态”；已改为通过 ref 调用最新 `loadReadModel`，MCP 复现与回归通过 |
+| Root 导航与二级层形态回退 | Done | `AppRoot` 只保留状态宿主与可控 `BottomNav`；首页/记账页 header DOM 已下放回页面自身；首页拖拽层、记账页拖拽层与详情页已改为 portal/fixed 全屏覆盖；设置页全量重分类内拉起的详情页也会隐藏底部导航 |
+| 顶部安全区统一与导入指南对齐 | In Progress | `APP_HEADER_PADDING_TOP` 已统一下调并贯通到全局 header、设置子页、详情页、密码页、导入指南页；导入指南步骤正文与截图已改为居中布局。浏览器侧首页 / 详情页 / 指南页回归通过，密码页待结合压缩包导入链路复核 |
+| 记账页拖拽面板对齐首页系统 | Done | 首页/记账页拖拽蒙版 z-index 提升至 400（高于 BottomNav 300），字体显式覆盖为 Nunito，记账页分类格子改为 gridAutoRows: max-content 自适应高度，移除首页误触发的 onPointerEnter/onPointerLeave |
+| Android 返回手势修复 | Pending | 二级页返回应优先消费；一级页首次返回弹提示、二次返回退出；提示样式复用自动学习提示卡语法 |
+| AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供“先消费一周并自动停止”选项 |
+| Demo seed / release 数据携带排查 | Pending | 最近两次构建仅带 `secure_config`，账本数据未随包进入；需定位 manifest 生成/打包/首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
-| 表现层稳定性收口（非性能向） | Pending | 字体上提与 `BottomNav` 拆分已完成；剩余：`MoniHome` 按交互域拆分、根层 AI 控件独立状态链路 |
+| DateRange 过滤逻辑未彻底收口 | Pending | 首页 data range 相关过滤逻辑存在未彻底修复的问题，需排查并对齐"data range 只约束 AI 消费，不限制 dirtyDates 生产与日期入队"口径 |
 
 ## 当前优先级
 
-1. 表现层稳定性收口（剩余：`MoniHome` 按交互域拆分、根层 AI 控件独立状态链路）
-2. Android 文件选择器真机验收
+1. 顶部安全区统一与导入指南对齐
+2. Android 返回手势修复
+3. AI 零记忆消费风险提示
+4. Demo seed / release 数据携带排查
+5. Android 文件选择器真机验收
 
 ## 当前阶段风险
 
+- Android 返回手势当前真机行为仍可能直接退桌面；浏览器开发态无法等价证明原生返回链路
 - Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 - 引入 `xlsx` 与 `zip.js` 后，`npm run build` 仍会出现 chunk size warning
 

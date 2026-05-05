@@ -124,7 +124,7 @@ export const PHONE_FRAME_WIDTH_CSS = "100vw";
  * 这里不再把 safe area 直接塞进页面根容器，而是只让顶栏自己吃掉安全区，
  * 这样三页切换时标题不会因为外层 padding 不一致而上下跳动。
  */
-export const APP_HEADER_PADDING_TOP = "calc(env(safe-area-inset-top) + 8px)";
+export const APP_HEADER_PADDING_TOP = "calc(env(safe-area-inset-top) + 6px)";
 
 /**
  * 统一顶栏最小高度。

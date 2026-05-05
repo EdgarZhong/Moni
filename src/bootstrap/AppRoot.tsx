@@ -9,12 +9,7 @@ import { useAiEngineControl } from '@ui/hooks/useAiEngineControl';
 import { useKeyboard } from '@ui/hooks/useKeyboard';
 import { useLedgerControl } from '@ui/hooks/useLedgerControl';
 import { BottomNav } from '@ui/features/moni-home/BottomNav';
-import { LedgerHeaderControl, Logo } from '@ui/features/moni-home/components';
 import {
-  APP_HEADER_MIN_HEIGHT,
-  APP_HEADER_PADDING_TOP,
-  C,
-  LEDGER_HEADER_CONTROL_WIDTH,
   PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
 } from '@ui/features/moni-home/config';
@@ -31,7 +26,20 @@ interface CapacitorAppPlugin {
 
 const CapacitorApp = registerPlugin<CapacitorAppPlugin>('App');
 
+/**
+ * 浏览器开发态下，registerPlugin('App') 可能只返回一个占位对象，
+ * 其中并没有真正可调用的 addListener。
+ * 这里显式做一次运行时守卫，避免 dev 环境因为“假原生插件”直接抛错刷屏。
+ */
+function canRegisterNativeBackButtonListener(): boolean {
+  const candidate = CapacitorApp as unknown as { addListener?: unknown };
+  return typeof candidate.addListener === 'function';
+}
+
 type Page = 'home' | 'entry' | 'settings';
+type ShellChromeState = {
+  showBottomNav: boolean;
+};
 
 function RuntimeApp() {
   /**
@@ -49,9 +57,7 @@ function RuntimeApp() {
    */
   const aiEngineControl = useAiEngineControl();
   const { currentLedger, availableLedgers, switchLedger } = useLedgerControl();
-
-  const [ledgerDropdownOpen, setLedgerDropdownOpen] = useState(false);
-  const ledgerDropdownWrapRef = useRef<HTMLDivElement>(null);
+  const [shellChrome, setShellChrome] = useState<ShellChromeState>({ showBottomNav: true });
 
   /** 是否显示"再次返回退出应用"提示条 */
   const [exitToastVisible, setExitToastVisible] = useState(false);
@@ -61,7 +67,7 @@ function RuntimeApp() {
 
   // 监听 Android 系统返回键（仅在 Capacitor native 环境下生效）
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    if (!Capacitor.isNativePlatform() || !canRegisterNativeBackButtonListener()) return;
 
     let listenerHandle: { remove: () => Promise<void> } | null = null;
 
@@ -108,19 +114,23 @@ function RuntimeApp() {
 
   const handleNavigate = useCallback((page: Page) => {
     setActivePage(page);
-    setLedgerDropdownOpen(false);
   }, []);
 
   useEffect(() => {
-    if (!ledgerDropdownOpen) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!ledgerDropdownWrapRef.current?.contains(event.target as Node)) {
-        setLedgerDropdownOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', handlePointerDown);
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [ledgerDropdownOpen]);
+    /**
+     * 切页后先恢复默认 shell 可见性。
+     * 这样每个一级页只需要在“自己确实出现全屏覆盖层”时再显式把底部导航隐藏。
+     */
+    setShellChrome({ showBottomNav: true });
+  }, [activePage]);
+
+  const handleBottomNavVisibilityChange = useCallback((visible: boolean) => {
+    setShellChrome((previous) => (
+      previous.showBottomNav === visible
+        ? previous
+        : { ...previous, showBottomNav: visible }
+    ));
+  }, []);
 
   useEffect(() => {
     if (!autoLearningNotice.visible) {
@@ -178,82 +188,36 @@ function RuntimeApp() {
         fontFamily: "'Nunito',-apple-system,sans-serif",
       }}
     >
-      {/* 共享 Header：首页与记账页常驻，设置页不显示。
-          提到 AppRoot 层确保切页时 currentLedger 永远不 reset 到 FALLBACK。 */}
-      {activePage !== 'settings' && (
-        <div
-          style={{
-            padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
-            minHeight: APP_HEADER_MIN_HEIGHT,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: C.bg,
-            zIndex: 20,
-            flexShrink: 0,
-            position: 'relative',
-          }}
-        >
-          <Logo />
-          <div
-            ref={ledgerDropdownWrapRef}
-            style={{ width: LEDGER_HEADER_CONTROL_WIDTH, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}
-          >
-            <LedgerHeaderControl
-              ledgerName={currentLedger.name}
-              ariaLabel="切换账本"
-              onClick={() => setLedgerDropdownOpen((open) => !open)}
-            />
-            {ledgerDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute', top: 40, right: 0,
-                  minWidth: 146, maxWidth: 220,
-                  background: C.white, border: `2px solid ${C.dark}`,
-                  borderRadius: 14, boxShadow: '0 8px 20px rgba(0,0,0,.14)',
-                  overflow: 'hidden', zIndex: 40,
-                }}
-              >
-                {availableLedgers.map((ledger, index) => {
-                  const selected = ledger.id === currentLedger.id;
-                  return (
-                    <div
-                      key={ledger.id}
-                      onClick={() => {
-                        void switchLedger(ledger.id).catch((err) => {
-                          console.error('[AppRoot] Failed to switch ledger:', err);
-                        });
-                        setLedgerDropdownOpen(false);
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        gap: 10, padding: '10px 12px', cursor: 'pointer',
-                        borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : 'none',
-                        background: selected ? C.blueBg : C.white,
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: selected ? 700 : 600, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {ledger.name}
-                      </div>
-                      <div style={{ fontSize: 12, color: selected ? C.dark : 'transparent', fontWeight: 700 }}>✓</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 页面内容区：占满 BottomNav 以上的剩余高度 */}
+      {/* 页面内容区：Root 只保留状态宿主与壳层规则，不再统一拥有页面 header DOM。 */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {activePage === 'entry' ? <MoniEntry onNavigate={handleNavigate} /> : null}
-        {activePage === 'settings' ? <MoniSettings onNavigate={handleNavigate} /> : null}
-        {activePage === 'home' ? <MoniHome onNavigate={handleNavigate} /> : null}
+        {activePage === 'entry' ? (
+          <MoniEntry
+            onNavigate={handleNavigate}
+            currentLedger={currentLedger}
+            availableLedgers={availableLedgers}
+            onSwitchLedger={switchLedger}
+            onBottomNavVisibilityChange={handleBottomNavVisibilityChange}
+          />
+        ) : null}
+        {activePage === 'settings' ? (
+          <MoniSettings
+            onNavigate={handleNavigate}
+            onBottomNavVisibilityChange={handleBottomNavVisibilityChange}
+          />
+        ) : null}
+        {activePage === 'home' ? (
+          <MoniHome
+            onNavigate={handleNavigate}
+            currentLedger={currentLedger}
+            availableLedgers={availableLedgers}
+            onSwitchLedger={switchLedger}
+            onBottomNavVisibilityChange={handleBottomNavVisibilityChange}
+          />
+        ) : null}
       </div>
 
       {/* BottomNav 常驻于此，不随页面切换卸载，AI 状态保持连贯 */}
-      {!isKeyboardVisible && (
+      {!isKeyboardVisible && shellChrome.showBottomNav && (
         <BottomNav
           aiOn={aiEngineControl.aiOn}
           aiStop={aiEngineControl.aiStop}

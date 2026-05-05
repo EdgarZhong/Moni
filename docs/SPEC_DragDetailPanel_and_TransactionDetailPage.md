@@ -303,6 +303,7 @@ function updatePanelState(clientY: number, activationY: number) {
 **进入**：
 - 首页流水列表单击条目 → 详情页从右侧滑入（`translateX(100%) → 0`）
 - 首页流水列表在详情页打开期间变暗（半透明遮罩），但不完全不可见
+- 详情页打开后接管整块屏幕；首页 Root 的 header / footer 不再占据它的可视高度
 
 **退出**：
 - 点击左上角返回按钮
@@ -313,6 +314,13 @@ function updatePanelState(clientY: number, activationY: number) {
 - 每个可编辑字段在变更发生时立即调用 `LedgerService` 写入
 - 不设独立"保存"按钮
 - 退出不询问确认，所有变更在退出前已持久化
+
+### 3.2.1 画布与 Chrome 归属
+
+- 详情页属于“二级页面中的全屏覆盖页”，视觉上**无全局 header、无底部导航**。
+- 详情页顶部只保留它自己的返回标题区；该标题区负责消费统一的顶部基础留白与 `env(safe-area-inset-top)`。
+- 详情页的内容滚动区、底部安全带、退场动画都由详情页自身负责，不共享首页 Root 的可视布局高度。
+- 为了切页时保留账本状态、AI 状态或返回栈，相关状态宿主可以常驻在更高层；但这不改变详情页“整页接管画布”的视觉语义。
 
 ---
 

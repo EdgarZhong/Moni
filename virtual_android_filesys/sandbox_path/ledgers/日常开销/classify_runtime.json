@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "revision": 39,
+  "revision": 40,
   "metrics": {
     "emptyTaskConsumedCount": 0,
     "lastEmptyTaskDate": null
@@ -29,18 +29,6 @@
     {
       "date": "2026-03-18",
       "enqueuedAt": 1776331355725
-    },
-    {
-      "date": "2026-03-20",
-      "enqueuedAt": 1776331355780
-    },
-    {
-      "date": "2026-03-21",
-      "enqueuedAt": 1776331355834
-    },
-    {
-      "date": "2026-03-22",
-      "enqueuedAt": 1776331355889
     },
     {
       "date": "2026-03-16",

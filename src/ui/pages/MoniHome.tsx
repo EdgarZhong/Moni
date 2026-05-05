@@ -24,6 +24,7 @@ import {
   HintCard,
   OverviewCard,
   ReasonDialog,
+  RootLedgerPageHeader,
   StatsBar,
   TagRail,
   type HomeDayGroup,
@@ -32,6 +33,7 @@ import {
 import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
 import { triggerImpact } from "@system/device/impact";
 import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
+import type { LedgerOption } from "@shared/types";
 
 
 interface DragLock {
@@ -74,6 +76,10 @@ interface ReasonItem {
 
 interface MoniHomeProps {
   onNavigate?: (page: "home" | "entry" | "settings") => void;
+  currentLedger: LedgerOption;
+  availableLedgers: LedgerOption[];
+  onSwitchLedger: (ledgerId: string) => void | Promise<unknown>;
+  onBottomNavVisibilityChange?: (visible: boolean) => void;
 }
 
 interface DetailContext {
@@ -134,7 +140,13 @@ function restoreHomeRangeUiSessionState(ledgerId: string): HomeRangeUiSessionSta
   };
 }
 
-export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
+export default function MoniHome({
+  onNavigate: _onNavigate,
+  currentLedger: shellCurrentLedger,
+  availableLedgers,
+  onSwitchLedger,
+  onBottomNavVisibilityChange,
+}: MoniHomeProps) {
   const {
     days: realDays,
     income: realIncome,
@@ -867,6 +879,19 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
     setRangeDialogOpen(true);
   }, [customEnd, customStart, rangeMode]);
 
+  useEffect(() => {
+    /**
+     * 首页最新口径：
+     * - 交易详情页仍然是完整接管画布的二级页，需要隐藏底部导航；
+     * - 拖拽蒙版与拖拽后的理由弹层不再主动隐藏底部导航，避免出现背景跳变。
+     */
+    onBottomNavVisibilityChange?.(detailContext === null);
+
+    return () => {
+      onBottomNavVisibilityChange?.(true);
+    };
+  }, [detailContext, onBottomNavVisibilityChange]);
+
   return (
     <div
       style={{
@@ -911,6 +936,12 @@ export default function MoniHome({ onNavigate: _onNavigate }: MoniHomeProps) {
       `}</style>
 
       <Decor />
+
+      <RootLedgerPageHeader
+        currentLedger={shellCurrentLedger}
+        availableLedgers={availableLedgers}
+        onSwitchLedger={onSwitchLedger}
+      />
 
       <div
         ref={scrollRef}

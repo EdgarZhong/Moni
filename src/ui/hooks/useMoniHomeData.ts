@@ -184,6 +184,7 @@ export function useMoniHomeData(): MoniHomeData {
   });
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const loadReadModelRef = useRef<() => Promise<void>>(async () => {});
 
   const loadReadModel = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -217,6 +218,20 @@ export function useMoniHomeData(): MoniHomeData {
   }, [homeDateRange, trendWindowOffset]);
 
   useEffect(() => {
+    /**
+     * appFacade.subscribe() 只在首挂时注册一次。
+     * 若直接把当时的 loadReadModel 闭包塞进去，后续 AI 状态变化触发 notify 时，
+     * 订阅回调会一直拿着“首帧的 homeDateRange / trendWindowOffset”重刷首页，
+     * 把用户后来切到的“全部/自定义范围”错误覆盖回默认本月空态。
+     *
+     * 因此这里用 ref 持有“最新版本”的 loadReadModel：
+     * - 订阅本身保持单次注册，不重复 init / unsubscribe；
+     * - 真正执行时永远读取当前 range 与 trend offset。
+     */
+    loadReadModelRef.current = loadReadModel;
+  }, [loadReadModel]);
+
+  useEffect(() => {
     mountedRef.current = true;
 
     void appFacade.init()
@@ -224,11 +239,11 @@ export function useMoniHomeData(): MoniHomeData {
         console.error('[useMoniHomeData] AppFacade init failed:', error);
       })
       .finally(() => {
-        void loadReadModel();
+        void loadReadModelRef.current();
       });
 
     const unsubscribe = appFacade.subscribe(() => {
-      void loadReadModel();
+      void loadReadModelRef.current();
     });
 
     return () => {

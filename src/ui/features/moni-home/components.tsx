@@ -9,7 +9,15 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { C, CAT, LEDGER_HEADER_CONTROL_WIDTH, OVERVIEW_COLORS } from "./config";
+import { createPortal } from "react-dom";
+import {
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
+  C,
+  CAT,
+  LEDGER_HEADER_CONTROL_WIDTH,
+  OVERVIEW_COLORS,
+} from "./config";
 import {
   getCategory,
   normalizeTransactionDetailText,
@@ -18,6 +26,7 @@ import {
   seededShapes,
   type OverviewItem,
 } from "./helpers";
+import type { LedgerOption } from "@shared/types";
 
 // ──────────────────────────────────────────────
 // 内部常量
@@ -268,6 +277,147 @@ export function LedgerHeaderControl({ ledgerName, onClick, ariaLabel }: LedgerHe
       <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true" style={{ flexShrink: 0 }}>
         <path d="M2 3.8L5 6.8L8 3.8" stroke={C.dark} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
+    </div>
+  );
+}
+
+interface RootLedgerPageHeaderProps {
+  currentLedger: LedgerOption;
+  availableLedgers: LedgerOption[];
+  onSwitchLedger: (ledgerId: string) => void | Promise<unknown>;
+}
+
+/**
+ * RootLedgerPageHeader — 首页与记账页自己的顶部页头。
+ *
+ * 当前实现刻意把“状态宿主”和“视觉页头”拆开：
+ * - 账本状态仍可由 AppRoot 常驻持有，保证跨页不闪；
+ * - header DOM 则回到页面自己渲染，避免拖拽层、详情页继续被 Root 常驻页头挤压。
+ */
+export function RootLedgerPageHeader({
+  currentLedger,
+  availableLedgers,
+  onSwitchLedger,
+}: RootLedgerPageHeaderProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownWrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!dropdownOpen) {
+      return undefined;
+    }
+
+    /**
+     * 账本下拉属于页头局部交互，点击外部关闭的监听也应该留在这里，
+     * 而不是继续让 AppRoot 为某个具体页头 DOM 背状态。
+     */
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!dropdownWrapRef.current?.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [dropdownOpen]);
+
+  return (
+    <div
+      style={{
+        padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+        minHeight: APP_HEADER_MIN_HEIGHT,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        background: C.bg,
+        zIndex: 20,
+        flexShrink: 0,
+        position: "relative",
+      }}
+    >
+      <Logo />
+
+      <div
+        ref={dropdownWrapRef}
+        style={{
+          width: LEDGER_HEADER_CONTROL_WIDTH,
+          display: "flex",
+          justifyContent: "flex-end",
+          position: "relative",
+        }}
+      >
+        <LedgerHeaderControl
+          ledgerName={currentLedger.name}
+          ariaLabel="切换账本"
+          onClick={() => setDropdownOpen((open) => !open)}
+        />
+
+        {dropdownOpen ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 40,
+              right: 0,
+              minWidth: 146,
+              maxWidth: 220,
+              background: C.white,
+              border: `2px solid ${C.dark}`,
+              borderRadius: 14,
+              boxShadow: "0 8px 20px rgba(0,0,0,.14)",
+              overflow: "hidden",
+              zIndex: 40,
+            }}
+          >
+            {availableLedgers.map((ledger, index) => {
+              const selected = ledger.id === currentLedger.id;
+
+              return (
+                <div
+                  key={ledger.id}
+                  onClick={() => {
+                    void Promise.resolve(onSwitchLedger(ledger.id)).catch((error) => {
+                      console.error("[RootLedgerPageHeader] Failed to switch ledger:", error);
+                    });
+                    setDropdownOpen(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    borderBottom: index < availableLedgers.length - 1 ? `1px solid ${C.line}` : "none",
+                    background: selected ? C.blueBg : C.white,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: selected ? 700 : 600,
+                      color: C.dark,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {ledger.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: selected ? C.dark : "transparent",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✓
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -899,8 +1049,10 @@ export function DragOverlay({
   // 使用当前账本可用分类；若未传入则回退到全局 CAT 键
   const cats = availableCategories ?? Object.keys(CAT);
   if (!dragItem) return null;
-  return (
-    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 50, touchAction: "none" }}>
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 400, touchAction: "none", fontFamily: "'Nunito',-apple-system,sans-serif" }}>
       <div
         style={{
           position: "absolute",
@@ -951,8 +1103,6 @@ export function DragOverlay({
               <div
                 key={category}
                 data-drop-category={category}
-                onPointerEnter={() => onHover(category)}
-                onPointerLeave={onLeave}
                 onClick={(event) => { event.stopPropagation(); onDrop(category); }}
                 style={{
                   background: C.white,
@@ -1155,7 +1305,8 @@ export function DragOverlay({
         </div>
       </div>
       <div onClick={onClose} style={{ position: "absolute", right: 14, top: 12, color: C.white, fontSize: 18, lineHeight: 1, cursor: "pointer" }}>×</div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

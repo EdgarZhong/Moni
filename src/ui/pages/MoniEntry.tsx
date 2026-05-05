@@ -8,17 +8,20 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  APP_HEADER_MIN_HEIGHT,
+  APP_HEADER_PADDING_TOP,
   C,
   CAT,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
-import { Decor } from "@ui/features/moni-home/components";
+import { Decor, RootLedgerPageHeader } from "@ui/features/moni-home/components";
 import { useMoniEntryData } from "@ui/hooks/useMoniEntryData";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
-import type { BillImportSource } from "@shared/types";
+import type { BillImportSource, LedgerOption } from "@shared/types";
 import { ImportGuidePage } from "@ui/pages/ImportGuidePage";
 
 // ──────────────────────────────────────────────
@@ -261,10 +264,14 @@ function ImportPasswordPage({
     inputRef.current?.focus({ preventScroll: true });
   }, []);
 
-  return (
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <div
       style={{
-        position: "absolute",
+        position: "fixed",
         inset: 0,
         zIndex: 60,
         background: C.bg,
@@ -280,7 +287,15 @@ function ImportPasswordPage({
         }
       `}</style>
 
-      <header style={{ padding: "max(18px, env(safe-area-inset-top, 0px)) 16px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+      <header
+        style={{
+          padding: `${APP_HEADER_PADDING_TOP} 16px 10px`,
+          minHeight: APP_HEADER_MIN_HEIGHT,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
         <button
           type="button"
           onClick={onBack}
@@ -387,6 +402,8 @@ function ImportPasswordPage({
         </section>
       </main>
     </div>
+    ,
+    document.body
   );
 }
 
@@ -535,20 +552,36 @@ interface CategoryOverlayProps {
 
 function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, onClose, availableCategories }: CategoryOverlayProps) {
   if (!visible) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       style={{
-        position: "absolute", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 50,
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 400,
         display: "flex", flexDirection: "column",
-        padding: 16, touchAction: "none", overflow: "hidden",
+        padding: "16px 16px calc(env(safe-area-inset-bottom, 0px) + 86px)",
+        touchAction: "none",
+        overflow: "hidden",
+        fontFamily: "'Nunito',-apple-system,sans-serif",
       }}
     >
       <div style={{ fontSize: 14, color: C.white, fontWeight: 700, textAlign: "center", marginTop: 12, marginBottom: 10 }}>
         拖放到分类中，开始记一笔
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 4px", overflowY: "auto", width: "100%" }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gridAutoRows: "max-content",
+          gap: 8,
+          padding: "0 4px 8px",
+          overflow: "auto",
+          width: "100%",
+        }}
+      >
         {availableCategories.map((category) => {
           const meta = CAT[category];
           if (!meta) return null;
@@ -560,13 +593,17 @@ function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, o
               style={{
                 background: C.white,
                 border: `2.5px solid ${hoverCat === category ? meta.color : C.border}`,
-                borderRadius: 12, padding: "12px 8px", textAlign: "center",
-                transform: hoverCat === category ? "scale(1.05)" : "scale(1)",
-                transition: "all .2s", cursor: "pointer",
+                borderRadius: 12,
+                padding: "10px 8px 12px",
+                textAlign: "center",
+                cursor: "pointer",
+                transform: hoverCat === category ? "translateY(-2px)" : "translateY(0)",
+                transition: "transform .18s ease-out, border-color .18s ease-out, box-shadow .18s ease-out",
+                boxShadow: hoverCat === category ? "0 8px 18px rgba(0,0,0,.14)" : "0 1px 0 rgba(0,0,0,.04)",
               }}
             >
               <div style={{ fontSize: 20, marginBottom: 2 }}>{meta.icons[0]}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: meta.color }}>{category}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700, color: meta.color, wordBreak: "break-word" }}>{category}</div>
             </div>
           );
         })}
@@ -591,7 +628,8 @@ function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, o
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -628,16 +666,17 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
   }, [visible, category, directionRef]);
 
   if (!visible || !category) return null;
+  if (typeof document === "undefined") return null;
 
   const meta = CAT[category];
   if (!meta) return null;
   const canSave = amount && Number(amount) > 0;
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
-        position: "absolute", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 55,
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 55,
         display: "flex", flexDirection: "column", justifyContent: "flex-end",
         overflow: "hidden",
         animation: "fadeIn .2s ease",
@@ -810,7 +849,8 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
         </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -853,9 +893,19 @@ type Phase = "idle" | "selecting" | "dragging" | "form";
 
 interface MoniEntryProps {
   onNavigate: (page: "home" | "entry" | "settings") => void;
+  currentLedger: LedgerOption;
+  availableLedgers: LedgerOption[];
+  onSwitchLedger: (ledgerId: string) => void | Promise<unknown>;
+  onBottomNavVisibilityChange?: (visible: boolean) => void;
 }
 
-export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
+export default function MoniEntry({
+  onNavigate: _onNavigate,
+  currentLedger,
+  availableLedgers,
+  onSwitchLedger,
+  onBottomNavVisibilityChange,
+}: MoniEntryProps) {
   const {
     recentReferences,
     categoryDefinitions,
@@ -1211,6 +1261,22 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
     }
   }, [clearLongPressTimer]);
 
+  useEffect(() => {
+    /**
+     * 记账 Root 默认保留底部导航；
+     * 最新口径里，分类拖拽态继续保留底部导航，只在密码页与录入表单阶段隐藏。
+     * 导入指南页继续保留底部导航。
+     */
+    const shouldShowBottomNav =
+      guideSource !== null
+      || (pendingPasswordImport === null && (phase === "idle" || phase === "selecting" || phase === "dragging"));
+    onBottomNavVisibilityChange?.(shouldShowBottomNav);
+
+    return () => {
+      onBottomNavVisibilityChange?.(true);
+    };
+  }, [guideSource, onBottomNavVisibilityChange, pendingPasswordImport, phase]);
+
   const handleButtonPointerEnd = useCallback(() => {
     isPointerDownRef.current = false;
     setPressed(false);
@@ -1282,6 +1348,12 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
       `}</style>
 
       <Decor />
+
+      <RootLedgerPageHeader
+        currentLedger={currentLedger}
+        availableLedgers={availableLedgers}
+        onSwitchLedger={onSwitchLedger}
+      />
 
       <div className="entry-scroll-container" style={{ flex: 1, overflowY: "auto", position: "relative", zIndex: 1 }}>
         <div style={{ padding: "10px 16px 4px" }}>

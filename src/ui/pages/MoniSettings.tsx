@@ -2515,6 +2515,7 @@ function FullReclassPage({
   availableCategories,
   aiStatus,
   ledgerTransactions,
+  onBottomNavVisibilityChange,
 }: {
   onBack: () => void;
   onSubmitFullReclassification: MoniSettingsData["actions"]["triggerFullReclassification"];
@@ -2525,6 +2526,7 @@ function FullReclassPage({
   availableCategories: string[];
   aiStatus: string;
   ledgerTransactions: SettingsLedgerTransaction[];
+  onBottomNavVisibilityChange?: (visible: boolean) => void;
 }) {
   const [selectingLocked, setSelectingLocked] = useState(false);
   const [confirmingCommit, setConfirmingCommit] = useState(false);
@@ -2543,6 +2545,18 @@ function FullReclassPage({
   const lockedCount = lockedTransactions.length;
   const selectedLockedCount = selectedLockedIds.length;
   const submitCount = unlockedCount + selectedLockedCount;
+
+  useEffect(() => {
+    /**
+     * 设置页二级页默认保留底部导航；
+     * 只有这里拉起的交易详情页需要临时隐藏底部导航，才能满足“详情页无 footer”。
+     */
+    onBottomNavVisibilityChange?.(detailTx === null);
+
+    return () => {
+      onBottomNavVisibilityChange?.(true);
+    };
+  }, [detailTx, onBottomNavVisibilityChange]);
 
   const toggleLockedSelected = (txId: string) => {
     setSelectedLockedIds((current) => (current.includes(txId) ? current.filter((id) => id !== txId) : [...current, txId]));
@@ -2840,8 +2854,10 @@ function AboutPage({ onBack }: { onBack: () => void }) {
  */
 export default function MoniSettings({
   onNavigate: _onNavigate,
+  onBottomNavVisibilityChange,
 }: {
   onNavigate: (page: "home" | "entry" | "settings") => void;
+  onBottomNavVisibilityChange?: (visible: boolean) => void;
 }) {
   const {
     aiConfig,
@@ -3246,6 +3262,7 @@ export default function MoniSettings({
             availableCategories={currentAvailableCategories}
             aiStatus={aiEngineStatus}
             ledgerTransactions={ledgerTransactions}
+            onBottomNavVisibilityChange={onBottomNavVisibilityChange}
           />
         );
       case "about":
