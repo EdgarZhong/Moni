@@ -134,6 +134,7 @@
 - 浏览器开发态已完成新的分类专项验收：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()` 与 `runClassifyLockBoundaryTest()` 均通过；移动端视口 `390 x 844` 截图已留档 `artifacts/classify-index-mobile-home.png`
 - 浏览器 console 当前未发现新的 JS runtime error；残留错误仍是既有 `/api/fs` 404 噪音，尚未纳入本轮修复范围
 - 上述四项仍属于本轮未 release 的动态进度，不进入 `Release Changelog`，待本轮正式发布后再归并
+- **[2026-05-05] 修复 revision 冲突导致消费引擎单日停止的 bug**：BatchProcessor 在处理一个 batch 时，每个 arbiter patch 都触发了 `bumpRevision`，导致版本号从初始的16递增到45，最后 batch remove 检查失效。根本原因是 arbiter patch 不应该算作"新的生产动作"，修复方案是在 `ClassifyQueue.syncDirtyIndexForTouchedRecords` 添加 `bumpRevision` 参数，arbiter patch 时传入 `false`。修复后 BatchProcessor 能连续处理多个 batch。详见：`docs/2026-05-05-revision-system-analysis.md`
 
 ## 当前任务看板
 

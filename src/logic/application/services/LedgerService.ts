@@ -261,7 +261,8 @@ export class LedgerService {
     prevMemory: LedgerMemory,
     nextMemory: LedgerMemory,
     touchedTxIds: string[],
-    reason: string
+    reason: string,
+    bumpRevision?: boolean
   ): Promise<void> {
     const ledgerName = this.getCurrentLedgerName();
     if (!ledgerName || touchedTxIds.length === 0) {
@@ -272,7 +273,8 @@ export class LedgerService {
       prevRecords: prevMemory.records,
       nextRecords: nextMemory.records,
       touchedTxIds,
-      reason
+      reason,
+      bumpRevision
     });
   }
 
@@ -327,7 +329,9 @@ export class LedgerService {
       console.error('[LedgerService] memoryFileHandle is missing! Cannot persist.');
     }
 
-    void this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, [patch.id], 'arbiter_patch')
+    // arbiter_patch 不应 bumpRevision，因为这些 patch 都是同一 batch 的微操作
+    // 由 BatchProcessor 在整个 batch 完成后统一管理 revision
+    void this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, [patch.id], 'arbiter_patch', false)
       .catch((error) => {
         console.error('[LedgerService] Failed to sync dirty index for arbiter patch:', error);
       });

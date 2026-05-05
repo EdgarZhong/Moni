@@ -829,10 +829,13 @@ export class ClassifyIndex {
     nextRecords: LedgerMemory['records'];
     touchedTxIds: string[];
     reason: string;
+    bumpRevision?: boolean;
   }): Promise<void> {
     await this.ensureLedgerLoaded(params.ledger);
     const dirtyCounts = this.getDirtyCountMap(params.ledger);
     const affectedDates = new Set<string>();
+    // 默认 bumpRevision 为 true，但 arbiter patch 类操作不应该 bump
+    const shouldBumpRevision = params.bumpRevision !== false;
 
     try {
       for (const txId of Array.from(new Set(params.touchedTxIds))) {
@@ -882,7 +885,7 @@ export class ClassifyIndex {
       this.ledgerNeedsRebuild.set(params.ledger, false);
       this.ledgerRebuildReasons.set(params.ledger, null);
       this.syncQueueFromDirtyCounts(params.ledger);
-      await this.saveLedger(params.ledger, { bumpRevision: true });
+      await this.saveLedger(params.ledger, { bumpRevision: shouldBumpRevision });
     } catch (error) {
       console.warn('[ClassifyIndex] Dirty index delta update failed, rebuilding affected dates:', {
         ledger: params.ledger,
@@ -897,7 +900,7 @@ export class ClassifyIndex {
         console.error('[ClassifyIndex] Failed to rebuild affected dates, marking runtime dirty:', rebuildError);
         this.ledgerNeedsRebuild.set(params.ledger, true);
         this.ledgerRebuildReasons.set(params.ledger, `needs_rebuild:${params.reason}`);
-        await this.saveLedger(params.ledger, { bumpRevision: true });
+        await this.saveLedger(params.ledger, { bumpRevision: shouldBumpRevision });
       }
     }
   }
