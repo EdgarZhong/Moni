@@ -57,7 +57,7 @@ src/
 - Design Tokens 唯一代码注册表：[tailwind.config.js](./tailwind.config.js)
 - 首页集成规格：[docs/Moni_Homepage_Integration_Spec.md](./docs/Moni_Homepage_Integration_Spec.md)
 - 产品需求总表：[docs/Moni_Requirements_v3.md](./docs/Moni_Requirements_v3.md)
-- AI 自学习系统 v7：[docs/AI_SELF_LEARNING_DESIGN_v7.md](./docs/AI_SELF_LEARNING_DESIGN_v7.md)
+- AI 自学习系统 v8：[docs/AI_SELF_LEARNING_DESIGN_v8.md](./docs/AI_SELF_LEARNING_DESIGN_v8.md)
 - 预算系统规格：[docs/Moni_Budget_System_Spec_v2.md](./docs/Moni_Budget_System_Spec_v2.md)
 - 随手记规格：[docs/Moni_Manual_Entry_Spec_v3.md](./docs/Moni_Manual_Entry_Spec_v3.md)
 - 浏览器调试入口与 MCP 验证记录：[docs/Moni_E2E_RECORD_INT1.md](./docs/Moni_E2E_RECORD_INT1.md)
@@ -127,6 +127,7 @@ npm run build:release
 当前已落地的核心测试能力：
 
 - 账单导入后端探测 / 导入调试接口：`window.__MONI_DEBUG__.billImport.probe() / import()`
+- 分类索引调试接口：`window.__MONI_DEBUG__.classify.getQueue() / getIndex() / enqueueDate() / peek() / rebuild()`
 - 账本 CRUD 逻辑链路测试：`window.__MONI_E2E__.tests.runLedgerCrudTest()`
 - 随手记逻辑链路测试：`window.__MONI_E2E__.tests.runManualEntryFlowTest()`
 - 预算逻辑链路测试：`window.__MONI_E2E__.tests.runBudgetFlowTest()`
@@ -136,6 +137,8 @@ npm run build:release
 - 收编配置与上下文规格测试：`window.__MONI_E2E__.tests.runCompressionSpecTest()`
 - 首页读模型 smoke test：`window.__MONI_E2E__.tests.runHomeReadModelSmokeTest()`
 - 账单导入后端回归测试：`window.__MONI_E2E__.tests.runBillImportBackendTest()`
+- classify index 增量维护专项测试：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()`
+- classify 锁定边界专项测试：`window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`
 
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：
 

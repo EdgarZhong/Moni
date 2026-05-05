@@ -1,5 +1,5 @@
 import type { LedgerMemory } from '@shared/types/metadata';
-import { classifyQueue } from './ClassifyQueue';
+import { classifyIndex } from './ClassifyQueue';
 import { ClassifyRuntimeStore, type StoredEnqueueRecovery } from './ClassifyRuntimeStore';
 import { normalizeToDateKey, uniqueSortedDateKeys } from './DateNormalizer';
 
@@ -87,7 +87,7 @@ export class ClassifyTrigger {
     const failedDates: string[] = [];
     for (const date of uniqueDates) {
       try {
-        await classifyQueue.enqueue({ ledger, date });
+        await classifyIndex.enqueue({ ledger, date });
         enqueued += 1;
       } catch {
         failedDates.push(date);

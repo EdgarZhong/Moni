@@ -126,29 +126,38 @@
 - 用户已确认：顶部 safe area 的最新口径收敛为“浏览器可见的基础 header padding 不变，仅 Android 原生环境额外的 safe area 统一回收约 `15%`”
 - 用户已确认：首页列表“快速滑动后按住停住再松手仍触发惯性”的问题已明显缓解，当前暂未发现新的交互问题
 - 用户已确认：教程页当前视觉结构冻结，以当前代码为准；本轮不再继续追加对齐细则任务
+- 已新增外部求助材料：`docs/2026-05-05-android-back-gesture-stuck-report.md`，用于向外部模型说明 Android 返回手势卡点、当前返回栈设计、已尝试路径与待检索问题
+- 用户已确认分类索引口径进一步收敛：生产仅由被动外部事件同步触发；`start consumption` 只启动消费不补生产；AI 消费窗口继续与 `data range` 绑定，但只在 `BatchProcessor` 取下一批任务时过滤；运行时单一事实源为内存 classify index，`classify_runtime.json` 仅作持久化镜像；需区分 `queue empty` 与 `no consumable tasks in current range`
+- 用户已确认 classify 生产侧的最终维护方案：放弃 `BatchProcessor` 热路径上的全账本重算；改为按交易条目 old/new 状态增量维护 `dirtyCountByDate`，其数值精确定义为“该日满足 `未锁定 && 最终分类为空 / uncategorized` 的脏条目个数”；待处理日期集合由 `dirtyCountByDate[date] > 0` 派生，所有交易改写与脏索引更新必须在同一账本串行临界区内完成
+- 用户已确认 classify 脏索引必须自带兜底：`records` 才是最终真相，`dirtyCountByDate` 只是可重建索引；增量维护失败时允许直接标记 `needs_rebuild` 并阻断消费；恢复路径分为“受影响日期局部重算”和“整本重建”，原则是宁可变慢，不可带错运行
+- classify index 主链路代码已切到新口径：`dirty` 判定现只看 `is_verified === false` 与 `finalCategory` 是否为空 / `uncategorized`；`transactionStatus` 不再参与生产侧判定；`ClassifyQueue` 运行时主语义已切为 `ClassifyIndex`，并保留兼容别名
+- 浏览器开发态已完成新的分类专项验收：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()` 与 `runClassifyLockBoundaryTest()` 均通过；移动端视口 `390 x 844` 截图已留档 `artifacts/classify-index-mobile-home.png`
+- 浏览器 console 当前未发现新的 JS runtime error；残留错误仍是既有 `/api/fs` 404 噪音，尚未纳入本轮修复范围
 - 上述四项仍属于本轮未 release 的动态进度，不进入 `Release Changelog`，待本轮正式发布后再归并
 
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| 分类引擎跳过 `2026-03-25 / 2026-03-24 / 2026-03-23` 异常排查 | Pending | 用户复现报告：`date range = 全部`，开启分类引擎后这三天的未分类条目会被本轮跳过，更早日期被持续处理并在处理完后自动停机；再次开启后，`2026-03-25` 会单独处理，随后 `2026-03-24 / 2026-03-23` 会一起处理；用户已反复做“丢掉、更改、重新测试”，现象稳定复现 |
-| Android 返回手势修复 | Pending | 当前真机系统返回手势仍会直接退桌面；目标是“二级页优先返回、一级页首次返回弹提示、二次返回才退出” |
-| AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供“先消费一周并自动停止”选项 |
+| classify 生产侧脏索引增量化改造 | Done / 待 release | 核心实现、`typecheck`、`build`、浏览器控制台专项与 Playwright 移动端验证已通过；代码审查已完成，文档 dirty predicate 描述已修正（移除 `transactionStatus === “SUCCESS”`）；待用户确认后并入 `0.3.7` release |
+| Android 返回手势修复 | Pending | 当前真机系统返回手势仍会直接退桌面；目标是”二级页优先返回、一级页首次返回弹提示、二次返回才退出”；已确认现方案以 `AppRoot` 监听 Capacitor `backButton` + JS 内存返回栈为主，`MainActivity` 仍是最小 `BridgeActivity`，尚无 `OnBackPressedDispatcher / OnBackInvokedDispatcher` 级原生接管；已整理外部求助报告待检索 |
+| AI 零记忆消费风险提示 | Pending | 当前激活记忆为空时，启动消费前增加确认；范围大于一周时提供”先消费一周并自动停止”选项 |
 | Demo seed 首装导入 / 落盘排查 | Pending | 当前判断已更新：安装包本身带着 demo seed 数据；问题是同一 APK 在部分安装场景下首装自动导入/落盘偶发失败，需定位首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
+| 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式在 `MoniSettings.tsx`（当前实际渲染路径）中尚未接入；现有 `SettingsPage.tsx` 中的接线未被加载；本轮仅做不影响运行的最小修补（predicate 简化 + label 语义修正），完整接线推后；落实时需确认：① `MoniSettings.tsx` 中新增标签后改走 `ReclassifyConfirmDialog` 范围选择流程，② `SettingsPage.tsx` 中对应接线是否仍需保留 |
 
 ## 当前优先级
 
-1. 分类引擎跳过 `2026-03-25 / 2026-03-24 / 2026-03-23` 异常排查
+1. classify 生产侧脏索引增量化改造（待 release 确认）
 2. Android 返回手势修复
 3. AI 零记忆消费风险提示
 4. Demo seed 首装导入 / 落盘排查
 5. Android 文件选择器真机验收
+6. 标签管理重分类流程全链路落实（推后）
 
 ## 当前阶段风险
 
-- 分类引擎当前存在一条新的高优先级异常：`date range = 全部` 时，`2026-03-25 / 2026-03-24 / 2026-03-23` 会在首轮运行中被跳过，而更早日期继续被处理；重复启动后才分批补处理，说明 dirtyDates 生产、入队顺序、停机判定或单次会话上限之间可能存在边界问题
+- classify 生产侧脏索引增量化主链路已落地；剩余风险主要集中在历史测试数据若仍带旧 runtime 文件，首次恢复时可能触发 `needs_rebuild` 或整本重建
 - Android 返回手势当前真机行为仍会直接退桌面；浏览器开发态无法等价证明原生返回链路
 - AI 零记忆提示与“先消费一周并自动停止”保护尚未接入，当前仍存在无记忆状态下误耗 token 的风险
 - Demo seed 首装自动导入/落盘链路仍未排查；当前已知现象是“同一 APK 有时能成功带出用户数据，有时不能”，更像首启安装链路偶发失败，而不是构建产物本身缺数据
@@ -169,11 +178,11 @@
 - Android 安装打包链路已建成，可按当前工程状态随时产出安装包
 - Release 快捷入口当前固定为 `npm run build:release`；标准流程为“编码完成 -> 改版本号 -> 构建 -> 提交代码与文档”
 - Android App Icon 当前固定口径：以 `public/icon.svg` 为唯一信源，生成 launcher icon 时必须保持原图构图与装饰位置，不允许使用会导致错位/裁切的渲染链
-- 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 `queue / enqueue_recovery / confirm_recovery`
+- 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 classify index 主状态、`enqueue_recovery` 与 `confirm_recovery`
 - 分类消费顺序本轮收口为“最近日期优先”
 - 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
-- `classify_runtime.json` 在工程行为上更接近“按天缓冲区”，但当前文档与代码命名继续沿用 queue 术语
-- `data range` 只约束 AI 消费，不限制 dirtyDates 生产与日期入队
+- `classify_runtime.json` 在工程行为上以 classify index 为主语义；兼容层仍允许存量代码继续沿用 queue 命名，但不得再引入新的 queue 业务语义
+- `data range` 只约束 AI 消费，不限制 classify index 的 dirtyDates 生产与日期入索引
 - 首页 `DateRangePicker` 的快捷范围继续按系统当前时间计算；但滑块轨道 `MIN/MAX` 必须始终固定为账本真实数据范围；滑块 thumb 的显示位置取“快捷范围与账本范围的交集”，无交集时仅在边界贴边显示；真正提交给首页过滤与 AI 消费的是该交集，若无交集则显式传递空区间，不能再折叠成账本边界日
 - 分类结果里的 `reasoning / ai_reasoning` 需限制在 `20` 个字以内，运行时仍做兜底截断
 - `is_verified` 当前固定语义为“自动化链路级冻结”：生产端默认不以锁定条目生成 dirtyDates，但消费端对已入队日期仍向 AI 注入完整消费交易上下文；锁定保护独立于 `USER > RULE_ENGINE > AI_AGENT` 提案优先级，并要求最终写回前基于最新记录再次校验

@@ -1,6 +1,9 @@
 import { appFacade } from '@bootstrap/appFacade';
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
-import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
+import {
+  classifyIndex,
+  type ClassifyIndexSnapshot,
+} from '@logic/application/ai/ClassifyQueue';
 import { CompressionSession } from '@logic/application/ai/CompressionSession';
 import type { CompressionContext, CompressionResult } from '@logic/application/ai/CompressionSession';
 import { globalArbiter } from '@logic/domain/arbiter/Arbiter';
@@ -70,7 +73,7 @@ interface DebugTestReport {
  * - 随手记增删改查
  * - 预算配置读写与统计读取
  * - 首页聚合读模型快照
- * - 分类队列状态读取
+ * - 分类索引状态读取
  */
 interface MoniDebugApi {
   env: {
@@ -104,8 +107,10 @@ interface MoniDebugApi {
   };
   classify: {
     getQueue: (ledgerId?: string) => Promise<Array<Record<string, unknown>>>;
+    getIndex: (ledgerId?: string) => Promise<ClassifyIndexSnapshot>;
     enqueueDate: (date: string, ledgerId?: string) => Promise<boolean>;
     peek: (ledgerId?: string) => Promise<Record<string, unknown> | null>;
+    rebuild: (ledgerId?: string, reason?: string) => Promise<ClassifyIndexSnapshot>;
   };
   prefs: {
     get: (ledgerId?: string) => Promise<LedgerPreferences>;
@@ -149,6 +154,7 @@ interface MoniE2EApi {
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
     runBillImportBackendTest: () => Promise<DebugTestReport>;
     runClassifyLockBoundaryTest: () => Promise<DebugTestReport>;
+    runClassifyIndexIncrementalTest: () => Promise<DebugTestReport>;
   };
 }
 
@@ -1572,23 +1578,23 @@ async function runClassifyLockBoundaryTest(): Promise<DebugTestReport> {
       ledgerService.collectDirtyDatesForAll(),
       'debug_lock_boundary_confirmed'
     );
-    const queueAfterUnlock = await classifyQueue.getPending(tempLedger);
+    const indexAfterUnlock = await classifyIndex.getPending(tempLedger);
     const lockedAfterUnlock = getCurrentLedgerMemory()?.records[lockedId];
     assertStep(
       report,
       'unlockAndReclassifyEnqueuesSelectedLockedTransactions',
-      reclassifyResult.success &&
+        reclassifyResult.success &&
         reclassifyResult.enqueueSuccess &&
         reclassifyResult.unlockedCount === 1 &&
         reclassifyResult.dirtyDates.includes('2026-04-30') &&
-        queueAfterUnlock.some((task) => task.date === '2026-04-30') &&
+        indexAfterUnlock.some((task) => task.date === '2026-04-30') &&
         lockedAfterUnlock?.is_verified === false,
       {
         reclassifyResult,
-        queueAfterUnlock,
+        indexAfterUnlock,
         lockedAfterUnlock,
       },
-      '用户显式勾选的锁定条目应先解锁，再与未锁定 dirtyDates 一起入队'
+      '用户显式勾选的锁定条目应先重置为未分类并解锁，再进入 classify index'
     );
   } catch (error) {
     pushStep(report, {
@@ -1604,6 +1610,171 @@ async function runClassifyLockBoundaryTest(): Promise<DebugTestReport> {
     originalLedger,
     finalActiveLedger: getActiveLedgerName(),
     tempLedger,
+  };
+  return report;
+}
+
+async function runClassifyIndexIncrementalTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+  const report = createReport('classify_index_incremental');
+  const ledgerManager = LedgerManager.getInstance();
+  const ledgerService = LedgerService.getInstance();
+  const manualEntryManager = ManualEntryManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('分类索引测试账本');
+  const primaryDate = '2026-05-02';
+  const secondaryDate = '2026-05-03';
+
+  const readIndexSnapshot = async (): Promise<ClassifyIndexSnapshot> => {
+    return await classifyIndex.getIndexSnapshot(tempLedger);
+  };
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '分类索引增量测试先创建独立临时账本');
+
+    const switched = await ledgerManager.switchLedger(tempLedger);
+    assertStep(report, 'switchToTempLedger', switched, { activeLedger: getActiveLedgerName() }, '后续索引校验必须发生在临时账本内');
+
+    const firstId = await manualEntryManager.addEntry(tempLedger, {
+      amount: 20,
+      direction: 'out',
+      category: '正餐',
+      subject: '分类索引测试主条目',
+      description: '初始为已分类且锁定',
+      date: `${primaryDate} 09:00:00`,
+    });
+
+    const emptySnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'classifiedAndLockedRecordDoesNotCreateDirtyDate',
+      Object.keys(emptySnapshot.dirtyCountByDate).length === 0 && emptySnapshot.pendingDates.length === 0,
+      emptySnapshot,
+      '已分类且锁定的条目不应让 classify index 产生脏日期'
+    );
+
+    await ledgerService.patchRecord(firstId, {
+      category: 'uncategorized',
+      user_category: '',
+      ai_category: '',
+      ai_reasoning: '',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    });
+    const firstDirtySnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'unlockAndResetToUncategorizedCreatesDirtyCount',
+      firstDirtySnapshot.dirtyCountByDate[primaryDate] === 1 &&
+        firstDirtySnapshot.pendingDates.includes(primaryDate) &&
+        firstDirtySnapshot.needsRebuild === false,
+      firstDirtySnapshot,
+      '同日首条未锁定且未分类记录应把 dirtyCountByDate 精确推进到 1'
+    );
+
+    await ledgerService.patchRecord(firstId, {
+      transactionStatus: TransactionStatus.PROCESSING,
+      updated_at: formatNowForRecord(),
+    });
+    const statusIgnoredSnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'transactionStatusDoesNotAffectDirtyPredicate',
+      statusIgnoredSnapshot.dirtyCountByDate[primaryDate] === 1 &&
+        statusIgnoredSnapshot.pendingDates.includes(primaryDate),
+      statusIgnoredSnapshot,
+      '冻结口径下 transactionStatus 变化不应影响脏判定'
+    );
+
+    const secondId = await manualEntryManager.addEntry(tempLedger, {
+      amount: 8,
+      direction: 'out',
+      category: '零食',
+      subject: '分类索引测试次条目',
+      description: '用于验证同日聚合与跨天迁移',
+      date: `${primaryDate} 10:30:00`,
+    });
+    await ledgerService.patchRecord(secondId, {
+      category: 'uncategorized',
+      user_category: '',
+      ai_category: '',
+      ai_reasoning: '',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    });
+    const aggregatedSnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'sameDayDirtyRecordsAggregateIntoExactCount',
+      aggregatedSnapshot.dirtyCountByDate[primaryDate] === 2 && aggregatedSnapshot.pendingDates.length === 1,
+      aggregatedSnapshot,
+      '同一天新增第二条脏记录后，索引应精确聚合成 count=2，而不是重复日期任务'
+    );
+
+    await ledgerService.patchRecord(firstId, {
+      category: '正餐',
+      user_category: '正餐',
+      ai_category: '',
+      ai_reasoning: '',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    });
+    const decrementedSnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'reclassifyOneDirtyRecordDecrementsOnlyItsOwnContribution',
+      decrementedSnapshot.dirtyCountByDate[primaryDate] === 1 && decrementedSnapshot.pendingDates.includes(primaryDate),
+      decrementedSnapshot,
+      '当日其中一条恢复为已分类后，dirtyCountByDate 应只减掉这一条贡献'
+    );
+
+    await ledgerService.patchRecord(secondId, {
+      time: `${secondaryDate} 08:15:00`,
+      updated_at: formatNowForRecord(),
+    });
+    const migratedSnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'dirtyRecordDateChangeMigratesCountAcrossDates',
+      !Object.prototype.hasOwnProperty.call(migratedSnapshot.dirtyCountByDate, primaryDate) &&
+        migratedSnapshot.dirtyCountByDate[secondaryDate] === 1 &&
+        migratedSnapshot.pendingDates.length === 1 &&
+        migratedSnapshot.pendingDates[0] === secondaryDate,
+      migratedSnapshot,
+      '脏条目改时间跨天后，旧日期计数必须归零移除，新日期计数必须精确接手'
+    );
+
+    await ledgerService.patchRecord(secondId, {
+      is_verified: true,
+      updated_at: formatNowForRecord(),
+    });
+    const clearedSnapshot = await readIndexSnapshot();
+    assertStep(
+      report,
+      'lockingLastDirtyRecordClearsIndexDate',
+      Object.keys(clearedSnapshot.dirtyCountByDate).length === 0 &&
+        clearedSnapshot.pendingDates.length === 0 &&
+        clearedSnapshot.needsRebuild === false,
+      clearedSnapshot,
+      '最后一条脏记录被锁定后，对应日期必须从 classify index 和 pending dates 一起消失'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+    tempLedger,
+    primaryDate,
+    secondaryDate,
   };
   return report;
 }
@@ -1624,7 +1795,7 @@ function createDebugApi(): MoniDebugApi {
         return {
           activeLedger: getActiveLedgerName(),
           ledgerSnapshot: buildLedgerSnapshot(),
-          queueSize: (await classifyQueue.getPending(getActiveLedgerName() ?? undefined)).length,
+          classifyIndexSize: (await classifyIndex.getPending(getActiveLedgerName() ?? undefined)).length,
           hasHomeReadModel: true,
         };
       },
@@ -1780,12 +1951,20 @@ function createDebugApi(): MoniDebugApi {
       getQueue: async (ledgerId?: string) => {
         await ensureAppReady();
         const targetLedger = ledgerId ?? getActiveLedgerName() ?? undefined;
-        const tasks = await classifyQueue.getPending(targetLedger);
+        const tasks = await classifyIndex.getPending(targetLedger);
         return tasks.map((task) => ({
           ledger: task.ledger,
           date: task.date,
           enqueuedAt: task.enqueuedAt,
         }));
+      },
+      getIndex: async (ledgerId?: string) => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        return await classifyIndex.getIndexSnapshot(targetLedger);
       },
       enqueueDate: async (date: string, ledgerId?: string) => {
         await ensureAppReady();
@@ -1793,7 +1972,7 @@ function createDebugApi(): MoniDebugApi {
         if (!targetLedger) {
           throw new Error('No active ledger loaded');
         }
-        return await classifyQueue.enqueue({
+        return await classifyIndex.enqueue({
           ledger: targetLedger,
           date,
         });
@@ -1804,7 +1983,7 @@ function createDebugApi(): MoniDebugApi {
         if (!targetLedger) {
           throw new Error('No active ledger loaded');
         }
-        const task = await classifyQueue.peek(targetLedger);
+        const task = await classifyIndex.peek(targetLedger);
         if (!task) {
           return null;
         }
@@ -1813,6 +1992,19 @@ function createDebugApi(): MoniDebugApi {
           date: task.date,
           enqueuedAt: task.enqueuedAt,
         };
+      },
+      rebuild: async (ledgerId?: string, reason: string = 'debug_rebuild') => {
+        await ensureAppReady();
+        const targetLedger = ledgerId ?? getActiveLedgerName();
+        if (!targetLedger) {
+          throw new Error('No active ledger loaded');
+        }
+        const memory = LedgerService.getInstance().getState().ledgerMemory;
+        if (!memory) {
+          throw new Error('No active ledger memory loaded');
+        }
+        await classifyIndex.rebuildFromRecords(targetLedger, memory.records, reason);
+        return await classifyIndex.getIndexSnapshot(targetLedger);
       },
     },
     prefs: {
@@ -1914,6 +2106,7 @@ function createE2EApi(): MoniE2EApi {
       runHomeReadModelSmokeTest,
       runBillImportBackendTest,
       runClassifyLockBoundaryTest,
+      runClassifyIndexIncrementalTest,
     },
   };
 }

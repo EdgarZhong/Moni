@@ -9,14 +9,14 @@
 
 表现层仅覆盖手记条目在系统内的**呈现与处理方式**，不包含随手记页面本身的 UI/UX 设计（该页面的原型规格另行输出）。
 
-注入逻辑（分类会话、学习会话、收编会话中如何差异化处理手记条目与 CSV 条目）属于 `AI_SELF_LEARNING_DESIGN_v7.md` 的职责范围，本文档不展开，只在第 3.3 节标注边界。
+注入逻辑（分类会话、学习会话、收编会话中如何差异化处理手记条目与 CSV 条目）属于 `AI_SELF_LEARNING_DESIGN_v8.md` 的职责范围，本文档不展开，只在第 3.3 节标注边界。
 
 ### 与既有文档的关系
 
 | 文档 | 涉及手记的内容 | 本文件态度 |
 |------|--------------|-----------|
 | `Moni_Requirements_v2.md` A2～A5 | 需求定义 | 继承并细化 |
-| `AI_SELF_LEARNING_DESIGN_v7.md` §2.1.2 | 实例库字段与注入规则 | 本文确认共用实例库；注入差异化逻辑属 v7 |
+| `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2 | 实例库字段与注入规则 | 本文确认共用实例库；注入差异化逻辑属 v8 |
 | `design/flows/manual-entry.md` | 随手记页面结构边界 | 本文不重复，表现层仅讨论条目渲染 |
 | `Moni_Budget_System_Spec_v2.md` | 预算计算 | 手记条目与导入条目无差异，自然参与 |
 
@@ -262,7 +262,7 @@ async ingestSingleRecord(record: FullTransactionRecord): Promise<void>;
 
 **关于过拟合风险**：`product`（subject）为空的手记条目绝对不进实例库。无 subject 时记录只有金额和分类，AI 若学习此类条目会尝试从金额推断分类，导致过拟合。有 subject 时，`product` 成为主文本信号（类比 CSV 条目的 `counterparty`），`amount` 退居辅助位，不存在过拟合风险。
 
-**注入差异化处理**：分类会话、学习会话、收编会话中如何区别对待 `sourceType: 'manual'` 与 `sourceType: 'wechat'/'alipay'` 的条目（包括 B 类单独区块、`[错误判断]` 前缀、A+C+D 合并区块等规则），属于 `AI_SELF_LEARNING_DESIGN_v7.md` 的 Prompt 设计职责，本文档不展开。
+**注入差异化处理**：分类会话、学习会话、收编会话中如何区别对待 `sourceType: 'manual'` 与 `sourceType: 'wechat'/'alipay'` 的条目（包括 B 类单独区块、`[错误判断]` 前缀、A+C+D 合并区块等规则），属于 `AI_SELF_LEARNING_DESIGN_v8.md` 的 Prompt 设计职责，本文档不展开。
 
 ### 3.4 实例库来源完整分类（供 v6 参考）
 

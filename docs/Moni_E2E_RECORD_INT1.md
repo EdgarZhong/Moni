@@ -58,7 +58,7 @@
 - `ledger.list() / getActive() / switch() / create() / rename() / delete() / snapshot()`
 - `manualEntry.add() / delete() / listRecent()`
 - `budget.getConfig() / setMonthly() / clearMonthly() / setCategoryBudgets() / clearCategoryBudgets() / getSummary()`
-- `classify.getQueue() / enqueueDate() / peek()`
+- `classify.getQueue() / getIndex() / enqueueDate() / peek() / rebuild()`
 - `prefs.get() / update()`
 - `learning.getDeltaPayload() / getAutoTriggerState()`
 - `home.getReadModel()`
@@ -79,6 +79,8 @@
 - `tests.runCompressionSpecTest()`
 - `tests.runHomeReadModelSmokeTest()`
 - `tests.runBillImportBackendTest()`
+- `tests.runClassifyIndexIncrementalTest()`
+- `tests.runClassifyLockBoundaryTest()`
 
 ### 1.3 当前已完成的首批逻辑链路验收
 
@@ -595,7 +597,7 @@ await window.__MONI_E2E__.tests.runBillImportBackendTest()
 
 1. 已入队日期的分类会话仍会注入完整消费交易上下文，包含锁定条目
 2. System Prompt 已包含 exact-ID 强锚点与同一消费事件联动提示
-3. 运行中锁定条目可以挡住 AI 自动写回；被用户显式勾选后，可解锁并成功入队重分类
+3. 运行中锁定条目可以挡住 AI 自动写回；被用户显式勾选后，前置链路会先重置为未分类并解锁，再进入 classify index
 
 ### 9.2 执行方式
 
@@ -618,6 +620,45 @@ await window.__MONI_E2E__.tests.runBillImportBackendTest()
    - 锁定条目在 AI_AGENT proposal 后仍保持 `category=正餐`
    - `ai_category` 未被自动写入
    - `is_verified=true`
+6. `unlockAndReclassifyEnqueuesSelectedLockedTransactions=true`
+   - 显式勾选的锁定条目会先被重置为 `uncategorized`
+   - 同时切换到 `is_verified=false`
+   - 日期 `2026-04-30` 成功进入 classify index 的 pending dates 视图
+
+## 10. `runClassifyIndexIncrementalTest()` 独立账本链路验证（2026-05-02 ~ 2026-05-03）
+
+### 10.1 目标
+
+验证 classify index 的核心冻结口径已经在真实浏览器运行时生效：
+
+1. dirty predicate 只看“是否锁定 + 是否已有最终分类”，不再受 `transactionStatus` 影响
+2. `dirtyCountByDate` 始终精确等于“当天脏条目个数”
+3. 同日多条脏记录会聚合成同一个 pending date
+4. 条目恢复分类、跨天改时间、重新锁定时，索引会做正确减计数 / 迁移 / 清零移除
+
+### 10.2 执行方式
+
+1. 启动本地 dev server
+2. 使用 Playwright Chromium，移动端视口 `390 x 844`
+3. 在页面内执行：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()`
+4. 测试内部自动创建并清理独立临时账本：`分类索引测试账本_*`
+
+### 10.3 结构化结果
+
+1. `classifiedAndLockedRecordDoesNotCreateDirtyDate=true`
+   - 初始已分类且锁定条目不会产生脏日期
+2. `unlockAndResetToUncategorizedCreatesDirtyCount=true`
+   - 首条未锁定未分类记录把 `dirtyCountByDate["2026-05-02"]` 推进到 `1`
+3. `transactionStatusDoesNotAffectDirtyPredicate=true`
+   - 把同一条记录从 `SUCCESS` 改为 `PROCESSING` 后，脏计数保持 `1`
+4. `sameDayDirtyRecordsAggregateIntoExactCount=true`
+   - 同日第二条脏记录进入后，计数精确变为 `2`
+5. `reclassifyOneDirtyRecordDecrementsOnlyItsOwnContribution=true`
+   - 同日其中一条重新分类后，计数精确回落到 `1`
+6. `dirtyRecordDateChangeMigratesCountAcrossDates=true`
+   - 条目跨天改时间后，旧日期移除，新日期接手为 `1`
+7. `lockingLastDirtyRecordClearsIndexDate=true`
+   - 最后一条脏记录重新锁定后，`dirtyCountByDate` 与 pending dates 一起清空
 6. `unlockAndReclassifyEnqueuesSelectedLockedTransactions=true`
    - `unlockedCount=1`
    - `dirtyDates=["2026-04-30"]`

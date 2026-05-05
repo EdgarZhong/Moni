@@ -1,5 +1,5 @@
 import { BatchProcessor } from '@logic/application/ai/BatchProcessor';
-import { classifyQueue } from '@logic/application/ai/ClassifyQueue';
+import { classifyIndex } from '@logic/application/ai/ClassifyQueue';
 import { CompressionSession } from '@logic/application/ai/CompressionSession';
 import { LearningAutomationService, type AutoLearningEvent } from '@logic/application/ai/LearningAutomationService';
 import { LearningSession } from '@logic/application/ai/LearningSession';
@@ -278,7 +278,7 @@ export class AppFacade {
     const [availableLedgers, homeBudget, pendingTasks, lastLearningMeta] = await Promise.all([
       this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
       this.budgetManager.getHomeBudgetReadModel(currentLedgerId, ledgerState.ledgerMemory, { now }),
-      classifyQueue.getPending(currentLedgerId).catch(() => []),
+      classifyIndex.getPending(currentLedgerId).catch(() => []),
       this.loadLastLearningMeta(currentLedgerId),
     ]);
 
@@ -488,43 +488,19 @@ export class AppFacade {
   public async startAiProcessing(): Promise<void> {
     const currentLedgerId = this.ledgerManager.getActiveLedgerName();
     console.log(`[MONI_AI_DEBUG][AppFacade] startAiProcessing triggered for ledger: ${currentLedgerId}`);
-    
+
     if (currentLedgerId) {
-      const pendingCount = await classifyQueue.size(currentLedgerId).catch(() => 0);
+      /**
+       * 新口径下，“开始消费”是纯只读启动信号：
+       * - 只允许读取当前 queue 状态
+       * - 不允许在 queue 为空时重扫账本并补生产任务
+       *
+       * 任务生产必须由导入 / 重分类 / 用户操作等被动外部事件同步完成。
+       */
+      const pendingCount = await classifyIndex.size(currentLedgerId).catch(() => 0);
       console.log(`[MONI_AI_DEBUG][AppFacade] Existing pending queue size: ${pendingCount}`);
-      
-      if (pendingCount === 0) {
-        const records = this.ledgerService.getState().ledgerMemory?.records ?? {};
-        const successRecords = Object.values(records).filter((record) =>
-          record.transactionStatus === 'SUCCESS'
-        );
-
-        const candidateDates = Array.from(
-          new Set(
-            successRecords
-              .filter((record) => {
-                const finalCategory = record.user_category || record.ai_category || record.category;
-                const isUnclassified = !finalCategory || finalCategory === 'uncategorized';
-                return !record.is_verified && isUnclassified;
-              })
-              .map((record) => record.time.slice(0, 10))
-          )
-        ).sort();
-
-        console.log(`[MONI_AI_DEBUG][AppFacade] Candidate dates to enqueue:`, candidateDates);
-
-        if (candidateDates.length === 0) {
-          console.log(`[MONI_AI_DEBUG][AppFacade] No unclassified transactions found, stopping.`);
-          this.batchProcessor.stop();
-          return;
-        }
-
-        for (const date of candidateDates) {
-          await classifyQueue.enqueue({ ledger: currentLedgerId, date });
-        }
-      }
     }
-    
+
     console.log(`[MONI_AI_DEBUG][AppFacade] Invoking BatchProcessor.run()`);
     try {
       await this.batchProcessor.run();
@@ -540,7 +516,7 @@ export class AppFacade {
 
   private toHomeAiState(
     currentLedgerId: string,
-    pendingTasks: Awaited<ReturnType<typeof classifyQueue.getPending>>,
+    pendingTasks: Awaited<ReturnType<typeof classifyIndex.getPending>>,
     selectedHomeDateRange: { start: Date | null; end: Date | null; isEmpty?: boolean },
     lastLearningMeta: { timestamp: string; message: string } | null,
   ): HomeAiEngineUiState {
@@ -1161,18 +1137,7 @@ export class AppFacade {
    * 该入口专门给设置页“全量重分类”提交成功后的第三步确认使用。
    */
   public async startQueuedClassification(): Promise<void> {
-    try {
-      await this.batchProcessor.run();
-    } catch (error) {
-      /**
-       * 若处理器已经在运行，这里保持幂等：
-       * 用户点“现在开始”时不应把“已在运行”视为失败。
-       */
-      if (!(error instanceof Error) || error.message !== 'Processor is already running') {
-        throw error;
-      }
-    }
-    this.notify();
+    await this.startAiProcessing();
   }
 
   private notify(): void {

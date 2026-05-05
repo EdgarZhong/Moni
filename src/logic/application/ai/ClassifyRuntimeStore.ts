@@ -42,6 +42,9 @@ export interface ClassifyRuntimeData {
   revision: number;
   metrics: StoredClassifyQueueMetrics;
   queue: StoredClassifyQueueTask[];
+  dirty_count_by_date: Record<string, number>;
+  needs_rebuild: boolean;
+  rebuild_reason: string | null;
   enqueue_recovery: StoredEnqueueRecovery | null;
   confirm_recovery: unknown | null;
 }
@@ -57,6 +60,9 @@ function createDefaultRuntime(): ClassifyRuntimeData {
       lastEmptyTaskDate: null,
     },
     queue: [],
+    dirty_count_by_date: {},
+    needs_rebuild: false,
+    rebuild_reason: null,
     enqueue_recovery: null,
     confirm_recovery: null,
   };
@@ -126,7 +132,15 @@ export class ClassifyRuntimeStore {
       });
       return this.normalize(JSON.parse(raw), ledger);
     } catch {
-      return createDefaultRuntime();
+      return {
+        ...createDefaultRuntime(),
+        /**
+         * 无法读取或解析运行态文件时，不继续盲信旧索引。
+         * 这里直接标记为需要重建，让上层在真正消费前先按账本真相恢复。
+         */
+        needs_rebuild: true,
+        rebuild_reason: 'runtime_load_failed'
+      };
     }
   }
 
@@ -172,6 +186,9 @@ export class ClassifyRuntimeStore {
     const normalized = this.normalize(runtime, ledger);
     const shouldDelete =
       normalized.queue.length === 0 &&
+      Object.keys(normalized.dirty_count_by_date).length === 0 &&
+      !normalized.needs_rebuild &&
+      !normalized.rebuild_reason &&
       !normalized.enqueue_recovery &&
       !normalized.confirm_recovery &&
       normalized.metrics.emptyTaskConsumedCount === 0 &&
@@ -203,6 +220,37 @@ export class ClassifyRuntimeStore {
           }))
       : [];
 
+    const dirtyCountByDateRaw = candidate.dirty_count_by_date;
+    const dirtyCountByDate =
+      dirtyCountByDateRaw && typeof dirtyCountByDateRaw === 'object'
+        ? Object.fromEntries(
+            Object.entries(dirtyCountByDateRaw)
+              .filter(([date, count]) => {
+                return (
+                  typeof date === 'string' &&
+                  date.length > 0 &&
+                  typeof count === 'number' &&
+                  Number.isInteger(count) &&
+                  count > 0
+                );
+              })
+              .map(([date, count]) => [date, count as number])
+          )
+        : {};
+
+    /**
+     * 老版本运行态没有 dirty_count_by_date。
+     * 只要发现“旧 queue 非空但没有脏索引”，就要求上层在消费前先重建。
+     */
+    const missingDirtyIndex = Object.keys(dirtyCountByDate).length === 0 && queue.length > 0;
+    const needsRebuild = candidate.needs_rebuild === true || missingDirtyIndex;
+    const rebuildReason =
+      typeof candidate.rebuild_reason === 'string' && candidate.rebuild_reason.length > 0
+        ? candidate.rebuild_reason
+        : missingDirtyIndex
+          ? 'dirty_index_missing'
+          : null;
+
     const enqueueRecoveryRaw = candidate.enqueue_recovery as Partial<StoredEnqueueRecovery> | null | undefined;
     const enqueueRecovery =
       enqueueRecoveryRaw && Array.isArray(enqueueRecoveryRaw.dates)
@@ -232,6 +280,9 @@ export class ClassifyRuntimeStore {
             : null,
       },
       queue,
+      dirty_count_by_date: dirtyCountByDate,
+      needs_rebuild: needsRebuild,
+      rebuild_reason: rebuildReason,
       enqueue_recovery: enqueueRecovery,
       confirm_recovery: candidate.confirm_recovery ?? null,
     };

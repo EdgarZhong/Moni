@@ -34,7 +34,7 @@
 | A1 | CSV 导入（微信/支付宝） | 🔴 | ✅ 已有 |
 | A2 | 手动记账（随手记）：必填=分类+金额，可选=主题（subject）+描述（description），无独立备注字段 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` |
 | A3 | 手记条目逻辑身份独立（`sourceType: 'manual'`），物理存储与 CSV 导入条目共用同一 `records` 映射 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` §1.2 |
-| A4 | 手记条目学习信号：subject（`product` 字段）非空时作为 D 类实例进入共用实例库，参与分类注入与学习会话 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` §3.3 及 `AI_SELF_LEARNING_DESIGN_v7.md` §2.1.2 |
+| A4 | 手记条目学习信号：subject（`product` 字段）非空时作为 D 类实例进入共用实例库，参与分类注入与学习会话 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` §3.3 及 `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2 |
 | A5 | 随手记语音输入 → AI 解析为结构化条目 | 🟡 | ✅ P2 |
 
 ### 模块 B：AI 智能分类
@@ -52,10 +52,10 @@
 | ID | 需求 | 优先级 | 状态 |
 |----|------|--------|------|
 | C1 | 修正分类自动采集实例 | 🔴 | ✅ 已有 |
-| C2 | 实例库按 `AI_SELF_LEARNING_DESIGN_v7.md` §2.1.2 注入区块规则注入分类 Prompt（B 类单独区块 + `[错误判断]` 前缀，A+C+D 合并区块） | 🔴 | ⚠️ 存储字段名对齐和注入区块规则尚未在代码中落地 |
-| C3 | 学习会话（增量更新记忆） | 🔴 | ⚠️ 当前实现为旧模型，目标规格以 `AI_SELF_LEARNING_DESIGN_v7.md` 为准 |
-| C4 | 收编机制（记忆压缩） | 🟠 | ⚠️ `AI_SELF_LEARNING_DESIGN_v7.md` 已设计，尚未落地 |
-| C5 | 记忆快照 + 版本回退 | 🟠 | ⚠️ `AI_SELF_LEARNING_DESIGN_v7.md` 已设计，尚未落地 |
+| C2 | 实例库按 `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2 注入区块规则注入分类 Prompt（B 类单独区块 + `[错误判断]` 前缀，A+C+D 合并区块） | 🔴 | ⚠️ 存储字段名对齐和注入区块规则尚未在代码中落地 |
+| C3 | 学习会话（增量更新记忆） | 🔴 | ⚠️ 当前实现为旧模型，目标规格以 `AI_SELF_LEARNING_DESIGN_v8.md` 为准 |
+| C4 | 收编机制（记忆压缩） | 🟠 | ⚠️ `AI_SELF_LEARNING_DESIGN_v8.md` 已设计，尚未落地 |
+| C5 | 记忆快照 + 版本回退 | 🟠 | ⚠️ `AI_SELF_LEARNING_DESIGN_v8.md` 已设计，尚未落地 |
 | C6 | AI 记忆查看/编辑 UI（设置页内） | 🔴 | ✅ 已支持；新的表现层 UI 原型暂未定，本轮首页集成不涉及 |
 | C7 | 自述（全局用户偏好） | 🔴 | ✅ 已有 |
 
@@ -63,10 +63,10 @@
 
 | ID | 需求 | 优先级 | 状态 |
 |----|------|--------|------|
-| D1 | 新增标签（必须附描述） | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v7.md` 为准 |
-| D2 | 删除标签 + 渐进式重分类 | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v7.md` 为准 |
-| D3 | 重命名标签 | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v7.md` 为准 |
-| D4 | 修改标签描述 + 可选重分类 | 🟠 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v7.md` 为准 |
+| D1 | 新增标签（必须附描述） | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v8.md` 为准 |
+| D2 | 删除标签 + 渐进式重分类 | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v8.md` 为准 |
+| D3 | 重命名标签 | 🔴 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v8.md` 为准 |
+| D4 | 修改标签描述 + 可选重分类 | 🟠 | ✅ 已支持，具体链路以 `AI_SELF_LEARNING_DESIGN_v8.md` 为准 |
 | D5 | 初始化时提供默认标签集 | 🔴 | ✅ 已确认 |
 
 ### 模块 E：账本管理
@@ -240,7 +240,7 @@
 
 - 手记条目共用 `classify_examples/{ledger}.json`，不单独建库
 - `product`（subject）非空时作为 D 类实例入库，参与分类注入与学习会话
-- 实例库四类来源（A/B/C/D）完整规格见 `AI_SELF_LEARNING_DESIGN_v7.md` §2.1.2
+- 实例库四类来源（A/B/C/D）完整规格见 `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2
 
 ### 6.3 首页展示
 

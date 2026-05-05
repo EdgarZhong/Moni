@@ -16,6 +16,7 @@ import { ExampleStore } from './ExampleStore';
 import { MemoryManager } from './MemoryManager';
 import { format, parse, startOfDay, endOfDay } from 'date-fns';
 import { classifyTrigger } from '../ai/ClassifyTrigger';
+import { classifyIndex } from '../ai/ClassifyQueue';
 import { normalizeToDateKey } from '../ai/DateNormalizer';
 import { BudgetManager } from './BudgetManager';
 import { LearningAutomationService } from '../ai/LearningAutomationService';
@@ -251,6 +252,30 @@ export class LedgerService {
     return this.memoryFileHandle.name || null;
   }
 
+  /**
+   * 同步 classify 脏索引。
+   * 这里统一把“旧账本状态 / 新账本状态 / 受影响交易集合”交给队列层，
+   * 由它内部做增量更新、受影响日期重算或 needs_rebuild 兜底。
+   */
+  private async syncDirtyIndexForTouchedRecords(
+    prevMemory: LedgerMemory,
+    nextMemory: LedgerMemory,
+    touchedTxIds: string[],
+    reason: string
+  ): Promise<void> {
+    const ledgerName = this.getCurrentLedgerName();
+    if (!ledgerName || touchedTxIds.length === 0) {
+      return;
+    }
+    await classifyIndex.syncDirtyIndexForTouchedRecords({
+      ledger: ledgerName,
+      prevRecords: prevMemory.records,
+      nextRecords: nextMemory.records,
+      touchedTxIds,
+      reason
+    });
+  }
+
   private applyPatch(patch: PersistencePatch, prevMemory: LedgerMemory) {
     const record = prevMemory.records[patch.id];
     if (!record) {
@@ -302,6 +327,11 @@ export class LedgerService {
       console.error('[LedgerService] memoryFileHandle is missing! Cannot persist.');
     }
 
+    void this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, [patch.id], 'arbiter_patch')
+      .catch((error) => {
+        console.error('[LedgerService] Failed to sync dirty index for arbiter patch:', error);
+      });
+
     return newMemory;
   }
 
@@ -342,6 +372,10 @@ export class LedgerService {
       if (migrated) {
         console.log('[LedgerService] Detected legacy categories during reload, writing migrated memory once...');
         await writeMemoryFile(this.memoryFileHandle, newMemory);
+      }
+      const ledgerName = this.getCurrentLedgerName();
+      if (ledgerName) {
+        await classifyIndex.rebuildFromRecords(ledgerName, newMemory.records, 'reload_memory');
       }
       
       // Update state
@@ -560,7 +594,9 @@ export class LedgerService {
       last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
     };
 
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, nextMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, nextMemory, [record.id], 'manual_ingest_single_record');
 
     const nextRawTransactions = [
       {
@@ -608,7 +644,9 @@ export class LedgerService {
       last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
     };
 
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, nextMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, nextMemory, [id], 'manual_delete_single_record');
 
     const nextRawTransactions = this.state.rawTransactions.filter((tx) => tx.id !== id);
 
@@ -658,7 +696,9 @@ export class LedgerService {
       last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
     };
 
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, nextMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, nextMemory, [id], 'manual_patch_record');
 
     const nextRawTransactions = this.state.rawTransactions.map((tx) =>
       tx.id === id
@@ -715,6 +755,8 @@ export class LedgerService {
             
             // Sync
             const newMemory = await this.syncWithLedger(parsedData, memoryHandle, currentMemory, true);
+            const importedTxIds = parsedData.map(tx => tx.id);
+            await this.syncDirtyIndexForTouchedRecords(currentMemory, newMemory, importedTxIds, 'csv_ingest_parsed_data');
             
             // If new file created, ensure we save it
             if (isNewFile && newMemory === currentMemory) {
@@ -740,7 +782,6 @@ export class LedgerService {
 
             const ledgerName = this.getCurrentLedgerName();
             if (ledgerName) {
-              const importedTxIds = parsedData.map(tx => tx.id);
               const triggerResult = await classifyTrigger.enqueueCsvImport(ledgerName, newMemory, importedTxIds);
               console.log('[LedgerService] CSV auto-trigger result:', {
                 ledger: ledgerName,
@@ -787,6 +828,8 @@ export class LedgerService {
         } else {
             newMemory = await this.syncWithLedger(parsedData, null, currentMemory, true);
         }
+        const importedTxIds = parsedData.map(tx => tx.id);
+        await this.syncDirtyIndexForTouchedRecords(currentMemory, newMemory, importedTxIds, 'csv_ingest_raw_data');
         
         this.hydrateArbiter(newMemory);
         const rawTransactions = this.buildRawTransactionsFromMemory(newMemory);
@@ -805,7 +848,6 @@ export class LedgerService {
 
         const ledgerName = this.getCurrentLedgerName();
         if (ledgerName) {
-          const importedTxIds = parsedData.map(tx => tx.id);
           const triggerResult = await classifyTrigger.enqueueCsvImport(ledgerName, newMemory, importedTxIds);
           console.log('[LedgerService] CSV auto-trigger result:', {
             ledger: ledgerName,
@@ -853,16 +895,25 @@ export class LedgerService {
   }
 
   /**
-   * 收集所有未锁定交易的脏日期（全量路径）
-   * 供 UI 渐进式确认对话框”全量（未锁定的交易）”按钮使用。
+   * classify 脏判定的唯一实现。
+   * 冻结口径：只看“是否锁定 + 是否已有最终分类”，不再把 transactionStatus 混入生产侧判定。
    */
-  public collectDirtyDatesForAll(): string[] {
-    return this.collectDirtyDatesByPredicate((record) => !record.is_verified);
+  private isRecordDirtyForClassify(record: FullTransactionRecord): boolean {
+    const finalCategory = record.user_category || record.ai_category || record.category;
+    return record.is_verified === false && (!finalCategory || finalCategory === 'uncategorized');
   }
 
   /**
-   * 按条件从当前账本记录中提取脏日期集合
-   * 用于”标签变更即入队”场景，保证触发层与消费层解耦。
+   * 收集当前账本所有真实 dirty 日期。
+   * 注意这里返回的不是“所有未锁定日期”，而是已经满足 classify dirty predicate 的日期集合。
+   */
+  public collectDirtyDatesForAll(): string[] {
+    return this.collectDirtyDatesByPredicate(() => true);
+  }
+
+  /**
+   * 按条件从当前账本记录中提取真实 dirty 日期集合。
+   * predicate 只负责表达“候选范围”，最终是否计入仍必须满足统一 dirty predicate。
    */
   public collectDirtyDatesByPredicate(predicate: (record: FullTransactionRecord) => boolean): string[] {
     const memory = this.state.ledgerMemory;
@@ -871,7 +922,11 @@ export class LedgerService {
     }
     const dates = new Set<string>();
     for (const record of Object.values(memory.records)) {
-      if (!record?.time || !predicate(record as FullTransactionRecord)) {
+      if (
+        !record?.time ||
+        !predicate(record as FullTransactionRecord) ||
+        !this.isRecordDirtyForClassify(record as FullTransactionRecord)
+      ) {
         continue;
       }
       dates.add(normalizeToDateKey(record.time));
@@ -920,7 +975,9 @@ export class LedgerService {
       last_sync: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
     };
 
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, newMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, uniqueIds, 'unlock_transactions');
 
     this.transactionCache.clear();
     const computed = this.recomputeTransactions(this.state.rawTransactions, newMemory);
@@ -1146,8 +1203,13 @@ export class LedgerService {
       dirtyDates,
       reason,
       mutation: {
-        kind: 'unlock_only',
+        /**
+         * 当前冻结口径下，凡是要重新进入 classify index 的显式锁定条目，
+         * 前置链路就必须先把它重置回未分类，而不是只解锁不清分类。
+         */
+        kind: 'reset_to_uncategorized',
         txIds: lockedTxIds,
+        forceUnlock: true,
         cleanupExamples: true
       }
     });
@@ -1270,7 +1332,9 @@ export class LedgerService {
       }
     }
 
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, newMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, resetResult.affectedTxIds, 'delete_category');
     this.transactionCache.clear();
     const computed = this.recomputeTransactions(this.state.rawTransactions, newMemory);
 
@@ -1331,18 +1395,22 @@ export class LedgerService {
     const newCategories = this.orderDefinedCategories(Object.fromEntries(renamedEntries.length > 0 ? renamedEntries : [[sanitizedNewName, oldDesc]]));
 
     const affectedTxIds: string[] = [];
+    const changedTxIds = new Set<string>();
     const updatedRecords = { ...this.state.ledgerMemory.records };
     Object.entries(updatedRecords).forEach(([txId, record]) => {
       let nextRecord = updatedRecords[txId];
       if (record.category === oldName) {
         affectedTxIds.push(txId);
         nextRecord = { ...nextRecord, category: sanitizedNewName };
+        changedTxIds.add(txId);
       }
       if (record.ai_category === oldName) {
         nextRecord = { ...nextRecord, ai_category: sanitizedNewName };
+        changedTxIds.add(txId);
       }
       if (record.user_category === oldName) {
         nextRecord = { ...nextRecord, user_category: sanitizedNewName };
+        changedTxIds.add(txId);
       }
       updatedRecords[txId] = nextRecord;
     });
@@ -1355,7 +1423,9 @@ export class LedgerService {
     };
 
     // 保存到文件
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, newMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, Array.from(changedTxIds), 'rename_category');
 
     // 清空缓存并更新状态
     this.transactionCache.clear();
@@ -1900,7 +1970,9 @@ export class LedgerService {
       if (mutation.cleanupExamples) {
         await this.cleanupExamplesByTxIds(result.affectedTxIds);
       }
+      const prevMemory = this.state.ledgerMemory;
       await writeMemoryFile(this.memoryFileHandle, newMemory);
+      await this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, result.affectedTxIds, 'atomic_unlock_only');
       this.transactionCache.clear();
       const computed = this.recomputeTransactions(this.state.rawTransactions, newMemory);
       this.setState({
@@ -1928,7 +2000,9 @@ export class LedgerService {
     if (mutation.cleanupExamples) {
       await this.cleanupExamplesByTxIds(result.affectedTxIds);
     }
+    const prevMemory = this.state.ledgerMemory;
     await writeMemoryFile(this.memoryFileHandle, newMemory);
+    await this.syncDirtyIndexForTouchedRecords(prevMemory, newMemory, result.affectedTxIds, 'atomic_reset_to_uncategorized');
     this.transactionCache.clear();
     const computed = this.recomputeTransactions(this.state.rawTransactions, newMemory);
     this.setState({

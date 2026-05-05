@@ -3,7 +3,7 @@ import { LLMClient } from '../llm/LLMClient';
 import { ConfigManager } from '@system/config/ConfigManager';
 import { PromptBuilder, type PromptDayBatch } from '../llm/prompt/PromptBuilder';
 import { parse } from 'date-fns';
-import { classifyQueue } from './ClassifyQueue';
+import { classifyIndex } from './ClassifyQueue';
 import { LedgerManager } from '../services/LedgerManager';
 import { LedgerService } from '../services/LedgerService';
 import { FilesystemService } from '@system/adapters/FilesystemService';
@@ -37,6 +37,12 @@ interface ParsedAiResultItem {
   reasoning: string;
 }
 
+interface ConsumptionRange {
+  start: Date | null;
+  end: Date | null;
+  isEmpty?: boolean;
+}
+
 /**
  * 当前阶段先用内部常量冻结“单次最多并行消费几天”。
  * 设置入口后续再接，不在本轮迁移里暴露到 UI。
@@ -53,8 +59,11 @@ const AI_REASONING_MAX_CHARS = 20;
  */
 function isDateWithinConsumptionRange(
   dateKey: string,
-  range: { start: Date | null; end: Date | null }
+  range: ConsumptionRange
 ): boolean {
+  if (range.isEmpty) {
+    return false;
+  }
   if (!range.start || !range.end) {
     return true;
   }
@@ -115,7 +124,7 @@ export class BatchProcessor {
    * 这里直接复用 LedgerService.state.dateRange，
    * 因为首页的 Data Range Picker 已经通过 AppFacade.setDateRange() 写回到这一层。
    */
-  private getConsumptionRange(): { start: Date | null; end: Date | null } {
+  private getConsumptionRange(): ConsumptionRange {
     return LedgerService.getInstance().getState().dateRange;
   }
 
@@ -127,8 +136,13 @@ export class BatchProcessor {
    * 3. 过滤后再按日期倒序取最近 N 天
    */
   private async getConsumableTaskBatch(ledgerName: string): Promise<ConsumableTaskBatch | null> {
-    const snapshot = await classifyQueue.getPendingWithRevision(ledgerName);
+    const snapshot = await classifyIndex.getPendingWithRevision(ledgerName);
     const range = this.getConsumptionRange();
+
+    if (snapshot.tasks.length === 0) {
+      return null;
+    }
+
     const tasks = snapshot.tasks
       .filter((task) => isDateWithinConsumptionRange(task.date, range))
       .sort((left, right) => right.date.localeCompare(left.date))
@@ -154,23 +168,20 @@ export class BatchProcessor {
    * 而不是把范围外 backlog 也算进来。
    */
   private async getConsumableTaskCount(ledgerName: string): Promise<number> {
-    const snapshot = await classifyQueue.getPendingWithRevision(ledgerName);
+    const snapshot = await classifyIndex.getPendingWithRevision(ledgerName);
     const range = this.getConsumptionRange();
     return snapshot.tasks.filter((task) => isDateWithinConsumptionRange(task.date, range)).length;
   }
 
   /**
-   * 将当前账本内“已入队日期”的当日消费交易按“日期”分桶，并按照传入日期顺序返回。
-   * 这里故意只保留“当前分类域真正不处理的记录”过滤：
-   * - 非 SUCCESS
-   * - 非支出
-   *
-   * 其余状态一律继续注入给 AI，包括：
+   * 将当前账本内“已入索引日期”的当日消费交易按“日期”分桶，并按照传入日期顺序返回。
+   * 当前冻结口径下，这里不再按 transactionStatus 裁掉记录；
+   * 只要某天被判定为 dirty，对 AI 就继续注入当天完整消费上下文，包括：
    * - 已锁定交易
    * - 已有 AI / USER 分类结果的交易
    *
    * 这样可以保证：
-   * 1. 任务生产边界仍由触发层按“未锁定条目”决定 dirtyDates
+   * 1. 任务生产边界仍由触发层按“未锁定且最终未分类条目”决定 dirtyDates
    * 2. 一旦某天已经入队，分类会话看到的仍是该天完整消费上下文
    * 3. 锁定保护留在仲裁 / 写回阶段，而不是提示词裁剪阶段
    */
@@ -185,7 +196,7 @@ export class BatchProcessor {
 
     for (const date of dates) {
       const transactions = Object.entries(memory.records)
-        .filter(([, record]) => record.time.startsWith(date) && record.transactionStatus === 'SUCCESS')
+        .filter(([, record]) => record.time.startsWith(date))
         .map(([id, record]) => ({ ...record, id }));
 
       if (transactions.length === 0) {
@@ -244,10 +255,11 @@ export class BatchProcessor {
 
   /**
    * 判断当前账本是否仍存在“需要 AI 继续处理”的交易。
+   * 冻结口径：dirty 只看“是否锁定 + 是否已有最终分类”，不再混入 transactionStatus / direction。
    */
   public hasPendingUnclassified(memory: LedgerMemory): boolean {
     return Object.values(memory.records).some((record) => {
-      if (record.transactionStatus !== 'SUCCESS' || record.direction !== 'out' || record.is_verified) {
+      if (record.is_verified) {
         return false;
       }
       const finalCategory = record.user_category || record.ai_category || record.category;
@@ -346,11 +358,24 @@ export class BatchProcessor {
         }
 
         const ledgerName = LedgerManager.getInstance().getActiveLedgerName();
+        const needsRebuild = await classifyIndex.hasNeedsRebuild(ledgerName);
+        if (needsRebuild) {
+          console.warn('[MONI_AI_DEBUG][BatchProcessor] Dirty index marked as needs_rebuild, rebuilding before run...');
+          const memory = await this.readLedgerMemory(ledgerName);
+          await classifyIndex.rebuildFromRecords(ledgerName, memory.records, 'batchprocessor_preflight_rebuild');
+        }
         const initialTotal = await this.getConsumableTaskCount(ledgerName);
-        console.log(`[MONI_AI_DEBUG][BatchProcessor] Ledger: ${ledgerName}, Consumable queue size: ${initialTotal}`);
+        const pendingQueueSize = await classifyIndex.size(ledgerName);
+        console.log(
+          `[MONI_AI_DEBUG][BatchProcessor] Ledger: ${ledgerName}, Pending index size: ${pendingQueueSize}, Consumable pending size: ${initialTotal}`
+        );
 
         if (initialTotal === 0) {
-          console.log('[MONI_AI_DEBUG][BatchProcessor] No in-range tasks to consume, returning IDLE.');
+          console.log(
+            pendingQueueSize === 0
+              ? '[MONI_AI_DEBUG][BatchProcessor] Pending index empty, returning IDLE.'
+              : '[MONI_AI_DEBUG][BatchProcessor] No consumable tasks in current range, returning IDLE while preserving pending index.'
+          );
           this.updateState('IDLE', { total: 0, current: 0, currentDate: '', currentDates: [] });
           return { success: true, processedCount: 0, errors: [] };
         }
@@ -370,7 +395,12 @@ export class BatchProcessor {
           console.log(`[MONI_AI_DEBUG][BatchProcessor] Loop start. current: ${currentIndex}, shouldStop: ${this.shouldStop}`);
           const taskBatch = await this.getConsumableTaskBatch(ledgerName);
           if (!taskBatch) {
-            console.log('[MONI_AI_DEBUG][BatchProcessor] No more in-range tasks in queue.');
+            const remainingQueueSize = await classifyIndex.size(ledgerName);
+            console.log(
+              remainingQueueSize === 0
+                ? '[MONI_AI_DEBUG][BatchProcessor] Pending index empty after current loop.'
+                : '[MONI_AI_DEBUG][BatchProcessor] No more consumable tasks in current range; pending index remains non-empty.'
+            );
             break;
           }
 
@@ -398,9 +428,9 @@ export class BatchProcessor {
 
           if (dayBatches.length === 0) {
             console.log(`[MONI_AI_DEBUG][BatchProcessor] Skipping batch ${batchDates.join(', ')} (no unclassified txs)`);
-            const removed = await classifyQueue.removeBatchIfRevisionMatch(ledgerName, batchDates, taskBatch.revision);
+            const removed = await classifyIndex.removeBatchIfRevisionMatch(ledgerName, batchDates, taskBatch.revision);
             if (!removed) {
-              allErrors.push(`queue changed during empty batch removal: ${batchDates.join(', ')}`);
+              allErrors.push(`index changed during empty batch removal: ${batchDates.join(', ')}`);
               break;
             }
             continue;
@@ -434,9 +464,9 @@ export class BatchProcessor {
             }
 
             processedCount += txCount;
-            const removed = await classifyQueue.removeBatchIfRevisionMatch(ledgerName, batchDates, taskBatch.revision);
+            const removed = await classifyIndex.removeBatchIfRevisionMatch(ledgerName, batchDates, taskBatch.revision);
             if (!removed) {
-              allErrors.push(`queue changed during batch removal: ${batchDates.join(', ')}`);
+              allErrors.push(`index changed during batch removal: ${batchDates.join(', ')}`);
               break;
             }
 

@@ -20,7 +20,7 @@ import {
 } from '@system/filesystem/fs-storage';
 import type { LedgerMemory } from '@shared/types/metadata';
 import { format } from 'date-fns';
-import { classifyQueue } from '../ai/ClassifyQueue';
+import { classifyIndex } from '../ai/ClassifyQueue';
 import { classifyTrigger } from '../ai/ClassifyTrigger';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
@@ -270,6 +270,7 @@ export class LedgerManager {
 
     // 调用 LedgerService 加载数据
     this.ledgerService.loadFromHandle(handle, normalized.memory);
+    await classifyIndex.rebuildFromRecords(this.activeLedgerName, normalized.memory.records, 'ledger_load');
     const atomicRecoveryResult = await this.ledgerService.recoverPendingAtomicReclassify();
     if (atomicRecoveryResult.attempted > 0) {
       console.log('[LedgerManager] Recovered atomic reclassify mutation:', {
@@ -374,6 +375,7 @@ export class LedgerManager {
         await writeMemoryFile(newHandle, normalized.memory);
       }
       this.ledgerService.loadFromHandle(newHandle, normalized.memory);
+      await classifyIndex.rebuildFromRecords(ledgerName, normalized.memory.records, 'ledger_switch');
       const atomicRecoveryResult = await this.ledgerService.recoverPendingAtomicReclassify();
       if (atomicRecoveryResult.attempted > 0) {
         console.log('[LedgerManager] Recovered atomic reclassify mutation on switch:', {
@@ -516,7 +518,7 @@ export class LedgerManager {
 
       // 3. 删除物理文件及所有关联的 AI 数据文件
       await deleteLedgerFile(this.ledgerDirHandle, ledgerName);
-      await classifyQueue.removeByLedger(ledgerName);
+      await classifyIndex.removeByLedger(ledgerName);
       await classifyTrigger.clearRecoveryByLedger(ledgerName);
       await this.deleteLedgerAIFiles(ledgerName);
 
@@ -597,7 +599,7 @@ export class LedgerManager {
       await readMemoryFile(verifyHandle);
 
       await deleteLedgerFile(this.ledgerDirHandle, oldName);
-      await classifyQueue.renameLedger(oldName, sanitizedNewName);
+      await classifyIndex.renameLedger(oldName, sanitizedNewName);
       await classifyTrigger.renameRecoveryLedger(oldName, sanitizedNewName);
       await this.renameLedgerAIFiles(oldName, sanitizedNewName);
 

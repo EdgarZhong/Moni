@@ -6,6 +6,14 @@
  * - 删除标签：直接选范围（前置改写已完成，跳过询问步骤）
  * - 用户点击范围按钮时，当场完成 dirtyDates 计算 → 入队 → 自动启动消费
  * - 重命名标签：不触发此对话框
+ *
+ * 当前冻结口径（dirty predicate 收敛后）：
+ * - 两种模式下"全量"选项的 getDirtyDates 均只返回"未分类且未锁定"的日期
+ * - "对所有未锁定的交易重新分类"的语义已不再正确；全量选项实际含义是
+ *   "未分类且未锁定的交易，加上用户在锁定列表里显式解锁的交易"
+ * - add: [仅未分类] / [全量（未分类+可选解锁锁定项）]
+ * - delete: [仅受影响] / [全量（未分类+可选解锁锁定项）]
+ * - update_desc: [仅该标签下未锁定] / [全量（未分类+可选解锁锁定项）]
  */
 
 import React, { useState, useCallback } from 'react';
@@ -254,14 +262,12 @@ export const ReclassifyConfirmDialog: React.FC<ReclassifyConfirmDialogProps> = (
         {
           label: '[仅未分类的交易]',
           desc: '仅对未分类且未锁定的交易重新分类',
-          getDirtyDates: () => service.collectDirtyDatesByPredicate(
-            (r) => !r.is_verified && (!r.category || r.category === 'uncategorized')
-          ),
+          getDirtyDates: () => service.collectDirtyDatesByPredicate(() => true),
           needsLockedReview: false
         },
         {
-          label: '[全量（未锁定的交易）]',
-          desc: '对所有未锁定交易重新分类（已锁定交易受保护，不受影响）',
+          label: '[全量（未分类且未锁定的交易，可选解锁锁定项）]',
+          desc: '范围为所有未分类且未锁定的交易；同时展示已锁定交易，可选择解锁后一并纳入重分类',
           getDirtyDates: () => service.collectDirtyDatesForAll(),
           needsLockedReview: true
         }
@@ -277,8 +283,8 @@ export const ReclassifyConfirmDialog: React.FC<ReclassifyConfirmDialogProps> = (
           needsLockedReview: false
         },
         {
-          label: '[全量（所有未锁定的交易）]',
-          desc: '对所有未锁定交易重新分类（已锁定交易受保护，不受影响）',
+          label: '[全量（未分类且未锁定的交易，可选解锁锁定项）]',
+          desc: '范围为所有未分类且未锁定的交易；同时展示已锁定交易，可选择解锁后一并纳入重分类',
           getDirtyDates: () => service.collectDirtyDatesForAll(),
           needsLockedReview: true
         }
