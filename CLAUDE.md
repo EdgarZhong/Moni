@@ -89,15 +89,8 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| 账单导入后端逻辑增强 | Done | 已支持直传文本 / CSV、直传 Excel、加密压缩包探测；先 `probe` 再 `import`；微信 `xls/xlsx -> csv` 自动转换；调试入口与后端回归测试已接入 |
-| 账单导入 UI / UX 对接 | Done | 不重做记账页现有两个按钮入口；微信 / 支付宝按钮共用同一导入链路，仅区分 `expectedSource` 与压缩包密码文案；压缩包密码二级页与导入卡片底部提示条已接入正式页 |
-| 账单导入指南页（ImportGuidePage）完成与接入 | Done | 收口到 `0.3.4`；微信 / 支付宝双 Tab 图文步骤，全屏覆盖不共享全局 header，BottomNav z-index 修复，底部邮箱导出补充说明 |
-| Android 文件选择器真机验收 | Pending | 当前只完成浏览器开发态与真实样本回归，尚未完成真机文件选择器闭环 |
-| 设计规格体系切换与核心文档收口 | Done | 新的四层设计规格体系已落地：`DESIGN_SPEC_SYSTEM.md` 为总入口，`docs/design/Moni_Brand_Identity.md` / `docs/design/SURFACE_SYSTEM.md` / `tailwind.config.js` 分别承接 Layer 0/1/2；核心文档中的旧设计系统残留口径已移除，现行规则入口已统一收口 |
-| 首页拖拽细则面板与交易详情页规格收口 | Done | 拖拽面板展开阈值、详情页 Surface System 重构、字体收口、Header 简化、单一 `user_note` 编辑区、分类选择器圆角裁切等全部收口；`2026-05-04` 详情页视觉精修已由用户现场验证完成 |
-| 首页现场 bug 修复收尾 | Done | 全部修复并收口到 `0.3.2`：DateRangePicker 草稿态、快捷按钮稳定网格、AI 骨架遮挡、data range 死循环、账本名切页跳变、刷新默认本月、首屏全量数据闪现 |
-| 全量重分类链路对齐 | Done | 三段式链路、收入分类、user_note 口径、锁定列表详情跳转、AI 运行中禁用按钮均已收口到 `0.3.3` |
-| 表现层稳定性收口（非性能向） | Pending | 字体上提与 `BottomNav` 拆分已完成（收口到 `0.3.2`）；剩余：`MoniHome` 按交互域拆分、根层 AI 控件独立状态链路 |
+| Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
+| 表现层稳定性收口（非性能向） | Pending | 字体上提与 `BottomNav` 拆分已完成；剩余：`MoniHome` 按交互域拆分、根层 AI 控件独立状态链路 |
 
 ## 当前优先级
 
@@ -109,40 +102,6 @@
 - Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 - 引入 `xlsx` 与 `zip.js` 后，`npm run build` 仍会出现 chunk size warning
 
-## 当前验证状态
-
-- `2026-04-26`：`npm run typecheck` 通过
-- `2026-04-26`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-04-26`：`Moni-UI-Prototype` 执行 `npm run typecheck`、`npm run build` 通过
-- `2026-04-26`：Playwright 隔离 Chromium 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，确认原型首页可渲染、console error 为 0，截图 `/tmp/moni-ui-prototype-smoke.png`
-- `2026-04-26`：修正原型仓库表现层对齐问题；旧 JSX 手机边框版源码移入原型仓库 `.archive/legacy-js-prototype-2026-04-26/`；首页 fixture 改为主仓库 `window.__MONI_DEBUG__.home.getReadModel()` 导出快照；Playwright 对比主仓库与原型仓库首页、设置页、记账页、真实支付宝 zip 密码页，console error 为 0
-- `2026-04-26`：主仓库旧 `design/` 工作台目录与 `src/ui/devtools/DesignWorkbench.tsx` 已移入 `.archive/design_workbench_2026-04-26/`；运行源码树仅保留正式应用入口与独立原型仓库文档索引
-- `2026-04-26`：Playwright 打开 `http://127.0.0.1:5174/` 并进入记账页，确认“微信账单 / 支付宝账单”入口存在且 console error 为 0；未用 UI 真实上传样本，避免污染当前账本
-- `2026-04-26`：Playwright 通过支付宝 zip 样本触发正式密码页，确认密码页覆盖层定位为整页、截图输出 `/tmp/moni-password-page-v3.png`；console 中仍有既有文件系统 404 噪音
-- `2026-04-29`：`npm run typecheck` 通过
-- `2026-04-29`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-04-29`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4173/`，长按首页首条交易并下拖进入 `DragDetailPanel` 展开态；确认完整时间显示为“4月16日 17:23”，展开态仅展示交易细则，且手指位置 `y=770` 落在虚线驻留区 `y=702..842` 内；console 未出现新的 runtime error；截图 `drag-detail-expanded-main-v2.png`
-- `2026-04-30`：`npm run typecheck` 通过
-- `2026-04-30`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-05-03`：`npm run typecheck` 通过
-- `2026-05-03`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-05-03`：本机已验证 `timeout 5s npx -y @playwright/mcp@latest --browser chrome --executable-path /usr/bin/chromium-browser --headless --port 39001` 可正常监听；随后以统一配置链 `timeout 5s npx -y @playwright/mcp@latest --config .codex/playwright.mcp.json --caps vision --port 39002` 复验通过，确认当前可免下载复用系统 Chromium 启动 Playwright MCP
-- `2026-05-03`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，切到“全部”时间范围后进入 `4月24日` 首条交易详情；确认 Header 已简化为单行“交易详情”，分类选择器圆角裁切完整、字体跟随 `font-brand`，详情页只保留单一 `user_note` 输入区；截图 `test-img/transaction-detail-page-v3.png`、`test-img/transaction-detail-category-modal-v3.png`；console error 为 0
-- `2026-05-04`：`npm run typecheck` 通过
-- `2026-05-04`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-05-04`：针对首页近期修复再次执行 `npm run typecheck` 通过；已静态确认三项修复生效：1）底部导航 AI 流光改为跨页复用旧版视觉参数；2）`DateRangePicker` 会话态恢复后不再出现刷新即快速跳变的死循环级高占用；3）AI 工作态高亮日卡不再用骨架遮挡当天后续真实流水
-- `2026-05-04`：用户现场确认三项已修复：data range 死循环快速跳、AI 工作态骨架遮挡真实流水、全量重分类按钮灰掉；账本名跳变与默认本月两项在本轮重新实现：共享 header 提到 `AppRoot`（`useLedgerControl` + 新共享 header 块），默认本月修复（`dataRange` 未加载前不提交范围至 facade）；交集过滤经代码 review 确认已正确实现
-- `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:4175/`，执行新增浏览器调试测试 `window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`；测试在独立临时账本 `分类锁定测试账本_*` 中通过，确认三件事：已入队日期的 `days[]` 会注入完整消费交易上下文（包含锁定条目）、System Prompt 已包含 exact-ID 强锚点与同一消费事件联动提示、运行中锁定条目可挡住 AI 自动写回且被用户勾选后可解锁并成功入队重分类
-- `2026-04-30`：Playwright 以 `390 x 844` 视口打开 `http://127.0.0.1:5173/`，直接使用首页现成数据中的“西北工业大学云餐便利店”条目做长按拖拽；确认长按停在原位时仍保持 Collapsed、未提前出现“停留看细则”，向下拖到 `y=792` 后进入 Expanded，驻留区虚线框为主题青色 `rgb(78, 205, 196)`，分类区与详情面板仅共享同一位移量，且 `其他` 分类卡宽度回到与其他卡一致的半宽两列布局；console 未出现新的 runtime error；截图 `test-img/drag-panel-collapsed-stable.png`、`test-img/drag-panel-expanded-cyan-zone.png`
-- `2026-04-30`：拖拽细则面板展开阈值已切换为父层固定分界线，按 `viewportHeight - collapsedVisibleHeight` 计算；Playwright 在 `390 x 844` 视口下复验首页首条条目，确认长按原位仍保持 Collapsed，边界点 `y=743` 不展开、`y=744` 开始展开，判定线不再受子组件进场动画与 Expanded 位移污染
-- `2026-04-24`：`npm run typecheck` 通过
-- `2026-04-24`：`npm run build` 通过，存在既有 chunk size warning
-- `2026-04-24`：浏览器开发态执行 `window.__MONI_E2E__.tests.runBillImportBackendTest()` 通过
-- 本轮账单导入后端回归覆盖结果：
-  - 微信加密压缩包：未输密码返回 `password_required`，错误密码返回 `invalid`，正确密码后成功导入 `73` 条
-  - 微信非压缩直传文本样本：无需密码，成功导入 `1` 条
-  - 支付宝加密压缩包：正确密码后成功导入 `37` 条
-  - 测试全程使用独立临时账本；结束后已删除临时账本，并恢复激活账本为 `日常开销`
 
 ## 当前已固定口径
 
@@ -199,8 +158,4 @@
 
 ## 交接说明
 
-- 本轮已完成账单导入后端链路与浏览器开发态真实样本回归，记账页 UI / UX 已开始接入新接口
-- 表现层当前已调用 `AppFacade.probeBillImportFiles()`，仅在返回 `password_required` 时展示对应平台密码输入
-- 后续若进入 release 收口，先明确下一版本号与 release 范围，再清理当前任务看板
 - 每次 release 完成后，必须把已交付 feature 归并到 `Release Changelog`，并清理当前任务看板中的已完成项
-- 旧的并行编排版 `CLAUDE.md` 已归档到 `.archive/CLAUDE_parallel_legacy_2026-04-09.md`
