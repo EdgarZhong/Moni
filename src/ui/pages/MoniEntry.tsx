@@ -19,6 +19,7 @@ import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
 import type { BillImportSource } from "@shared/types";
+import { ImportGuidePage } from "@ui/pages/ImportGuidePage";
 
 // ──────────────────────────────────────────────
 // 子组件
@@ -54,9 +55,11 @@ const BILL_IMPORT_SOURCE_LABEL: Record<BillImportSource, string> = {
 
 function ImportCard({
   onImport,
+  onGuide,
   notice,
 }: {
   onImport: (source: BillImportSource) => void;
+  onGuide: (source: BillImportSource) => void;
   notice: ImportNotice | null;
 }) {
   const decorShapes: DecorShape[] = useMemo(
@@ -181,10 +184,11 @@ function ImportCard({
           <ImportCardNotice notice={notice} />
         ) : (
           <div
+            onClick={() => onGuide("wechat")}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               padding: "8px 0", borderRadius: 8, background: C.warmBg,
-              color: "#8B5E2B", fontSize: 12, fontWeight: 600,
+              color: "#8B5E2B", fontSize: 12, fontWeight: 600, cursor: "pointer",
             }}
           >
             <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1.5px solid ${C.amber}`, color: C.amber, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>i</span>
@@ -893,6 +897,7 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
   const [importNotice, setImportNotice] = useState<ImportNotice | null>(null);
   const [selectedImportSource, setSelectedImportSource] = useState<BillImportSource | null>(null);
   const [pendingPasswordImport, setPendingPasswordImport] = useState<PendingPasswordImport | null>(null);
+  const [guideSource, setGuideSource] = useState<BillImportSource | null>(null);
   /**
    * 本轮 Android 真机修复要求首屏优先露出”记一笔”入口。
    * 因此这里暂时关闭“最近流水”参考区渲染，只保留实现以便后续再恢复。
@@ -1005,10 +1010,20 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
     setImportNoticeWithTimer(null);
   }, [setImportNoticeWithTimer]);
 
-  // 返回键：密码页 > 表单覆盖层 > 分类选择覆盖层
-  const hasOverlay = pendingPasswordImport !== null || phase === "form" || phase === "selecting" || phase === "dragging";
+  const openGuide = useCallback((source: BillImportSource) => {
+    setGuideSource(source);
+  }, []);
+
+  const closeGuide = useCallback(() => {
+    setGuideSource(null);
+  }, []);
+
+  // 返回键：指南页 > 密码页 > 表单覆盖层 > 分类选择覆盖层
+  const hasOverlay = guideSource !== null || pendingPasswordImport !== null || phase === "form" || phase === "selecting" || phase === "dragging";
   useBackHandler(() => {
-    if (pendingPasswordImport !== null) {
+    if (guideSource !== null) {
+      closeGuide();
+    } else if (pendingPasswordImport !== null) {
       closeImportPasswordPage();
     } else {
       closeOverlay();
@@ -1275,7 +1290,7 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
         </div>
 
         <div style={{ padding: "6px 0" }}>
-          <ImportCard onImport={handleImportClick} notice={importNotice} />
+          <ImportCard onImport={handleImportClick} onGuide={openGuide} notice={importNotice} />
         </div>
 
         <input
@@ -1336,6 +1351,9 @@ export default function MoniEntry({ onNavigate: _onNavigate }: MoniEntryProps) {
           onBack={closeImportPasswordPage}
           onChangePassword={handleImportPasswordChange}
         />
+      ) : null}
+      {guideSource ? (
+        <ImportGuidePage defaultSource={guideSource} onClose={closeGuide} />
       ) : null}
     </div>
   );
