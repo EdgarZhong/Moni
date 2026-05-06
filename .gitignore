@@ -41,10 +41,10 @@ virtual_android_filesys/Downloads_path/
 !virtual_android_filesys/Downloads_path/.gitkeep
 # Security
 public/secure_config.json
-public/demo-seed-manifest.json
 secure_config.bin
 secure_config.json
-
+# Seed Data
+public/seed.zip
 # Archive
 .archive/
 

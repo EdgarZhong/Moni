@@ -2,27 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import { LEDGERS_INDEX_PATH, SECURE_CONFIG_PATH, SELF_DESCRIPTION_PATH } from '@system/filesystem/persistence-paths';
-
-/**
- * Demo seed 文件项。
- *
- * `path` 为相对于 `Directory.Data` 根目录的目标路径；
- * `data` 为 UTF-8 文本内容。
- */
-interface DemoSeedFile {
-  path: string;
-  data: string;
-}
-
-/**
- * Demo seed 清单结构。
- */
-interface DemoSeedManifest {
-  version: number;
-  generatedAt: string;
-  sourceRoot: string;
-  files: DemoSeedFile[];
-}
+import { ZipReader, BlobReader, TextWriter } from '@zip.js/zip.js';
 
 /**
  * DemoSeedInstaller
@@ -30,11 +10,15 @@ interface DemoSeedManifest {
  * 目标：
  * 1. 仅在原生端执行
  * 2. 仅在沙盒目录尚未存在正式用户数据时执行
- * 3. 把 APK 内随包携带的 demo seed 写入 `Directory.Data`
+ * 3. 把 APK 内随包携带的 seed.zip 一次性解压到 `Directory.Data`
+ *
+ * 相比上一版 demo-seed-manifest.json（逐个 writeFile），zip 方案：
+ * - 一次性 fetch + 解压，不存在"只写了一半就中断"的部分落盘风险
+ * - 减少异步 I/O 调用次数，提升首启速度
  *
  * 约束：
  * - 一旦检测到已有数据，就绝不覆盖，避免误伤真实用户
- * - manifest 缺失时静默跳过，保持正常启动
+ * - seed.zip 缺失时静默跳过，保持正常启动
  */
 export class DemoSeedInstaller {
   private static installed = false;
@@ -60,25 +44,45 @@ export class DemoSeedInstaller {
       return;
     }
 
-    const manifest = await this.loadManifest();
-    if (!manifest || manifest.files.length === 0) {
+    const zipBlob = await this.fetchSeedZip();
+    if (!zipBlob) {
       this.installed = true;
       return;
     }
 
-    for (const file of manifest.files) {
-      // 直接按正式持久化目标写入，递归创建父目录。
-      await fs.writeFile({
-        path: file.path,
-        data: file.data,
-        directory: AdapterDirectory.Data,
-        encoding: AdapterEncoding.UTF8,
-        recursive: true
-      });
+    let extractedCount = 0;
+    try {
+      const reader = new ZipReader(new BlobReader(zipBlob));
+      const entries = await reader.getEntries();
+
+      for (const entry of entries) {
+        // 跳过目录条目
+        if (entry.directory) continue;
+        // 跳过 .gitkeep 占位文件
+        if (entry.filename.endsWith('.gitkeep')) continue;
+
+        const targetPath = entry.filename;
+        const content = await entry.getData!(new TextWriter());
+
+        await fs.writeFile({
+          path: targetPath,
+          data: content,
+          directory: AdapterDirectory.Data,
+          encoding: AdapterEncoding.UTF8,
+          recursive: true
+        });
+        extractedCount++;
+      }
+
+      await reader.close();
+    } catch (error) {
+      console.warn('[DemoSeedInstaller] Failed to extract seed.zip:', error);
+      this.installed = true;
+      return;
     }
 
     this.installed = true;
-    console.log(`[DemoSeedInstaller] Installed demo seed with ${manifest.files.length} files.`);
+    console.log(`[DemoSeedInstaller] Installed seed.zip: ${extractedCount} files extracted.`);
   }
 
   /**
@@ -103,30 +107,24 @@ export class DemoSeedInstaller {
   }
 
   /**
-   * 从 APK 随包静态资源中读取 demo seed manifest。
+   * 从 APK 随包静态资源中获取 seed.zip。
    *
    * 使用相对站点根路径，兼容 Capacitor 本地服务器。
    */
-  private static async loadManifest(): Promise<DemoSeedManifest | null> {
+  private static async fetchSeedZip(): Promise<Blob | null> {
     try {
-      const response = await fetch('/demo-seed-manifest.json', {
+      const response = await fetch('/seed.zip', {
         cache: 'no-store'
       });
 
       if (!response.ok) {
-        console.warn(`[DemoSeedInstaller] Demo seed manifest not found: ${response.status}`);
+        console.warn(`[DemoSeedInstaller] seed.zip not found: ${response.status}`);
         return null;
       }
 
-      const manifest = await response.json() as DemoSeedManifest;
-      if (!Array.isArray(manifest.files)) {
-        console.warn('[DemoSeedInstaller] Demo seed manifest is invalid.');
-        return null;
-      }
-
-      return manifest;
+      return await response.blob();
     } catch (error) {
-      console.warn('[DemoSeedInstaller] Failed to load demo seed manifest:', error);
+      console.warn('[DemoSeedInstaller] Failed to fetch seed.zip:', error);
       return null;
     }
   }

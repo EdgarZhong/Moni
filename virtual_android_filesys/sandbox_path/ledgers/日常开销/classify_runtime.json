@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "revision": 8,
+  "revision": 9,
   "metrics": {
     "emptyTaskConsumedCount": 0,
     "lastEmptyTaskDate": null
