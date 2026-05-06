@@ -1,5 +1,5 @@
 {
-  "current_snapshot_id": "2026-05-05_22-44-47-644",
+  "current_snapshot_id": "2026-05-06_14-43-59-576",
   "snapshots": [
     {
       "id": "2026-04-12_17-47-15-302",
@@ -24,7 +24,37 @@
       "timestamp": "2026-05-05T14:44:47.644Z",
       "trigger": "user_edit",
       "summary": "user_edit 触发的记忆更新"
+    },
+    {
+      "id": "2026-05-06_13-34-28-082",
+      "timestamp": "2026-05-06T05:34:28.082Z",
+      "trigger": "ai_learn",
+      "summary": "学习会话：full_reconcile @ revision 5"
+    },
+    {
+      "id": "2026-05-06_13-39-02-142",
+      "timestamp": "2026-05-06T05:39:02.142Z",
+      "trigger": "ai_learn",
+      "summary": "学习会话：revision 5 -> 10"
+    },
+    {
+      "id": "2026-05-06_14-34-38-602",
+      "timestamp": "2026-05-06T06:34:38.602Z",
+      "trigger": "ai_learn",
+      "summary": "学习会话：revision 10 -> 13"
+    },
+    {
+      "id": "2026-05-06_14-41-37-370",
+      "timestamp": "2026-05-06T06:41:37.370Z",
+      "trigger": "ai_learn",
+      "summary": "学习会话：revision 13 -> 18"
+    },
+    {
+      "id": "2026-05-06_14-43-59-576",
+      "timestamp": "2026-05-06T06:43:59.576Z",
+      "trigger": "user_edit",
+      "summary": "user_edit 触发的记忆更新"
     }
   ],
-  "last_learned_example_revision": 7
+  "last_learned_example_revision": 18
 }
