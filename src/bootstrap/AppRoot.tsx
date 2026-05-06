@@ -334,6 +334,21 @@ function RuntimeApp() {
         fontFamily: "'Nunito',-apple-system,sans-serif",
       }}
     >
+      <style>{`
+        :root {
+          --app-font-brand: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          --app-font-editable: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        body {
+          font-family: var(--app-font-brand);
+        }
+        button {
+          font-family: var(--app-font-brand);
+        }
+        input, textarea, select {
+          font-family: var(--app-font-editable);
+        }
+      `}</style>
       {/* 页面内容区：Root 只保留状态宿主与壳层规则，不再统一拥有页面 header DOM。 */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {activePage === 'entry' ? (

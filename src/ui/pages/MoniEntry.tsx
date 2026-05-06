@@ -284,6 +284,12 @@ function ImportPasswordPage({
         display: "flex",
         flexDirection: "column",
         animation: "billImportSlideIn 220ms ease-out",
+        /**
+         * 密码页通过 portal 直接挂到 document.body。
+         * 若不在覆盖层根节点显式声明字体，就可能退回全局默认字体，
+         * 导致真机上和记账页正文出现字族不一致。
+         */
+        fontFamily: "'Nunito',-apple-system,sans-serif",
       }}
     >
       <style>{`
@@ -648,6 +654,8 @@ interface EntryFormPanelProps {
 }
 
 function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: EntryFormPanelProps) {
+  const BOTTOM_DISMISS_ZONE_HEIGHT = 88;
+  const DRAG_CLOSE_THRESHOLD = 34;
   const [amount, setAmount] = useState("");
   const [direction, setDirection] = useState<"in" | "out">(directionRef.current);
   const [subject, setSubject] = useState("");
@@ -657,6 +665,25 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   });
   const amountRef = useRef<HTMLInputElement>(null);
+  const panelScrollRef = useRef<HTMLDivElement | null>(null);
+  const dragStartYRef = useRef<number | null>(null);
+  const dragDeltaYRef = useRef(0);
+  const [isDismissHandleDragging, setIsDismissHandleDragging] = useState(false);
+
+  /**
+   * 顶部弹层在软键盘弹出时位置固定不动；
+   * 若焦点落在靠下字段，则仅在弹层内部滚动到可视区域，避免整层被系统顶跑。
+   */
+  const scrollFieldIntoView = useCallback((target: HTMLElement | null) => {
+    if (!target) return;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+    });
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -668,8 +695,39 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
       const now = new Date();
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     });
+    panelScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
     setTimeout(() => amountRef.current?.focus(), 220);
   }, [visible, category, directionRef]);
+
+  /**
+   * 底部把手只响应“向上拖动取消”。
+   * 不接受轻微抖动或点击即关闭，避免用户在收起键盘后误碰把手直接丢失输入内容。
+   */
+  const handleDismissHandlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    dragStartYRef.current = event.clientY;
+    dragDeltaYRef.current = 0;
+    setIsDismissHandleDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  };
+
+  const handleDismissHandlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartYRef.current == null) return;
+    const deltaY = event.clientY - dragStartYRef.current;
+    dragDeltaYRef.current = Math.min(0, deltaY);
+  };
+
+  const handleDismissHandlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const shouldClose = dragDeltaYRef.current <= -DRAG_CLOSE_THRESHOLD;
+    dragStartYRef.current = null;
+    dragDeltaYRef.current = 0;
+    setIsDismissHandleDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.stopPropagation();
+    if (shouldClose) onClose();
+  };
 
   if (!visible || !category) return null;
   if (typeof document === "undefined") return null;
@@ -680,30 +738,43 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
 
   return createPortal(
     <div
-      onClick={onClose}
       style={{
         position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 55,
-        display: "flex", flexDirection: "column", justifyContent: "flex-end",
+        display: "flex", flexDirection: "column", justifyContent: "flex-start",
         overflow: "hidden",
         animation: "fadeIn .2s ease",
       }}
     >
-      <div style={{ width: "100%", margin: "0 auto", padding: "0 12px", boxSizing: "border-box" }}>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          margin: "0 auto",
+          padding: `${APP_HEADER_PADDING_TOP} 12px 12px`,
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <div
           onClick={(e) => e.stopPropagation()}
+          ref={panelScrollRef}
           className="entry-form-panel"
           style={{
-            background: C.white, borderRadius: "20px 20px 0 0",
-            padding: "20px 20px 24px", border: `2px solid ${C.dark}`, borderBottom: "none",
-            animation: "slideUp .3s cubic-bezier(.4,0,.2,1)",
-            maxHeight: `calc(var(--app-root-height, 100dvh) - 60px)`, overflowY: "auto", overflowX: "hidden",
+            background: C.white, borderRadius: "0 0 20px 20px",
+            padding: "18px 20px 24px", border: `2px solid ${C.dark}`, borderTop: "none",
+            animation: "slideDown .3s cubic-bezier(.22,1,.36,1)",
+            /**
+             * 顶部详情面板必须始终给底部留出一块稳定可点击的退出区，
+             * 否则在小屏或键盘场景下，用户根本碰不到“只允许点底部空白退出”的区域。
+             */
+            maxHeight: `calc(var(--app-root-height, 100dvh) - ${BOTTOM_DISMISS_ZONE_HEIGHT + 24}px)`,
+            overflowY: "auto", overflowX: "hidden",
             width: "100%", boxSizing: "border-box",
+            boxShadow: "0 14px 34px rgba(0,0,0,.16)",
+            flexShrink: 0,
           }}
         >
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border }} />
-        </div>
-
         <div
           style={{
             display: "flex", alignItems: "center", gap: 10, marginBottom: 18,
@@ -737,6 +808,7 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              onFocus={(event) => scrollFieldIntoView(event.currentTarget)}
               style={{
                 flex: 1, minWidth: 0, fontSize: 32, fontWeight: 700, color: C.dark,
                 fontFamily: "'Space Mono',monospace", border: "none", background: "transparent",
@@ -779,9 +851,14 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               placeholder="这笔花在哪了？比如「火锅聚餐」"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
+              onFocus={(event) => scrollFieldIntoView(event.currentTarget)}
               style={{
                 width: "100%", padding: "10px 12px", borderRadius: 10,
-                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "inherit",
+                /**
+                 * 用户可编辑的普通文本输入统一走系统字体，
+                 * 避免桌面端 portal 覆盖层回退成默认衬线字体。
+                 */
+                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "var(--app-font-editable)",
                 outline: "none", boxSizing: "border-box",
               }}
             />
@@ -797,9 +874,14 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               placeholder="周年聚餐，比较贵的餐厅"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onFocus={(event) => scrollFieldIntoView(event.currentTarget)}
               style={{
                 width: "100%", padding: "10px 12px", borderRadius: 10,
-                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "inherit",
+                /**
+                 * 补充说明也是实时输入内容，这里显式使用系统字体，
+                 * 不再让它继承外层品牌字体或浏览器默认字族。
+                 */
+                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "var(--app-font-editable)",
                 outline: "none", boxSizing: "border-box",
               }}
             />
@@ -814,9 +896,14 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              onFocus={(event) => scrollFieldIntoView(event.currentTarget)}
               style={{
                 width: "100%", padding: "10px 12px", borderRadius: 10,
-                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "inherit",
+                /**
+                 * 日期字段仍属于原生可编辑控件，
+                 * 继续跟随系统字体以保持平台控件观感一致。
+                 */
+                border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: "var(--app-font-editable)",
                 outline: "none", boxSizing: "border-box",
               }}
             />
@@ -853,7 +940,49 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
           )}
           记一笔
         </div>
+
+        <div
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={handleDismissHandlePointerDown}
+          onPointerMove={handleDismissHandlePointerMove}
+          onPointerUp={handleDismissHandlePointerEnd}
+          onPointerCancel={handleDismissHandlePointerEnd}
+          style={{
+            marginTop: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "grab",
+            touchAction: "none",
+            transform: isDismissHandleDragging ? "translateY(-4px)" : "translateY(0)",
+            transition: isDismissHandleDragging ? "none" : "transform .18s ease",
+          }}
+          aria-label="上拉关闭详情输入面板"
+        >
+          <div
+            style={{
+              width: 42,
+              height: 5,
+              borderRadius: 999,
+              background: "rgba(27,27,27,.24)",
+            }}
+          />
         </div>
+        </div>
+
+        {/**
+          * 取消区域只允许出现在面板“下方完全空白”的位置。
+          * 这样用户在键盘收起、准备继续输入或点击确认的过程中，
+          * 不会因为误触到顶部 / 侧边遮罩而直接丢掉刚输入的内容。
+          */}
+        <div
+          onClick={onClose}
+          style={{
+            flex: 1,
+            minHeight: BOTTOM_DISMISS_ZONE_HEIGHT,
+            boxSizing: "border-box",
+          }}
+        />
       </div>
     </div>,
     document.body
@@ -1270,17 +1399,18 @@ export default function MoniEntry({
   useEffect(() => {
     /**
      * 记账 Root 默认保留底部导航；
-     * 最新口径里，分类拖拽态继续保留底部导航；录入表单仍然隐藏底部导航。
-     * 但“压缩包密码输入页”现在已经改为真正的全屏覆盖页，它会自己盖住底部导航，
-     * 因此这里不能再把 BottomNav 主动隐藏掉，否则就会出现“先消失、后补出现”的时序断裂。
-     * 导入指南页继续保留底部导航。
+     * 分类拖拽态继续保留底部导航；录入表单仍然隐藏底部导航。
+     * 导入指南页现已改成真正的全屏覆盖页，因此需要让 Root footer 一起隐藏；
+     * 压缩包密码输入页则继续由自身覆盖层接管画布，不额外改动 shell 可见性。
      */
     const shouldShowBottomNav =
-      guideSource !== null
-      || pendingPasswordImport !== null
-      || phase === "idle"
-      || phase === "selecting"
-      || phase === "dragging";
+      guideSource === null
+      && (
+        pendingPasswordImport !== null
+        || phase === "idle"
+        || phase === "selecting"
+        || phase === "dragging"
+      );
     onBottomNavVisibilityChange?.(shouldShowBottomNav);
 
     return () => {
@@ -1331,7 +1461,7 @@ export default function MoniEntry({
     >
 <style>{`
         @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        @keyframes slideDown { from { transform: translateY(-100%) } to { transform: translateY(0) } }
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .entry-scroll-container { scrollbar-width: none; -ms-overflow-style: none; }

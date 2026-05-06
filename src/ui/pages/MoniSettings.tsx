@@ -7,6 +7,7 @@ import {
 } from "@ui/features/moni-home/config";
 import { Decor, Logo, type HomeTransaction } from "@ui/features/moni-home/components";
 import { TransactionDetailPage } from "@ui/features/moni-home/TransactionDetailPage";
+import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { useMoniSettingsData } from "@ui/hooks/useMoniSettingsData";
 import { BatchProcessor } from "@logic/application/ai/BatchProcessor";
 import type {
@@ -1142,7 +1143,11 @@ function SelfDescPage({
               background: C.white,
               outline: "none",
               resize: "vertical",
-              fontFamily: "inherit",
+              /**
+               * 自述编辑区属于长文本输入，不再继承品牌字体，
+               * 统一切到系统字体，减少不同端的字族回退差异。
+               */
+              fontFamily: "var(--app-font-editable)",
               boxSizing: "border-box",
             }}
           />
@@ -1552,7 +1557,24 @@ function TagManagePage({
           value={addDesc}
           onChange={(event) => setAddDesc(event.target.value)}
           placeholder="标签描述（必填）"
-          style={{ width: "100%", minHeight: 80, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", marginBottom: 14, boxSizing: "border-box", color: C.dark }}
+          style={{
+            width: "100%",
+            minHeight: 80,
+            padding: "10px 14px",
+            borderRadius: 10,
+            /**
+             * 标签描述是典型的用户输入区域，这里显式改成系统字体，
+             * 只修输入内容，不改变周围标题和提示文案的品牌字族。
+             */
+            border: `1.5px solid ${C.border}`,
+            fontSize: 13,
+            outline: "none",
+            resize: "vertical",
+            fontFamily: "var(--app-font-editable)",
+            marginBottom: 14,
+            boxSizing: "border-box",
+            color: C.dark,
+          }}
         />
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="secondary" onClick={() => setShowAdd(false)}>
@@ -1675,7 +1697,24 @@ function TagManagePage({
                 autoFocus
                 value={editDesc}
                 onChange={(event) => setEditDesc(event.target.value)}
-                style={{ width: "100%", minHeight: 88, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.pinkBd}`, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", background: C.white, color: C.dark }}
+                style={{
+                  width: "100%",
+                  minHeight: 88,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  /**
+                   * 编辑已有标签描述时与新增态保持同一字体口径，
+                   * 即仅用户可编辑内容使用系统字体。
+                   */
+                  border: `1.5px solid ${C.pinkBd}`,
+                  fontSize: 13,
+                  outline: "none",
+                  resize: "vertical",
+                  fontFamily: "var(--app-font-editable)",
+                  boxSizing: "border-box",
+                  background: C.white,
+                  color: C.dark,
+                }}
               />
             </>
           )}
@@ -2151,7 +2190,11 @@ function AIMemoryPage({
                       fontSize: 13,
                       color: C.dark,
                       lineHeight: 1.55,
-                      fontFamily: "inherit",
+                      /**
+                       * 记忆条目编辑框也是输入控件，统一走系统字体，
+                       * 避免浏览器默认 serif 与品牌字族混排。
+                       */
+                      fontFamily: "var(--app-font-editable)",
                       outline: "none",
                       resize: "none",
                       boxSizing: "border-box",
@@ -3047,6 +3090,14 @@ export default function MoniSettings(props: {
       unsubscribe();
     };
   }, []);
+
+  /**
+   * 设置页 Root 之外的二级页面必须优先消费 Android 返回手势，
+   * 避免事件直接落到 AppRoot 的“双击退出应用”逻辑。
+   */
+  useBackHandler(() => {
+    setPage("root");
+  }, page !== "root");
 
   const updateCurrentLedgerTransactions = (nextValue: React.SetStateAction<SettingsLedgerTransaction[]>) => {
     setLedgerTransactionsByLedger((value) => {

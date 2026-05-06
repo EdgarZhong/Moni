@@ -123,6 +123,19 @@ export class ClassifyRuntimeStore {
    * 文件不存在时返回空运行态，而不是抛错。
    */
   public static async load(ledger: string): Promise<ClassifyRuntimeData> {
+    /**
+     * “文件不存在”和“文件损坏/读取失败”必须严格区分：
+     * - 不存在：说明当前账本本来就没有运行态文件，应直接返回真正的空运行态
+     * - 读取失败/JSON 损坏：说明旧索引不可信，才需要标记 needs_rebuild
+     *
+     * 若把两者混成同一个 fallback，就会在“删除运行态文件”后再次被补写回去，
+     * 进而导致账本目录无法彻底删空。
+     */
+    const exists = await this.exists(ledger);
+    if (!exists) {
+      return createDefaultRuntime();
+    }
+
     try {
       const fs = FilesystemService.getInstance();
       const raw = await fs.readFile({

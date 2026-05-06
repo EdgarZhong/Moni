@@ -1394,9 +1394,29 @@ interface ReasonDialogProps {
 /** ReasonDialog — 分类后可选理由输入弹窗 */
 export function ReasonDialog({ item, onClose, onSubmit }: ReasonDialogProps) {
   const [reason, setReason] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (item) setReason("");
+  }, [item]);
+
+  useEffect(() => {
+    if (!item) {
+      return;
+    }
+
+    /**
+     * 理由弹窗是由一次明确的拖拽分类操作直接触发的，
+     * 这里在弹窗出现后的下一帧主动聚焦输入框，让 Android 真机同步唤起虚拟键盘，
+     * 用户不需要再额外点一次输入框。
+     */
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    }, 40);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [item]);
 
   if (!item) return null;
@@ -1412,16 +1432,31 @@ export function ReasonDialog({ item, onClose, onSubmit }: ReasonDialogProps) {
   };
 
   return (
-    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Nunito',-apple-system,sans-serif" }}>
       <div className="fi" style={{ background: C.white, borderRadius: 16, padding: 20, width: "100%", maxWidth: 320, border: `2px solid ${C.dark}` }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 4 }}>已归为「{item.nc}」✓</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>想告诉 AI 为什么？（可选）</div>
         <input
+          ref={inputRef}
           type="text"
+          autoFocus
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="例：这是下午茶不是正餐"
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, outline: "none", fontFamily: "inherit", background: "#FAFAFA" }}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 10,
+            /**
+             * 这里是用户即时输入给 AI 的理由说明，
+             * 需要显式走系统字体，避免桌面端出现 serif 回退。
+             */
+            border: `1.5px solid ${C.border}`,
+            fontSize: 13,
+            outline: "none",
+            fontFamily: "var(--app-font-editable)",
+            background: "#FAFAFA",
+          }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
           <div onClick={handleSkip} style={{ flex: 1, padding: 10, borderRadius: 10, border: `1.5px solid ${C.border}`, textAlign: "center", fontSize: 13, color: "#666", cursor: "pointer" }}>跳过</div>
@@ -1594,7 +1629,11 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontFamily: "inherit",
+                /**
+                 * 快捷范围按钮属于静态操作文案，不是可编辑内容；
+                 * 这里显式保留品牌字体，避免后续再次被误归到输入字体规则里。
+                 */
+                fontFamily: "var(--app-font-brand)",
                 lineHeight: 1,
                 appearance: "none",
                 WebkitAppearance: "none",
@@ -1616,7 +1655,18 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
               const nextStart = Math.max(0, Math.min(diffDays(railMinDate, event.target.value), draftEndDay));
               updateDraftRange(nextStart, draftEndDay);
             }}
-            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: "inherit" }}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 8,
+              /**
+               * 日期输入框属于原生编辑控件，
+               * 统一使用系统字体，保持浏览器与 Android 选择器显示一致。
+               */
+              border: `1.5px solid ${C.border}`,
+              fontSize: 12,
+              fontFamily: "var(--app-font-editable)",
+            }}
           />
           <span style={{ color: C.muted }}>—</span>
           <input
@@ -1628,7 +1678,18 @@ export function DateRangeDialog({ visible, rangeMode, customStart, customEnd, mi
               const nextEnd = Math.min(totalDays, Math.max(diffDays(railMinDate, event.target.value), draftStartDay));
               updateDraftRange(draftStartDay, nextEnd);
             }}
-            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: 12, fontFamily: "inherit" }}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 8,
+              /**
+               * 结束日期输入与开始日期保持同一条规则：
+               * 静态标签保留品牌字体，可编辑字段切换到系统字体。
+               */
+              border: `1.5px solid ${C.border}`,
+              fontSize: 12,
+              fontFamily: "var(--app-font-editable)",
+            }}
           />
         </div>
         {/* 双滑块轨道 */}

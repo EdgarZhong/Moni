@@ -11,7 +11,7 @@
  * 资源：截图位于 src/ui/pages/assets/guidance/，由 Vite 静态打包。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, C } from "@ui/features/moni-home/config";
+import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, C, FULL_SCREEN_OVERLAY_Z_INDEX } from "@ui/features/moni-home/config";
 import type { BillImportSource } from "@shared/types";
 
 // ──────────────────────────────────────────────
@@ -369,7 +369,7 @@ export function ImportGuidePage({ defaultSource, onClose }: ImportGuidePageProps
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 200,
+        zIndex: FULL_SCREEN_OVERLAY_Z_INDEX + 10,
         background: C.bg,
         display: "flex",
         flexDirection: "column",

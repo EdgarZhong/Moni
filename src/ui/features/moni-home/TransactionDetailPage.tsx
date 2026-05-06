@@ -356,7 +356,7 @@ function buildDetailFieldLayout(
     const isCompactSingleton =
       onlyField.value.length <= 10 &&
       !onlyField.value.includes("\n") &&
-      (onlyField.label === "原始分类" || onlyField.label === "支付方式" || onlyField.label === "交易状态");
+      (onlyField.label === "支付方式" || onlyField.label === "交易状态");
 
     if (isCompactSingleton) {
       return {
@@ -576,7 +576,10 @@ function CompactCategoryModal({
   if (!visible) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] font-brand text-ink">
+    <div
+      className="fixed inset-0 font-brand text-ink"
+      style={{ zIndex: FULL_SCREEN_OVERLAY_Z_INDEX + 20 }}
+    >
       <button type="button" aria-label="关闭分类选择器" onClick={onClose} className="absolute inset-0 border-0 bg-ink/40 p-0" />
 
       <div
@@ -1052,6 +1055,7 @@ export function TransactionDetailPage({
                   type="button"
                   onClick={() => setIsCategoryModalOpen(true)}
                   className="mt-3 flex w-full min-w-0 items-center justify-between gap-3 text-left"
+                  style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div

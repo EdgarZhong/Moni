@@ -25,6 +25,7 @@ import { classifyTrigger } from '../ai/ClassifyTrigger';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory, AdapterEncoding } from '@system/adapters/IFilesystemAdapter';
 import {
+  getLedgerDirectoryPath,
   getLedgerExampleChangesPath,
   getLedgerExamplesPath,
   getLedgerFilePath,
@@ -521,6 +522,13 @@ export class LedgerManager {
       await classifyIndex.removeByLedger(ledgerName);
       await classifyTrigger.clearRecoveryByLedger(ledgerName);
       await this.deleteLedgerAIFiles(ledgerName);
+      /**
+       * Native / mock 路径下，deleteLedgerFile 只会删掉 ledger.json，
+       * 不会顺带删除 ledgers/{ledger}/ 根目录。
+       * 因此这里在所有账本级附属文件都清理完成后，再补一次目录级删除，
+       * 确保不会留下“空目录”或“只剩运行态文件”的残骸。
+       */
+      await this.safeRemoveDir(getLedgerDirectoryPath(ledgerName), getLedgerStorageDirectory());
 
       // 4. 更新索引
       const updatedLedgers = index.ledgers.filter((l: LedgerMeta) => l.name !== ledgerName);
