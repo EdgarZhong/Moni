@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { registerPlugin, Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { appFacade } from '@bootstrap/appFacade';
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
@@ -14,28 +15,15 @@ import {
   PHONE_FRAME_HEIGHT_CSS,
   PHONE_FRAME_WIDTH_CSS,
 } from '@ui/features/moni-home/config';
-import { invokeTopBackHandler } from '@system/device/backHandler';
-
-/** Capacitor App 插件（仅声明所需方法，无需安装 @capacitor/app 包） */
-interface CapacitorAppPlugin {
-  addListener(
-    event: 'backButton',
-    handler: (data: { canGoBack: boolean }) => void
-  ): Promise<{ remove: () => Promise<void> }>;
-  exitApp(): Promise<void>;
-}
-
-const CapacitorApp = registerPlugin<CapacitorAppPlugin>('App');
-
-/**
- * 浏览器开发态下，registerPlugin('App') 可能只返回一个占位对象，
- * 其中并没有真正可调用的 addListener。
- * 这里显式做一次运行时守卫，避免 dev 环境因为“假原生插件”直接抛错刷屏。
- */
-function canRegisterNativeBackButtonListener(): boolean {
-  const candidate = CapacitorApp as unknown as { addListener?: unknown };
-  return typeof candidate.addListener === 'function';
-}
+import {
+  getBackHandlerDepth,
+  invokeTopBackHandler,
+} from '@system/device/backHandler';
+import {
+  installNativeBackDebugBridge,
+  type NativeBackDebugSnapshot,
+  type NativeBackDebugTriggerInput,
+} from '@system/device/nativeBackDebugBridge';
 
 type Page = 'home' | 'entry' | 'settings';
 type ShellChromeState = {
@@ -62,9 +50,125 @@ function RuntimeApp() {
 
   /** 是否显示"再次返回退出应用"提示条 */
   const [exitToastVisible, setExitToastVisible] = useState(false);
+  const exitToastVisibleRef = useRef(false);
   const lastBackTimeRef = useRef(0);
   const exitToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitRequestCountRef = useRef(0);
+  const lastNativeBackMetaRef = useRef<{
+    source: string | null;
+    canGoBack: boolean | null;
+    triggeredAt: number | null;
+  }>({
+    source: null,
+    canGoBack: null,
+    triggeredAt: null,
+  });
   const autoLearningNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Root back 调试快照始终以 ref 为准。
+   * 这样浏览器调试入口在同一个宏任务中触发 back 后，也能立刻拿到最新状态。
+   */
+  const buildNativeBackDebugSnapshot = useCallback((): NativeBackDebugSnapshot => ({
+    available: true,
+    stackDepth: getBackHandlerDepth(),
+    exitToastVisible: exitToastVisibleRef.current,
+    exitRequestCount: exitRequestCountRef.current,
+    lastTriggerSource: lastNativeBackMetaRef.current.source,
+    lastCanGoBack: lastNativeBackMetaRef.current.canGoBack,
+    lastTriggeredAt: lastNativeBackMetaRef.current.triggeredAt,
+    lastRootBackAt: lastBackTimeRef.current || null,
+  }), []);
+
+  /** 统一维护 toast 状态，避免 state 与调试快照脱节。 */
+  const updateExitToastVisible = useCallback((visible: boolean) => {
+    exitToastVisibleRef.current = visible;
+    setExitToastVisible(visible);
+  }, []);
+
+  /** 统一清理退出提示定时器，保证多次触发 back 时不会残留旧 timer。 */
+  const clearExitToastTimer = useCallback(() => {
+    if (exitToastTimerRef.current != null) {
+      clearTimeout(exitToastTimerRef.current);
+      exitToastTimerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * 统一处理“native back 已到达 JS”后的 Root 分派逻辑。
+   * Android 原生 listener 与浏览器开发态调试桥都必须走这一条路径，避免测试和真机分支漂移。
+   */
+  const handleRootNativeBack = useCallback(async (
+    input?: NativeBackDebugTriggerInput
+  ): Promise<NativeBackDebugSnapshot> => {
+    const canGoBack = input?.canGoBack ?? false;
+    const source = input?.source ?? 'native';
+    const triggeredAt = Date.now();
+
+    lastNativeBackMetaRef.current = {
+      source,
+      canGoBack,
+      triggeredAt,
+    };
+
+    console.info('[native-back] backButton received', {
+      canGoBack,
+      stackDepth: getBackHandlerDepth(),
+      source,
+    });
+
+    // 优先交给二级页面处理（详情页、覆盖层、密码页等）
+    if (invokeTopBackHandler()) {
+      return buildNativeBackDebugSnapshot();
+    }
+
+    // 一级页面：两次返回退出应用
+    if (triggeredAt - lastBackTimeRef.current < 2000) {
+      // 第二次返回：退出应用
+      clearExitToastTimer();
+      updateExitToastVisible(false);
+      exitRequestCountRef.current += 1;
+
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+        void CapacitorApp.exitApp();
+      } else {
+        console.info('[native-back] exit requested in browser debug mode');
+      }
+    } else {
+      // 第一次返回：显示提示条
+      lastBackTimeRef.current = triggeredAt;
+      updateExitToastVisible(true);
+      clearExitToastTimer();
+      exitToastTimerRef.current = setTimeout(() => {
+        updateExitToastVisible(false);
+        exitToastTimerRef.current = null;
+      }, 2000);
+    }
+
+    return buildNativeBackDebugSnapshot();
+  }, [
+    buildNativeBackDebugSnapshot,
+    clearExitToastTimer,
+    updateExitToastVisible,
+  ]);
+
+  /** 开发态与浏览器自动化共用的 Root back 调试入口。 */
+  const resetNativeBackDebugState = useCallback((): NativeBackDebugSnapshot => {
+    lastBackTimeRef.current = 0;
+    exitRequestCountRef.current = 0;
+    lastNativeBackMetaRef.current = {
+      source: null,
+      canGoBack: null,
+      triggeredAt: null,
+    };
+    clearExitToastTimer();
+    updateExitToastVisible(false);
+    return buildNativeBackDebugSnapshot();
+  }, [
+    buildNativeBackDebugSnapshot,
+    clearExitToastTimer,
+    updateExitToastVisible,
+  ]);
 
   useEffect(() => {
     /**
@@ -89,44 +193,62 @@ function RuntimeApp() {
     };
   }, []);
 
-  // 监听 Android 系统返回键（仅在 Capacitor native 环境下生效）
+  // 开发态调试桥：让浏览器里的 Playwright 也能命中 Root 层同一条返回分派逻辑
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !canRegisterNativeBackButtonListener()) return;
+    return installNativeBackDebugBridge({
+      trigger: handleRootNativeBack,
+      getSnapshot: buildNativeBackDebugSnapshot,
+      reset: resetNativeBackDebugState,
+    });
+  }, [
+    buildNativeBackDebugSnapshot,
+    handleRootNativeBack,
+    resetNativeBackDebugState,
+  ]);
 
+  // 监听 Android 系统返回键（仅在 Capacitor Android native 环境下生效）
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+
+    /** 防止异步注册完成时组件已经卸载，留下悬空 listener 句柄 */
     let listenerHandle: { remove: () => Promise<void> } | null = null;
+    let removed = false;
 
     const registerBack = async () => {
-      listenerHandle = await CapacitorApp.addListener('backButton', () => {
-        // 优先交给二级页面处理（详情页、覆盖层、密码页等）
-        if (invokeTopBackHandler()) return;
+      try {
+        console.info('[native-back] registering App.backButton listener');
 
-        // 一级页面：两次返回退出应用
-        const now = Date.now();
-        if (now - lastBackTimeRef.current < 2000) {
-          // 第二次返回：退出应用
-          if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
-          setExitToastVisible(false);
-          void CapacitorApp.exitApp();
-        } else {
-          // 第一次返回：显示提示条
-          lastBackTimeRef.current = now;
-          setExitToastVisible(true);
-          if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
-          exitToastTimerRef.current = setTimeout(() => {
-            setExitToastVisible(false);
-            exitToastTimerRef.current = null;
-          }, 2000);
+        listenerHandle = await CapacitorApp.addListener('backButton', (event) => {
+          void handleRootNativeBack({
+            canGoBack: event.canGoBack,
+            source: 'native',
+          });
+        });
+
+        /**
+         * 注册完成后再次确认组件仍处于挂载态。
+         * 若此时已卸载，立即移除 listener，避免后续真机测试出现重复回调。
+         */
+        if (removed) {
+          await listenerHandle.remove();
+          listenerHandle = null;
+          return;
         }
-      });
+
+        console.info('[native-back] App.backButton listener registered');
+      } catch (error) {
+        console.error('[native-back] failed to register App.backButton listener', error);
+      }
     };
 
     void registerBack();
 
     return () => {
-      if (exitToastTimerRef.current != null) clearTimeout(exitToastTimerRef.current);
+      removed = true;
+      clearExitToastTimer();
       void listenerHandle?.remove();
     };
-  }, []);
+  }, [clearExitToastTimer, handleRootNativeBack]);
 
   const [autoLearningNotice, setAutoLearningNotice] = useState<{
     visible: boolean;
@@ -311,6 +433,7 @@ function RuntimeApp() {
       {/* 再次返回退出提示条（Android 一级页面返回手势） */}
       {exitToastVisible ? (
         <div
+          data-testid="native-back-exit-toast"
           style={{
             position: 'fixed',
             bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',

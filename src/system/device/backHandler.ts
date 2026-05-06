@@ -23,6 +23,15 @@ export function popBackHandler(fn: () => void): void {
 }
 
 /**
+ * 返回当前 JS 返回栈深度。
+ * 该接口当前只服务于 Android 真机日志，帮助判断系统返回事件进入 JS 时，
+ * 栈里是否真的还有二级页 / 覆盖层 handler 可消费。
+ */
+export function getBackHandlerDepth(): number {
+  return _handlers.length;
+}
+
+/**
  * 调用栈顶 handler。
  * @returns true 表示有 handler 处理了此次返回，false 表示栈为空（由调用方处理一级页面逻辑）
  */

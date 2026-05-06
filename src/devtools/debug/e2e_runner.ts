@@ -23,6 +23,13 @@ import { MemoryManager } from '@logic/application/services/MemoryManager';
 import { FilesystemService } from '@system/adapters/FilesystemService';
 import { AdapterDirectory } from '@system/adapters/IFilesystemAdapter';
 import {
+  getNativeBackDebugSnapshot,
+  resetNativeBackDebugState,
+  triggerNativeBackDebug,
+  type NativeBackDebugSnapshot,
+  type NativeBackDebugTriggerInput,
+} from '@system/device/nativeBackDebugBridge';
+import {
   getLedgerAiPrefsPath,
   getLedgerExampleChangesPath,
   getLedgerExamplesPath,
@@ -134,6 +141,11 @@ interface MoniDebugApi {
   billImport: {
     probe: (files: File[], options?: BillImportOptions) => Promise<BillImportProbeResult>;
     import: (files: File[], options?: BillImportOptions) => Promise<BillImportExecutionResult>;
+  };
+  nativeBack: {
+    trigger: (input?: NativeBackDebugTriggerInput) => Promise<NativeBackDebugSnapshot>;
+    snapshot: () => Promise<NativeBackDebugSnapshot>;
+    reset: () => Promise<NativeBackDebugSnapshot>;
   };
 }
 
@@ -2177,6 +2189,20 @@ function createDebugApi(): MoniDebugApi {
       import: async (files: File[], options?: BillImportOptions) => {
         await ensureAppReady();
         return await appFacade.importBillFiles(files, options);
+      },
+    },
+    nativeBack: {
+      trigger: async (input?: NativeBackDebugTriggerInput) => {
+        await ensureAppReady();
+        return await triggerNativeBackDebug(input);
+      },
+      snapshot: async () => {
+        await ensureAppReady();
+        return getNativeBackDebugSnapshot();
+      },
+      reset: async () => {
+        await ensureAppReady();
+        return resetNativeBackDebugState();
       },
     },
   };

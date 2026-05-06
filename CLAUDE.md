@@ -9,7 +9,7 @@
 
 ## 当前版本状态
 
-- 当前已发布稳定版本：`0.3.5`
+- 当前已发布稳定版本：`0.3.6`
 - 下一版本：`0.3.7`
 - 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
@@ -130,11 +130,14 @@
 - 用户已进一步确认：首页日卡右上角金额摘要最终收敛为双值结构 `-¥支出 / +¥收入`；来源标签文案统一为 `微信 / 支付宝 / 随手记`，颜色必须复用 design token（微信绿、支付宝蓝、随手记黄），并在首页日卡、拖拽细则、详情页保持同一套 badge 语义
 - 用户已进一步确认：日卡右上角金额摘要在保持“支出 / 收入双值语义”的前提下，若某一天不存在收入或不存在支出，则对应金额与中间分隔符一起隐藏，不显示 `0` 占位
 - 已新增外部求助材料：`docs/2026-05-05-android-back-gesture-stuck-report.md`，用于向外部模型说明 Android 返回手势卡点、当前返回栈设计、已尝试路径与待检索问题
+- 用户已确认 Android 返回手势修复第一阶段口径：先正式接入 `@capacitor/app`、执行 `cap sync`、在 `AppRoot` 补齐 `backButton` 注册成功/失败与事件到达日志，并暴露 JS 返回栈深度用于真机判定；在拿到真机证据前，不改 `MainActivity`，也不引入新的 JS 兜底分支
+- 用户已进一步确认：JS 层返回栈策略要先在浏览器自动化里测透；实现方式为开发态补一个 `native back` 触发接口，让 Playwright 直接命中 Root 层同一条返回分派逻辑，并观察页面流转是否符合“二级层优先消费 / 一级页首次提示 / 二次触发退出分支”的规格
 - 用户已确认分类索引口径进一步收敛：生产仅由被动外部事件同步触发；`start consumption` 只启动消费不补生产；AI 消费窗口继续与 `data range` 绑定，但只在 `BatchProcessor` 取下一批任务时过滤；运行时单一事实源为内存 classify index，`classify_runtime.json` 仅作持久化镜像；需区分 `queue empty` 与 `no consumable tasks in current range`
 - 用户已确认 classify 生产侧的最终维护方案：放弃 `BatchProcessor` 热路径上的全账本重算；改为按交易条目 old/new 状态增量维护 `dirtyCountByDate`，其数值精确定义为“该日满足 `未锁定 && 最终分类为空 / uncategorized` 的脏条目个数”；待处理日期集合由 `dirtyCountByDate[date] > 0` 派生，所有交易改写与脏索引更新必须在同一账本串行临界区内完成
 - 用户已确认 classify 脏索引必须自带兜底：`records` 才是最终真相，`dirtyCountByDate` 只是可重建索引；增量维护失败时允许直接标记 `needs_rebuild` 并阻断消费；恢复路径分为“受影响日期局部重算”和“整本重建”，原则是宁可变慢，不可带错运行
 - classify index 主链路代码已切到新口径：`dirty` 判定现只看 `is_verified === false` 与 `finalCategory` 是否为空 / `uncategorized`；`transactionStatus` 不再参与生产侧判定；`ClassifyQueue` 运行时主语义已切为 `ClassifyIndex`，并保留兼容别名
 - 浏览器开发态已完成新的分类专项验收：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()` 与 `runClassifyLockBoundaryTest()` 均通过；移动端视口 `390 x 844` 截图已留档 `artifacts/classify-index-mobile-home.png`
+- Android 返回手势的 JS 返回栈专项已在浏览器开发态通过：现已补 `window.__MONI_DEBUG__.nativeBack.trigger() / snapshot() / reset()` 与 `npm run test:native-back-flow`；脚本已在用户现有 `http://localhost:5173/` 开发服务器上跑通，覆盖交易详情页分类模态、详情页关闭、记账页导入指南关闭、设置页一级返回提示、首页双击退出分支与超时重置分支
 - 浏览器 console 当前未发现新的 JS runtime error；残留错误仍是既有 `/api/fs` 404 噪音，尚未纳入本轮修复范围
 - 上述四项仍属于本轮未 release 的动态进度，不进入 `Release Changelog`，待本轮正式发布后再归并
 - **[2026-05-05] 修复 revision 冲突导致消费引擎单日停止的 bug**：BatchProcessor 在处理一个 batch 时，每个 arbiter patch 都触发了 `bumpRevision`，导致版本号从初始的16递增到45，最后 batch remove 检查失效。根本原因是 arbiter patch 不应该算作"新的生产动作"，修复方案是在 `ClassifyQueue.syncDirtyIndexForTouchedRecords` 添加 `bumpRevision` 参数，arbiter patch 时传入 `false`。修复后 BatchProcessor 能连续处理多个 batch。详见：`docs/2026-05-05-revision-system-analysis.md`
@@ -149,7 +152,7 @@
 | 空记忆快照回退失败修复 | Done / 待 release | 根因是回退结果使用 truthy/falsy 判定，空快照返回 `""` 被误判为失败；现已改为仅 `null` 代表失败，并同步修补旧设置页的直接调用口径 |
 | AI 零记忆消费风险提示 | Done / 待 release | 规格与实现已对齐补完：弹窗关闭显式取消、7 天窗口按本地自然日计算、首页 `DateRangePicker` 与 facade 消费范围同步切到自定义 7 天；`typecheck`、`build` 已通过 |
 | classify 生产侧脏索引增量化改造 | Done / 待 release | 核心实现、`typecheck`、`build`、浏览器控制台专项与 Playwright 移动端验证已通过；代码审查已完成，文档 dirty predicate 描述已修正（移除 `transactionStatus === “SUCCESS”`）；待用户确认后并入 `0.3.7` release |
-| Android 返回手势修复 | Pending | 当前真机系统返回手势仍会直接退桌面；目标是”二级页优先返回、一级页首次返回弹提示、二次返回才退出”；已确认现方案以 `AppRoot` 监听 Capacitor `backButton` + JS 内存返回栈为主，`MainActivity` 仍是最小 `BridgeActivity`，尚无 `OnBackPressedDispatcher / OnBackInvokedDispatcher` 级原生接管；已整理外部求助报告待检索 |
+| Android 返回手势修复 | In Progress / 待真机链路确认 | 第一阶段已切换为正式 `@capacitor/app` 插件接入，并补齐 `AppRoot` 原生日志与 `getBackHandlerDepth()`；`npx cap sync android` 已执行。浏览器侧 `native back` 调试接口与 Playwright 脚本已跑通，JS 返回栈规格已先行验证；当前剩余重点是确认 Android 系统返回事件是否稳定进入 Capacitor App 插件并到达 JS |
 | Demo seed 首装导入 / 落盘排查 | Pending | 当前判断已更新：安装包本身带着 demo seed 数据；问题是同一 APK 在部分安装场景下首装自动导入/落盘偶发失败，需定位首启安装链路 |
 | Android 文件选择器真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
 | 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式在 `MoniSettings.tsx`（当前实际渲染路径）中尚未接入；现有 `SettingsPage.tsx` 中的接线未被加载；本轮仅做不影响运行的最小修补（predicate 简化 + label 语义修正），完整接线推后；落实时需确认：① `MoniSettings.tsx` 中新增标签后改走 `ReclassifyConfirmDialog` 范围选择流程，② `SettingsPage.tsx` 中对应接线是否仍需保留 |

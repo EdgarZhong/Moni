@@ -106,13 +106,14 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
       ) : null}
 
       {/* 左：设置 */}
-      <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
+      <div data-testid="bottom-nav-settings" style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
         <GearIcon active={isSettingsActive} />
         <div style={{ fontSize: 10, color: isSettingsActive ? C.dark : C.muted, fontWeight: isSettingsActive ? 700 : 400, marginTop: 2 }}>设置</div>
       </div>
 
       {/* 中：品牌按钮 + AI 控制条 */}
       <div
+        data-testid="bottom-nav-home"
         style={{ position: "relative", textAlign: "center", cursor: "pointer", touchAction: "none" }}
         onPointerDown={(event) => onStartControl(event.clientY, event.pointerId)}
         onPointerMove={(event) => {
@@ -151,7 +152,7 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
       </div>
 
       {/* 右：记账 */}
-      <div style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onBookkeeping}>
+      <div data-testid="bottom-nav-entry" style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onBookkeeping}>
         <NoteIcon active={isEntryActive} />
         <div style={{ fontSize: 10, color: isEntryActive ? C.dark : C.muted, fontWeight: isEntryActive ? 700 : 400, marginTop: 2 }}>记账</div>
       </div>

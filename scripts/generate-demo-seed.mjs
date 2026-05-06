@@ -62,7 +62,25 @@ function toRelativeSeedPath(absolutePath) {
 }
 
 async function main() {
-  const files = await collectFiles(SOURCE_ROOT);
+  /**
+   * v0.3.6 过滤策略：
+   * - 只保留全局配置与自述文件
+   * - 不携带任何账本数据（交易、记忆、实例库、分类运行态等）
+   * - App 首次启动时会自动创建空账本
+   */
+  const ALLOW_LIST = new Set([
+    'secure_config.bin',
+    'self_description.md'
+  ]);
+
+  const allFiles = await collectFiles(SOURCE_ROOT);
+  const files = allFiles.filter(absolutePath => {
+    const relativePath = toRelativeSeedPath(absolutePath);
+    // 只保留白名单文件
+    const fileName = path.basename(relativePath);
+    return ALLOW_LIST.has(fileName);
+  });
+
   const manifest = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -71,11 +89,6 @@ async function main() {
   };
 
   for (const absolutePath of files.sort()) {
-    /**
-     * 当前沙盒内文件全部按 UTF-8 文本处理：
-     * - `secure_config.bin` 实际存的是可直接读写的加密文本串
-     * - 账本、日志、自述、记忆文件也都是文本
-     */
     const content = await fs.readFile(absolutePath, 'utf8');
     manifest.files.push({
       path: toRelativeSeedPath(absolutePath),
@@ -87,6 +100,7 @@ async function main() {
   await fs.writeFile(OUTPUT_FILE, JSON.stringify(manifest, null, 2), 'utf8');
 
   console.log(`[generate-demo-seed] wrote ${manifest.files.length} files to ${path.relative(REPO_ROOT, OUTPUT_FILE)}`);
+  console.log(`[generate-demo-seed] v0.3.6 clean seed: only secure_config.bin + self_description.md`);
 }
 
 await main();

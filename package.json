@@ -1,7 +1,7 @@
 {
   "name": "moni",
   "private": true,
-  "version": "0.3.5",
+  "version": "0.3.6",
   "author": "CyberZen Studio",
   "type": "module",
   "scripts": {
@@ -10,11 +10,13 @@
     "build:release": "node scripts/generate-demo-seed.mjs && npm run build && npx cap sync android && cd android && ./gradlew :app:publishReleaseApk",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
+    "test:native-back-flow": "node scripts/playwright/native-back-flow.mjs",
     "verify": "npm run typecheck && npm run build && npm run lint",
     "preview": "vite preview"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.1",
+    "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.0.1",
     "@capacitor/core": "^8.0.1",
     "@capacitor/device": "^8.0.0",

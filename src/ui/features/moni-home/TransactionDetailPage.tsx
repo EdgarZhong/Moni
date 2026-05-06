@@ -1048,6 +1048,7 @@ export function TransactionDetailPage({
                 </div>
 
                 <button
+                  data-testid="transaction-detail-category-trigger"
                   type="button"
                   onClick={() => setIsCategoryModalOpen(true)}
                   className="mt-3 flex w-full min-w-0 items-center justify-between gap-3 text-left"

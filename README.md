@@ -141,6 +141,8 @@ npm run build:release
 - 账单导入后端回归测试：`window.__MONI_E2E__.tests.runBillImportBackendTest()`
 - classify index 增量维护专项测试：`window.__MONI_E2E__.tests.runClassifyIndexIncrementalTest()`
 - classify 锁定边界专项测试：`window.__MONI_E2E__.tests.runClassifyLockBoundaryTest()`
+- JS 返回栈浏览器自动化脚本：`npm run test:native-back-flow`
+- native back 调试接口：`window.__MONI_DEBUG__.nativeBack.trigger() / snapshot() / reset()`
 
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：
 
