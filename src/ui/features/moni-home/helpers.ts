@@ -5,7 +5,7 @@
  * 迁移自 Moni-UI-Prototype/src/features/moni-home/helpers.js
  */
 
-import { CATEGORY_ORDER, C } from "./config";
+import { C } from "./config";
 
 // ──────────────────────────────────────────────
 // 类型定义
@@ -226,13 +226,20 @@ interface OverviewItem_Input {
 /**
  * 根据支出条目列表构建分类概览数据（横条图数据源）
  *
- * - 按 CATEGORY_ORDER 顺序输出各分类汇总
+ * - 按当前账本分类顺序输出各分类汇总
  * - 末尾追加"未分类"汇总
  * - 过滤掉金额为 0 的分类
  * - 每项携带 percent（四舍五入到整数）
  */
-export function buildOverview(expenseItems: OverviewItem_Input[]): OverviewItem[] {
-  const totals = CATEGORY_ORDER.map((category) => ({
+export function buildOverview(
+  expenseItems: OverviewItem_Input[],
+  orderedCategories: readonly string[],
+): OverviewItem[] {
+  /**
+   * 概览条必须完全跟随当前账本的真实分类定义，
+   * 不能继续只认默认常量，否则新增收入标签和用户自定义标签会直接丢失。
+   */
+  const totals = orderedCategories.map((category) => ({
     category,
     total: expenseItems
       .filter((item) => getCategory(item) === category)

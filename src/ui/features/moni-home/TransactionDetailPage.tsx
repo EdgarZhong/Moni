@@ -2,7 +2,7 @@
  * TransactionDetailPage
  *
  * 这次重构的目标有两条主线：
- * 1. 按新的 Layer 1 / Layer 2 设计规格，把详情页收口到“二级页面 = 内容卡语法”
+ * 1. 按新的 Layer 1 / Layer 2 设计规格，把详情页收口到"二级页面 = 内容卡语法"
  * 2. 与 DragDetailPanel 共用同一套交易身份标题规则，完成新规格表示方法的第一次正式落地
  *
  * 页面仍然保持原有即时写入策略：
@@ -11,10 +11,11 @@
  */
 
 import clsx from "clsx";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CircleAlert, Clock3, LockKeyhole, LockKeyholeOpen, MessageCircle, MessageSquareQuote, PencilLine, ReceiptText, Sparkles, Tags, Wallet } from "lucide-react";
-import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, CAT, FULL_SCREEN_OVERLAY_Z_INDEX } from "@ui/features/moni-home/config";
+import { AnimatePresence, motion } from "framer-motion";
+import { CircleAlert, Clock3, LockKeyhole, LockKeyholeOpen, MessageCircle, MessageSquareQuote, PencilLine, ReceiptText, Sparkles, Tags, Trash2, Wallet } from "lucide-react";
+import { APP_HEADER_MIN_HEIGHT, APP_HEADER_PADDING_TOP, FULL_SCREEN_OVERLAY_Z_INDEX } from "@ui/features/moni-home/config";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
 import {
   getCategory,
@@ -23,6 +24,13 @@ import {
   resolveTransactionDisplayTitle,
 } from "@ui/features/moni-home/helpers";
 import type { HomeTransaction } from "@ui/features/moni-home/components";
+import {
+  buildCategoryVisualRegistry,
+  pickCategoryIcon,
+  resolveCategoryVisual,
+  UNCLASSIFIED_CATEGORY_VISUAL,
+  type CategoryVisual,
+} from "@ui/shared/categoryVisuals";
 
 /**
  * 退场动画时长必须与主容器的 transform 过渡保持一致，
@@ -45,10 +53,12 @@ interface TransactionDetailPageProps {
   readonly transaction: HomeTransaction;
   readonly dayId: string;
   readonly availableCategories: readonly string[];
+  readonly categoryVisuals?: Record<string, CategoryVisual>;
   readonly onClose: () => void;
   readonly onUpdateCategory: (transactionId: string, category: string, reasoning?: string) => void;
   readonly onUpdateUserReasoning: (transactionId: string, note: string) => void;
   readonly onSetTransactionVerification: (transactionId: string, isVerified: boolean) => void;
+  readonly onDeleteTransaction?: (transactionId: string) => Promise<void>;
 }
 
 interface CategoryTone {
@@ -176,7 +186,7 @@ function getSourceBadgeMeta(sourceType: HomeTransaction["sourceType"]): SourceBa
 }
 
 /**
- * 详情页强调“信息不遗漏”，因此只要状态非空就必须展示。
+ * 详情页强调"信息不遗漏"，因此只要状态非空就必须展示。
  * 其中 SUCCESS 转成中文文案，避免在中文界面里留下生硬的英文状态码。
  */
 function getStatusText(status: string | null | undefined): string {
@@ -191,31 +201,31 @@ function getStatusText(status: string | null | undefined): string {
 }
 
 /**
- * 分类色板由业务配置维护，不纳入全局 token。
- * 因此分类标签仍然允许从 `CAT` 中取动态色值。
+ * 详情页只消费统一分类视觉注册表。
+ * 这样首页、拖拽细则、详情页就不会再出现"同一个分类三种颜色/图标"的漂移。
  */
-function getCategoryTone(category: string | null): CategoryTone {
+function getCategoryTone(category: string | null, categoryVisuals: Record<string, CategoryVisual>): CategoryTone {
   if (!category) {
     return {
-      color: "#D85A30",
-      bg: "#FFF5EB",
-      icon: "？",
+      color: UNCLASSIFIED_CATEGORY_VISUAL.color,
+      bg: UNCLASSIFIED_CATEGORY_VISUAL.bg,
+      icon: "?",
     };
   }
 
-  const visual = CAT[category];
+  const visual = resolveCategoryVisual(category, categoryVisuals);
   if (!visual) {
     return {
       color: "#222222",
       bg: "#F5F0EB",
-      icon: "•",
+      icon: pickCategoryIcon(null),
     };
   }
 
   return {
     color: visual.color,
     bg: visual.bg,
-    icon: visual.icons[0] ?? "•",
+    icon: pickCategoryIcon(visual, 0),
   };
 }
 
@@ -232,7 +242,7 @@ function BackArrowIcon() {
 }
 
 /**
- * 统一的右箭头图标，用在“点击分类”入口右侧。
+ * 统一的右箭头图标，用在"点击分类"入口右侧。
  */
 function ChevronRightIcon() {
   return (
@@ -244,7 +254,7 @@ function ChevronRightIcon() {
 
 /**
  * 内容卡区块标题。
- * 图标用文字 / 符号承载即可，重点是把“阅读锚点”做出来。
+ * 图标用文字 / 符号承载即可，重点是把"阅读锚点"做出来。
  */
 function SectionEyebrow({ icon, title }: { readonly icon: React.ReactNode; readonly title: string }) {
   return (
@@ -287,7 +297,7 @@ function InfoPill({
 }
 
 /**
- * 原始信息区与系统元数据区都复用这种“标题 + 值”的轻量单元。
+ * 原始信息区与系统元数据区都复用这种"标题 + 值"的轻量单元。
  */
 function InfoCell({
   label,
@@ -322,7 +332,7 @@ function getDetailFieldPillIcon(label: string): React.ReactNode {
 }
 
 /**
- * 规格要求所有细则字段都显示，但不允许再出现“一个极短字段被拉成整宽卡”的蠢布局。
+ * 规格要求所有细则字段都显示，但不允许再出现"一个极短字段被拉成整宽卡"的蠢布局。
  * 因此这里先做三步收口：
  * 1. 去掉已被标题 / 副标题消费的重复值
  * 2. 若只剩一个极短字段，则降级成顶部 badge，而不是进入大卡片网格
@@ -348,7 +358,7 @@ function buildDetailFieldLayout(
     });
 
   /**
-   * 对用户而言，像“群收款”“转账”“零钱”这种单独剩下的短字段，
+   * 对用户而言，像"群收款""转账""零钱"这种单独剩下的短字段，
    * 更像是状态标签，而不是一块需要占整行的正文卡片。
    */
   if (visibleFields.length === 1) {
@@ -373,7 +383,7 @@ function buildDetailFieldLayout(
 }
 
 /**
- * 给每个字段定义“允许占几格”与“理想占几格”。
+ * 给每个字段定义"允许占几格"与"理想占几格"。
  * 这样既能保证每行总宽度被占满，又不会把短字段硬拉成整行。
  */
 function getDetailFieldSpanOptions(field: DetailFieldLayoutInput): { readonly preferred: number; readonly candidates: ReadonlyArray<2 | 3 | 4 | 6> } {
@@ -417,7 +427,7 @@ function getDetailFieldSpanOptions(field: DetailFieldLayoutInput): { readonly pr
 
 /**
  * 详情页细则区使用 6 栏网格。
- * 这里用一个很小的递归求解器，在“不打乱字段语义顺序”的前提下，
+ * 这里用一个很小的递归求解器，在"不打乱字段语义顺序"的前提下，
  * 为每张卡挑出一个跨度，使每一行都刚好占满 6 栏。
  */
 function solveDetailFieldGrid(fields: readonly DetailFieldLayoutInput[]): DetailFieldCard[] {
@@ -449,7 +459,7 @@ function solveDetailFieldGrid(fields: readonly DetailFieldLayoutInput[]): Detail
       /**
        * 评分思路：
        * - 优先接近字段的理想跨度
-       * - 对“短文本整宽”施加高惩罚，避免再次出现 rawClass 这类字段铺满整行
+       * - 对"短文本整宽"施加高惩罚，避免再次出现 rawClass 这类字段铺满整行
        * - 对长文本塞进过窄卡片也加惩罚，避免换行挤爆
        */
       const shortFullWidthPenalty = span === 6 && current.field.value.length <= 10 ? 80 : 0;
@@ -476,7 +486,7 @@ function solveDetailFieldGrid(fields: readonly DetailFieldLayoutInput[]): Detail
 
   /**
    * 正常情况下上面的求解器应当总能找到满行方案。
-   * 若未来新增了奇怪字段组合导致求解失败，则回退到“中长文本整宽”的保守布局，
+   * 若未来新增了奇怪字段组合导致求解失败，则回退到"中长文本整宽"的保守布局，
    * 至少保证不溢出、不丢字段。
    */
   return fields.map((field) => {
@@ -558,17 +568,19 @@ function ToggleSwitch({
 
 /**
  * 紧凑分类选择器是这次详情页重构的关键交互之一：
- * 默认界面不再平铺整面分类按钮，只有在用户明确点击“当前分类”时才展开选择。
+ * 默认界面不再平铺整面分类按钮，只有在用户明确点击"当前分类"时才展开选择。
  */
 function CompactCategoryModal({
   visible,
   categories,
+  categoryVisuals,
   selectedCategory,
   onClose,
   onSelect,
 }: {
   readonly visible: boolean;
   readonly categories: readonly string[];
+  readonly categoryVisuals: Record<string, CategoryVisual>;
   readonly selectedCategory: string | null;
   readonly onClose: () => void;
   readonly onSelect: (category: string) => void;
@@ -593,7 +605,7 @@ function CompactCategoryModal({
           <div className="flex items-start justify-between gap-3 border-b border-divider border-faint px-4 py-3">
             <div className="min-w-0">
               <div className="text-[16px] font-extrabold text-ink">选择分类</div>
-              <div className="mt-1 text-[12px] leading-5 text-dim">点一下就会立即应用到这条交易</div>
+              <div className="mt-1 text-[12px] leading-5 text-dim">点击应用到当前交易</div>
             </div>
 
             <button
@@ -608,7 +620,7 @@ function CompactCategoryModal({
 
           <div className="grid grid-cols-2 gap-2 p-3">
             {categories.map((category) => {
-              const tone = getCategoryTone(category);
+              const tone = getCategoryTone(category, categoryVisuals);
               const isActive = selectedCategory === category;
 
               return (
@@ -652,14 +664,27 @@ export function TransactionDetailPage({
   transaction,
   dayId,
   availableCategories,
+  categoryVisuals: incomingCategoryVisuals,
   onClose,
   onUpdateCategory,
   onUpdateUserReasoning,
   onSetTransactionVerification,
+  onDeleteTransaction,
 }: TransactionDetailPageProps) {
   const [isEntered, setIsEntered] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  /** 删除确认状态：idle → confirm1（第一次点击）→ deleting（执行中）*/
+  const [deleteStep, setDeleteStep] = useState<"idle" | "confirm1" | "deleting">("idle");
+  /**
+   * 删除按钮文案视觉态：故意与 deleteStep 解耦，配合 widthPhase 做两步编排，
+   * 避免文字宽度被容器宽度动画拉伸／压缩。
+   * - 收缩 idle → confirm1：文字先变（label 立即切到 confirm1），下一帧再触发宽度收缩
+   * - 展开 confirm1 → idle：宽度先展开到位（0.3s），动画完成后再把文字切回 idle
+   */
+  const [deleteBtnLabel, setDeleteBtnLabel] = useState<"idle" | "confirm1">("idle");
+  /** 删除按钮宽度动画相位：独立于 deleteStep，仅用于驱动 motion 的 width 数值动画 */
+  const [widthPhase, setWidthPhase] = useState<"idle" | "confirm1">("idle");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(getCategory(transaction));
   const [isVerified, setIsVerified] = useState(Boolean(transaction.isVerified));
   const [hasLocalCategorySelection, setHasLocalCategorySelection] = useState(false);
@@ -669,6 +694,12 @@ export function TransactionDetailPage({
   const reasoningTimerRef = useRef<number | null>(null);
   const openedAtRef = useRef(0);
   const reasoningInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /** 删除按钮两种文案下的离屏测量元素，用于精确取得 idle / confirm1 两态的容器像素宽度 */
+  const measureIdleRef = useRef<HTMLSpanElement | null>(null);
+  const measureConfirmRef = useRef<HTMLSpanElement | null>(null);
+  /** 测量得到的两态宽度（带 px 单位的字符串）；首屏未测量前为 null，按钮回退到 "auto" 让浏览器自然撑开 */
+  const [deleteBtnWidths, setDeleteBtnWidths] = useState<{ idle: string; confirm1: string } | null>(null);
 
   // 分类模态框打开时，返回键关闭模态框；否则关闭整个详情页
   useBackHandler(() => {
@@ -681,7 +712,7 @@ export function TransactionDetailPage({
 
   /**
    * 详情页切换到另一条交易时，所有本地编辑态都要跟着重置。
-   * 这里把“动画重新进场”和“输入缓存同步到账本当前值”放到同一个 effect 中处理。
+   * 这里把"动画重新进场"和"输入缓存同步到账本当前值"放到同一个 effect 中处理。
    */
   useEffect(() => {
     const normalizedReasoning = normalizeTransactionDetailText(transaction.userNote);
@@ -691,6 +722,9 @@ export function TransactionDetailPage({
     setHasLocalCategorySelection(false);
     setReasoningInput(normalizedReasoning);
     setIsCategoryModalOpen(false);
+    setDeleteStep("idle");
+    setDeleteBtnLabel("idle");
+    setWidthPhase("idle");
     persistedReasoningRef.current = normalizedReasoning;
 
     clearWindowTimer(reasoningTimerRef);
@@ -714,6 +748,48 @@ export function TransactionDetailPage({
     };
   }, []);
 
+  /**
+   * 测量删除按钮两种文案下的容器宽度。
+   * 离屏元素与真实按钮使用同样的内边距、间距、字号、字重，
+   * 测出来的像素宽度直接作为 motion.button 的 width 关键帧，避免 layout 动画的 scale 变换污染字体。
+   */
+  useLayoutEffect(() => {
+    if (!measureIdleRef.current || !measureConfirmRef.current) return;
+    const idleWidth = measureIdleRef.current.getBoundingClientRect().width;
+    const confirmWidth = measureConfirmRef.current.getBoundingClientRect().width;
+    if (idleWidth > 0 && confirmWidth > 0) {
+      setDeleteBtnWidths(prev => {
+        // 传 "px" 单位给 framer-motion，确保它走插值动画而不是直接跳变
+        const idleStr = `${Math.round(idleWidth)}px`;
+        const confirmStr = `${Math.round(confirmWidth)}px`;
+        if (prev && prev.idle === idleStr && prev.confirm1 === confirmStr) {
+          return prev;
+        }
+        return { idle: idleStr, confirm1: confirmStr };
+      });
+    }
+  }, []);
+
+  /**
+   * 删除按钮两步编排：始终保证"按钮宽度变化期间，按钮里的文字内容不变"，从根上消除文字伸缩。
+   * - 收缩 idle → confirm1：先把文字立即换成短文案"确认删除"（容器还是宽的），再触发宽度收缩动画
+   *   关键：widthPhase 与 deleteStep 同步设置，让 CSS transition 和取消按钮的 motion 动画同帧触发
+   * - 展开 confirm1 → idle：先触发宽度展开动画，动画完成后（onTransitionEnd）再把文字换回长文案"删除这条记录"
+   *   关键：用原生 onTransitionEnd 回调监听 width 属性过渡完成，确保无论文字何时切换都不会伸缩
+   * deleting 状态属于按钮整体被替换为"删除中…"的分支，不参与本编排
+   */
+  useEffect(() => {
+    if (deleteStep === "confirm1") {
+      // 收缩：文字先变，宽度同帧开始收缩（与取消按钮的出现同步）
+      setDeleteBtnLabel("confirm1");
+      setWidthPhase("confirm1");
+    }
+    if (deleteStep === "idle") {
+      // 展开：宽度先到位，onTransitionEnd 里再切回长文案
+      setWidthPhase("idle");
+    }
+  }, [deleteStep]);
+
   const txId = String(transaction.id);
   const displayTitle = useMemo(() => resolveTransactionDisplayTitle(transaction), [transaction]);
   const productText = useMemo(() => resolveTransactionDisplayProductText(transaction), [transaction]);
@@ -723,9 +799,23 @@ export function TransactionDetailPage({
   }, [displayTitle, productText]);
   const primaryTime = useMemo(() => formatPrimaryTime(dayId, transaction), [dayId, transaction]);
   const sourceBadge = useMemo(() => getSourceBadgeMeta(transaction.sourceType), [transaction.sourceType]);
+  /**
+   * 详情页优先复用父页面已经算好的 registry；
+   * 若调用方还没升级到新接口，则退回到基于可用分类列表的本地构建，保证兼容。
+   */
+  const categoryVisuals = useMemo(
+    () => incomingCategoryVisuals ?? buildCategoryVisualRegistry(availableCategories),
+    [availableCategories, incomingCategoryVisuals],
+  );
   const currentCategory = selectedCategory;
-  const currentCategoryTone = useMemo(() => getCategoryTone(currentCategory), [currentCategory]);
-  const aiCategoryTone = useMemo(() => getCategoryTone(transaction.aiCat ?? null), [transaction.aiCat]);
+  const currentCategoryTone = useMemo(
+    () => getCategoryTone(currentCategory, categoryVisuals),
+    [categoryVisuals, currentCategory],
+  );
+  const aiCategoryTone = useMemo(
+    () => getCategoryTone(transaction.aiCat ?? null, categoryVisuals),
+    [categoryVisuals, transaction.aiCat],
+  );
   const categoryOriginText = useMemo(() => {
     if (!currentCategory) return "未分类";
     if (hasLocalCategorySelection || transaction.userCat) return "来自用户";
@@ -771,7 +861,7 @@ export function TransactionDetailPage({
 
   /**
    * 关闭前必须把理由输入框的临时值强制刷到持久层，
-   * 否则会出现“刚输入完立刻返回，最后几次按键没被保存”的竞态。
+   * 否则会出现"刚输入完立刻返回，最后几次按键没被保存"的竞态。
    */
   const persistReasoning = useCallback((nextValue: string) => {
     const normalized = nextValue.trim();
@@ -806,7 +896,7 @@ export function TransactionDetailPage({
 
   /**
    * 用户刚改完分类时，页面主动把 user_note 输入区露出来。
-   * 这样能用界面运动提示“最好补一句原因”，而不是再堆一行啰嗦文案。
+   * 这样能用界面运动提示"最好补一句原因"，而不是再堆一行啰嗦文案。
    */
   const revealReasoningInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -831,7 +921,7 @@ export function TransactionDetailPage({
      * 详情页本地态必须和服务层的自动锁定判定保持同一口径：
      * - 之前没有 user_category 时，任何一次显式分类提交都视为确认
      * - 已有 user_category 且这次改成了别的分类，也视为确认
-     * - 若只是对同一 user_category 再点一次，不应把未锁定状态误显示成“已锁定”
+     * - 若只是对同一 user_category 再点一次，不应把未锁定状态误显示成"已锁定"
      */
     const shouldReflectAutoLock = !isVerified && (!transaction.userCat || transaction.userCat !== category);
     setSelectedCategory(category);
@@ -841,7 +931,7 @@ export function TransactionDetailPage({
     if (shouldReflectAutoLock) {
       /**
        * 服务层会在真正提交分类时按统一口径补写 is_verified。
-       * 这里仅做本地即时态更新，保证详情页开关与状态文案立刻反映“已确认”的交互结果。
+       * 这里仅做本地即时态更新，保证详情页开关与状态文案立刻反映"已确认"的交互结果。
        */
       setIsVerified(true);
     }
@@ -874,6 +964,30 @@ export function TransactionDetailPage({
     clearWindowTimer(reasoningTimerRef);
     persistReasoning(reasoningInput);
   }, [persistReasoning, reasoningInput]);
+
+  /**
+   * 删除按钮使用两步确认：
+   * 第一次点击进入 confirm1 状态，显示再次确认文案；
+   * 第二次点击真正触发删除；
+   * 点击外部区域可以取消（通过失焦或重新点击其他区域）。
+   */
+  const handleDeleteClick = useCallback(async () => {
+    if (!onDeleteTransaction) return;
+    if (deleteStep === "idle") {
+      // 仅推进逻辑状态；文案与宽度的两步编排由监听 deleteStep 的 useEffect 处理
+      setDeleteStep("confirm1");
+      return;
+    }
+    if (deleteStep === "confirm1") {
+      setDeleteStep("deleting");
+      clearWindowTimer(reasoningTimerRef);
+      try {
+        await onDeleteTransaction(txId);
+      } catch {
+        setDeleteStep("idle");
+      }
+    }
+  }, [deleteStep, onDeleteTransaction, txId]);
 
   const headerStatusClassName = isVerified
     ? "border-secondary border-mint bg-success-surface text-success-text"
@@ -939,7 +1053,11 @@ export function TransactionDetailPage({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-3 pt-2.5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)", userSelect: "text", WebkitUserSelect: "text" }}>
+        <div
+          className="flex-1 overflow-y-auto px-3 pt-2.5"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)", userSelect: "text", WebkitUserSelect: "text" }}
+          onClick={() => { if (deleteStep === "confirm1") setDeleteStep("idle"); }}
+        >
           <div className="flex flex-col gap-3">
             <section className={contentCardClassName}>
               <SectionEyebrow icon={<ReceiptText size={16} strokeWidth={2.2} />} title="交易原始信息" />
@@ -1104,6 +1222,100 @@ export function TransactionDetailPage({
                 {originalIdText ? <MetaRow label="原始流水号" value={originalIdText} /> : null}
               </div>
             </section>
+
+            {/* 删除按钮区——仅在调用方传入 onDeleteTransaction 时显示，两步确认 */}
+            {onDeleteTransaction ? (
+              /* stopPropagation 防止点击按钮本身时冒泡触发父容器的点击取消逻辑 */
+              <div className="flex items-center pb-1" onClick={(e) => {
+                e.stopPropagation();
+                if (deleteStep === "confirm1") setDeleteStep("idle");
+              }}>
+                {deleteStep === "deleting" ? (
+                  <div className="px-3 py-2 text-[12px] text-dim">删除中…</div>
+                ) : (
+                  <>
+                    {/* 隐藏测量层：与真实按钮使用一致的内边距 / 字号 / 字重，离屏渲染两态各自的内容，
+                        useLayoutEffect 拿到精确像素宽度后用作 motion.button 的 width 关键帧 */}
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -z-10 left-0 top-0"
+                      style={{ visibility: "hidden", whiteSpace: "nowrap" }}
+                    >
+                      <span
+                        ref={measureIdleRef}
+                        className="inline-flex items-center gap-1.5 rounded-pill border px-3 py-2 text-[12px] font-semibold"
+                      >
+                        <span className="flex-none leading-none">
+                          <Trash2 size={14} strokeWidth={2} />
+                        </span>
+                        <span className="whitespace-nowrap">删除这条记录</span>
+                      </span>
+                      <span
+                        ref={measureConfirmRef}
+                        className="inline-flex items-center gap-1.5 rounded-pill border px-3 py-2 text-[12px] font-bold"
+                      >
+                        <span className="flex-none leading-none">
+                          <Trash2 size={14} strokeWidth={2} />
+                        </span>
+                        <span className="whitespace-nowrap">确认删除</span>
+                      </span>
+                    </span>
+
+                    {/* 删除按钮本体：
+                        - 使用原生 <button> + 纯 CSS transition 驱动宽度变化（framer-motion 的 animate.width 在 flex 容器上不生效）
+                        - whitespace-nowrap + overflow-hidden：宽度变化期间多余空间或临时溢出都不会撑高按钮
+                        - relative z-10：始终盖住后方的取消胶囊，不会让按钮变得透明
+                        - onTransitionEnd：展开动画完成后（width transition 结束）才把文字换回长文案 */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void handleDeleteClick(); }}
+                      className="relative z-10 flex items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-pill border px-3 py-2 text-[12px]"
+                      style={{
+                        width: deleteBtnWidths
+                          ? (widthPhase === "confirm1" ? deleteBtnWidths.confirm1 : deleteBtnWidths.idle)
+                          : "auto",
+                        backgroundColor: deleteStep === "confirm1" ? "#fff0ee" : "#f8f5f1",
+                        borderColor: deleteStep === "confirm1" ? "#d85a30" : "#e0d8d0",
+                        color: deleteStep === "confirm1" ? "#d85a30" : "#888888",
+                        fontWeight: deleteStep === "confirm1" ? 700 : 600,
+                        // 首次测量前关闭 transition，避免首帧从 auto → 测量值的多余动画
+                        transition: deleteBtnWidths
+                          ? "width 0.45s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1), color 0.45s cubic-bezier(0.4, 0, 0.2, 1)"
+                          : "none",
+                      }}
+                      onTransitionEnd={(e) => {
+                        if (e.propertyName === "width" && deleteStep === "idle" && deleteBtnLabel !== "idle") {
+                          setDeleteBtnLabel("idle");
+                        }
+                      }}
+                    >
+                      <span className="flex-none leading-none">
+                        <Trash2 size={14} strokeWidth={2} />
+                      </span>
+                      <span className="whitespace-nowrap">
+                        {deleteBtnLabel === "idle" ? "删除这条记录" : "确认删除"}
+                      </span>
+                    </button>
+
+                    {/* 取消胶囊：从删除按钮后方向右飞出；exit 与 enter 用精确镜像的 bezier，整套动画为完全倒放 */}
+                    <AnimatePresence>
+                      {deleteStep === "confirm1" && (
+                        <motion.button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setDeleteStep("idle"); }}
+                          className="ml-2 whitespace-nowrap rounded-pill border border-muted bg-surface px-3 py-2 text-[12px] font-semibold text-dim"
+                          initial={{ x: -80, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1, transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] } }}
+                          exit={{ x: -80, opacity: 0, transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] } }}
+                        >
+                          取消
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1111,6 +1323,7 @@ export function TransactionDetailPage({
       <CompactCategoryModal
         visible={isCategoryModalOpen}
         categories={availableCategories}
+        categoryVisuals={categoryVisuals}
         selectedCategory={selectedCategory}
         onClose={() => setIsCategoryModalOpen(false)}
         onSelect={handleSelectCategory}

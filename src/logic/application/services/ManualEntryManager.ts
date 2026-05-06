@@ -62,23 +62,21 @@ export class ManualEntryManager {
     if (!existingRecord) {
       return;
     }
-    if (existingRecord.sourceType !== 'manual') {
-      throw new Error(`Record is not a manual entry: ${id}`);
-    }
 
     const linkedId = existingRecord.linked_tx_id;
     const linkedStatus = existingRecord.dedup_status;
 
     await this.ledgerService.deleteSingleRecord(id);
 
-    if (existingRecord.sourceType === 'manual') {
-      await ExampleStore.deleteByTxId(ledgerName, id);
-      /**
-       * 手记样本删除会改变学习窗口的净变更集，
-       * 因此删除后也应重新评估自动学习触发条件。
-       */
-      void LearningAutomationService.evaluateAndRun(ledgerName, this.ledgerService.getCategories());
-    }
+    /**
+     * 非随手记条目（账单导入）在用户手动改过分类后也会写入实例库（LedgerService.patchRecord 路径）。
+     * 因此删除时不区分来源，统一尝试清理实例库，避免孤悬样本影响后续 AI 参考。
+     */
+    await ExampleStore.deleteByTxId(ledgerName, id);
+    /**
+     * 样本变更会影响学习窗口净变更集，删除后重新评估自动学习触发条件。
+     */
+    void LearningAutomationService.evaluateAndRun(ledgerName, this.ledgerService.getCategories());
 
     if (linkedId && linkedStatus === 'merged') {
       await this.ledgerService.patchRecord(linkedId, {

@@ -693,6 +693,18 @@ export class AppFacade {
   }
 
   /**
+   * 删除任意来源的单条交易记录。
+   * ManualEntryManager.deleteEntry 已统一清理实例库、学习评估与 dedup 关联，
+   * 不再区分 manual 与账单导入来源。
+   */
+  public async deleteTransaction(id: string): Promise<void> {
+    const ledgerId = this.ledgerManager.getActiveLedgerName();
+    if (!ledgerId) throw new Error('No active ledger');
+    await this.manualEntryManager.deleteEntry(ledgerId, id);
+    this.notify();
+  }
+
+  /**
    * 构建记账页"最近流水参考区"。
    * 规则（来自 Integration Spec §4.4）：
    * - 取当前账本下日期最新的一天

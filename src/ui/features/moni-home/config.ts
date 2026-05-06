@@ -44,52 +44,17 @@ export const C = {
 } as const;
 
 // ──────────────────────────────────────────────
-// 分类系统
+// 分类视觉系统
 // ──────────────────────────────────────────────
 
-/** 单个分类的视觉配置 */
-export interface CategoryVisual {
-  color: string;
-  bg: string;
-  icons: string[];
-}
-
-/** 全局分类视觉映射（中文分类名 → 视觉配置） */
-export const CAT: Record<string, CategoryVisual> = {
-  正餐:  { color: "#D85A30", bg: C.pinkBg,    icons: ["🍜", "🍱", "🍚", "🥡"] },
-  零食:  { color: "#854F0B", bg: "#FFF8EB",   icons: ["☕", "🧋", "🍪", "🍦"] },
-  交通:  { color: "#185FA5", bg: C.blueBg,    icons: ["🚇", "🚕", "⛽", "🚌"] },
-  娱乐:  { color: "#7B2D8B", bg: "#F6EEFA",   icons: ["🎬", "🎮", "🎵", "🎭"] },
-  大餐:  { color: "#8B2252", bg: "#FFF0F5",   icons: ["🍷", "🥘", "🦞", "🍣"] },
-  健康:  { color: "#1A7A4C", bg: "#EEFAF3",   icons: ["💊", "🏥", "💪", "🧘"] },
-  购物:  { color: "#534AB7", bg: "#F3EEFA",   icons: ["🛍️", "📦", "👕", "🎁"] },
-  教育:  { color: "#2D6A9F", bg: "#EDF5FC",   icons: ["📚", "🎓", "✏️", "💻"] },
-  居住:  { color: "#6B5B3E", bg: "#FBF6EE",   icons: ["🏠", "💡", "🔧", "🚿"] },
-  旅行:  { color: "#0E7C6B", bg: "#E8FAF5",   icons: ["✈️", "🏨", "🎫", "🗺️"] },
-  其他:  { color: "#666",    bg: "#F5F5F5",   icons: ["📝", "💰", "🔖", "📌"] },
-};
-
-/** 分类概览横条图使用的色值（与 CAT 独立，以视觉平衡为准） */
-export const OVERVIEW_COLORS: Record<string, string> = {
-  正餐:  C.coral,
-  零食:  "#F3C86B",
-  交通:  C.blue,
-  娱乐:  "#C8A7E8",
-  大餐:  "#E7A0AE",
-  健康:  "#77D7BF",
-  购物:  "#AFA5E6",
-  教育:  "#93C4EA",
-  居住:  "#C9B18E",
-  旅行:  "#87D7C4",
-  其他:  C.gray,
-  未分类: C.amber,
-};
-
-/** 默认分类顺序（与 CAT 键顺序一致） */
-export const CATEGORY_ORDER = Object.keys(CAT);
-
-/** 分类筛选轨道选项（"全部" + 所有分类 + "未分类"） */
-export const FILTERS = ["全部", ...CATEGORY_ORDER, "未分类"];
+/**
+ * 分类视觉已迁移到 `src/ui/shared/categoryVisuals.ts` 统一维护：
+ * - 默认标签的兼容视觉
+ * - 用户自定义标签的动态配色
+ * - 首页 / 详情页 / 记账页的共用图标语义
+ *
+ * 这里不再保留任何按分类名硬编码的旧映射表，避免未来维护时误接回旧系统。
+ */
 
 // ──────────────────────────────────────────────
 // UI 常量

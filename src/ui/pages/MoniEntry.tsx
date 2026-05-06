@@ -13,7 +13,6 @@ import {
   APP_HEADER_MIN_HEIGHT,
   APP_HEADER_PADDING_TOP,
   C,
-  CAT,
   FULL_SCREEN_OVERLAY_Z_INDEX,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
@@ -24,6 +23,12 @@ import { appFacade } from "@bootstrap/appFacade";
 import type { ManualEntryInput } from "@logic/application/services/ManualEntryManager";
 import type { BillImportSource, LedgerOption } from "@shared/types";
 import { ImportGuidePage } from "@ui/pages/ImportGuidePage";
+import {
+  buildCategoryVisualRegistry,
+  pickCategoryIcon,
+  resolveCategoryVisual,
+  type CategoryVisual,
+} from "@ui/shared/categoryVisuals";
 
 // ──────────────────────────────────────────────
 // 子组件
@@ -560,9 +565,10 @@ interface CategoryOverlayProps {
   onSelect: (category: string) => void;
   onClose: () => void;
   availableCategories: string[];
+  categoryVisuals: Record<string, CategoryVisual>;
 }
 
-function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, onClose, availableCategories }: CategoryOverlayProps) {
+function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, onClose, availableCategories, categoryVisuals }: CategoryOverlayProps) {
   if (!visible) return null;
   if (typeof document === "undefined") return null;
 
@@ -595,8 +601,8 @@ function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, o
         }}
       >
         {availableCategories.map((category) => {
-          const meta = CAT[category];
-          if (!meta) return null;
+          const visual = resolveCategoryVisual(category, categoryVisuals);
+          if (!visual) return null;
           return (
             <div
               key={category}
@@ -604,7 +610,7 @@ function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, o
               onClick={() => onSelect(category)}
               style={{
                 background: C.white,
-                border: `2.5px solid ${hoverCat === category ? meta.color : C.border}`,
+                border: `2.5px solid ${hoverCat === category ? visual.color : C.border}`,
                 borderRadius: 12,
                 padding: "10px 8px 12px",
                 textAlign: "center",
@@ -614,8 +620,8 @@ function CategoryOverlay({ visible, hoverCat, dragPoint, isDragging, onSelect, o
                 boxShadow: hoverCat === category ? "0 8px 18px rgba(0,0,0,.14)" : "0 1px 0 rgba(0,0,0,.04)",
               }}
             >
-              <div style={{ fontSize: 20, marginBottom: 2 }}>{meta.icons[0]}</div>
-              <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700, color: meta.color, wordBreak: "break-word" }}>{category}</div>
+              <div style={{ fontSize: 20, marginBottom: 2 }}>{pickCategoryIcon(visual, 0)}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700, color: visual.color, wordBreak: "break-word" }}>{category}</div>
             </div>
           );
         })}
@@ -651,9 +657,10 @@ interface EntryFormPanelProps {
   directionRef: React.MutableRefObject<"in" | "out">;
   onSave: (entry: ManualEntryInput) => void;
   onClose: () => void;
+  categoryVisuals: Record<string, CategoryVisual>;
 }
 
-function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: EntryFormPanelProps) {
+function EntryFormPanel({ visible, category, directionRef, onSave, onClose, categoryVisuals }: EntryFormPanelProps) {
   const BOTTOM_DISMISS_ZONE_HEIGHT = 88;
   const DRAG_CLOSE_THRESHOLD = 34;
   const [amount, setAmount] = useState("");
@@ -732,8 +739,8 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
   if (!visible || !category) return null;
   if (typeof document === "undefined") return null;
 
-  const meta = CAT[category];
-  if (!meta) return null;
+  const visual = resolveCategoryVisual(category, categoryVisuals);
+  if (!visual) return null;
   const canSave = amount && Number(amount) > 0;
 
   return createPortal(
@@ -779,12 +786,12 @@ function EntryFormPanel({ visible, category, directionRef, onSave, onClose }: En
           style={{
             display: "flex", alignItems: "center", gap: 10, marginBottom: 18,
             padding: "10px 14px", borderRadius: 12,
-            background: meta.bg, border: `1.5px solid ${meta.color}22`,
+            background: visual.bg, border: `1.5px solid ${visual.color}22`,
           }}
         >
-          <span style={{ fontSize: 28 }}>{meta.icons[0]}</span>
+          <span style={{ fontSize: 28 }}>{pickCategoryIcon(visual, 0)}</span>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: meta.color }}>{category}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: visual.color }}>{category}</div>
             <div style={{ fontSize: 11, color: C.sub }}>分类已选定，填写详情</div>
           </div>
         </div>
@@ -1047,8 +1054,17 @@ export default function MoniEntry({
     actions,
   } = useMoniEntryData();
 
+  /**
+   * 记账页也复用统一分类视觉注册表。
+   * 这样拖拽投放区、顶部详情输入层、最近流水参考区的视觉语义才能完全一致。
+   */
+  const categoryVisuals = useMemo(
+    () => buildCategoryVisualRegistry(categoryDefinitions),
+    [categoryDefinitions],
+  );
+
   const availableCategories = useMemo(
-    () => categoryDefinitions.map((c) => c.key).filter((k) => k && k !== "uncategorized" && CAT[k]),
+    () => categoryDefinitions.map((c) => c.key).filter((k) => k && k !== "uncategorized"),
     [categoryDefinitions],
   );
 
@@ -1056,19 +1072,19 @@ export default function MoniEntry({
     () =>
       recentReferences.map((ref) => {
         const cat = ref.category;
-        const meta = cat ? CAT[cat] : null;
+        const visual = resolveCategoryVisual(cat, categoryVisuals);
         return {
           id: ref.id,
           title: ref.title,
           amount: ref.amount,
           category: cat,
-          emoji: meta ? meta.icons[0] : "📝",
-          categoryColor: meta ? meta.color : C.muted,
-          categoryBg: meta ? meta.bg : "#F5F5F5",
+          emoji: pickCategoryIcon(visual, 0),
+          categoryColor: visual ? visual.color : C.muted,
+          categoryBg: visual ? visual.bg : "#F5F5F5",
           direction: ref.direction,
         };
       }),
-    [recentReferences],
+    [categoryVisuals, recentReferences],
   );
 
   const [phase, setPhase] = useState<Phase>("idle");
@@ -1554,9 +1570,17 @@ export default function MoniEntry({
         onSelect={openEntryForm}
         onClose={closeOverlay}
         availableCategories={availableCategories}
+        categoryVisuals={categoryVisuals}
       />
 
-      <EntryFormPanel visible={phase === "form"} category={selectedCat} directionRef={directionRef} onSave={handleSave} onClose={closeOverlay} />
+      <EntryFormPanel
+        visible={phase === "form"}
+        category={selectedCat}
+        directionRef={directionRef}
+        onSave={handleSave}
+        onClose={closeOverlay}
+        categoryVisuals={categoryVisuals}
+      />
       <SuccessToast visible={showToast} entry={toastEntry} />
       {pendingPasswordImport ? (
         <ImportPasswordPage

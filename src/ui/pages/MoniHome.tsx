@@ -42,6 +42,7 @@ import { useMoniHomeData } from "@ui/hooks/useMoniHomeData";
 import { useBackHandler } from "@ui/hooks/useBackHandler";
 import { useHomeListGestureController } from "@ui/hooks/useHomeListGestureController";
 import type { LedgerOption } from "@shared/types";
+import { buildCategoryVisualRegistry } from "@ui/shared/categoryVisuals";
 
 
 interface DragLock {
@@ -98,6 +99,7 @@ export default function MoniHome({
     totalTransactionCount,
     trendCard,
     currentLedger,
+    categoryDefinitions,
     hintCards,
     hasBudget,
     budgetCard,
@@ -171,6 +173,35 @@ export default function MoniHome({
     const categories = availableCategories.filter((category) => category && category !== "uncategorized");
     return ["全部", "未分类", ...categories];
   }, [availableCategories]);
+
+  /**
+   * 首页所有分类视觉都从同一份 registry 读取。
+   * 这样日卡、概览、拖拽投放格、详情页就不会再各自维护硬编码映射。
+   */
+  const categoryVisuals = useMemo(
+    () => buildCategoryVisualRegistry(categoryDefinitions),
+    [categoryDefinitions],
+  );
+
+  /**
+   * 概览与拖拽投放区都应使用账本当前真实分类顺序。
+   * 若某些旧数据分类仍短暂存在于记录里但当前定义里已没有，也在末尾补上，
+   * 避免出现“条目有标签，但概览和投放区完全没有这个分类”的断裂。
+   */
+  const orderedCategoryKeys = useMemo(() => {
+    const keys = categoryDefinitions
+      .map((definition) => definition.key)
+      .filter((key) => key && key !== "uncategorized");
+
+    const extraKeys = Array.from(new Set(
+      realDays
+        .flatMap((day) => day.items)
+        .map((item) => getCategory(item))
+        .filter((key): key is string => Boolean(key && key !== "uncategorized")),
+    )).filter((key) => !keys.includes(key));
+
+    return [...keys, ...extraKeys];
+  }, [categoryDefinitions, realDays]);
 
   useEffect(() => {
     if (!railFilters.includes(selectedFilter)) {
@@ -384,7 +415,10 @@ export default function MoniHome({
     ? 0
     : realIncome.filter((item) => isInRange(item.date, committedIncomeRange)).reduce((sum, item) => sum + item.amount, 0);
   const txCount = committedRangeSelection.applied.isEmpty ? 0 : totalTransactionCount;
-  const overview = useMemo(() => buildOverview(expenseItems), [expenseItems]);
+  const overview = useMemo(
+    () => buildOverview(expenseItems, orderedCategoryKeys),
+    [expenseItems, orderedCategoryKeys],
+  );
 
   const budgetPct = budgetCard ? Math.round(budgetCard.usageRatio * 100) : 0;
   const budgetColor = budgetCard
@@ -896,7 +930,12 @@ export default function MoniHome({
           isCustom={rangeMode === "自定义"}
         />
 
-        <OverviewCard rangeLabel={committedRangeSelection.label} overview={overview} onOpen={openRangeDialog} />
+        <OverviewCard
+          rangeLabel={committedRangeSelection.label}
+          overview={overview}
+          categoryVisuals={categoryVisuals}
+          onOpen={openRangeDialog}
+        />
 
         <div
           ref={railRef}
@@ -919,6 +958,7 @@ export default function MoniHome({
               onItemPointerMove={gesture.onItemPointerMove}
               onItemPointerUp={gesture.onItemPointerUp}
               onItemPointerCancel={gesture.onItemPointerCancel}
+              categoryVisuals={categoryVisuals}
               dayRef={(node) => { dayRefs.current[day.id] = node; }}
             />
           ))}
@@ -972,7 +1012,8 @@ export default function MoniHome({
         panelState={dragPanelState}
         onDrop={handleDropCategory}
         onClose={() => { unlockDragScroll(); resetDragOverlay(); }}
-        availableCategories={availableCategories}
+        availableCategories={orderedCategoryKeys}
+        categoryVisuals={categoryVisuals}
       />
 
       <ReasonDialog
@@ -992,11 +1033,16 @@ export default function MoniHome({
         <TransactionDetailPage
           transaction={detailContext.item}
           dayId={detailContext.dayId}
-          availableCategories={availableCategories}
+          availableCategories={orderedCategoryKeys}
+          categoryVisuals={categoryVisuals}
           onClose={() => setDetailTxId(null)}
           onUpdateCategory={actions.updateCategory}
           onUpdateUserReasoning={actions.updateUserReasoning}
           onSetTransactionVerification={actions.setTransactionVerification}
+          onDeleteTransaction={async (id) => {
+            await actions.deleteTransaction(id);
+            setDetailTxId(null);
+          }}
         />
       )}
 

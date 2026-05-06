@@ -14,9 +14,7 @@ import {
   APP_HEADER_MIN_HEIGHT,
   APP_HEADER_PADDING_TOP,
   C,
-  CAT,
   LEDGER_HEADER_CONTROL_WIDTH,
-  OVERVIEW_COLORS,
 } from "./config";
 import {
   getCategory,
@@ -27,13 +25,19 @@ import {
   type OverviewItem,
 } from "./helpers";
 import type { LedgerOption } from "@shared/types";
+import {
+  pickCategoryIcon,
+  resolveCategoryVisual,
+  UNCLASSIFIED_CATEGORY_VISUAL,
+  type CategoryVisual,
+} from "@ui/shared/categoryVisuals";
 
 // ──────────────────────────────────────────────
 // 内部常量
 // ──────────────────────────────────────────────
 
 /** 未分类斜线条纹背景（用于图标区和概览横条） */
-const UNCLASSIFIED_STRIPE = `repeating-linear-gradient(45deg,${OVERVIEW_COLORS["未分类"]}22,${OVERVIEW_COLORS["未分类"]}22 3px,${OVERVIEW_COLORS["未分类"]}55 3px,${OVERVIEW_COLORS["未分类"]}55 6px)`;
+const UNCLASSIFIED_STRIPE = `repeating-linear-gradient(45deg,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}22,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}22 3px,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}55 3px,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}55 6px)`;
 
 /**
  * 拖拽细则面板的统一几何常量。
@@ -108,7 +112,7 @@ export interface HomeTransaction {
   isVerified?: boolean;
   /** 最后更新时间 */
   updatedAt?: string | null;
-  /** 图标变体索引（对应 CAT[category].icons[ih % 4]） */
+  /** 图标变体索引（交给统一分类视觉系统决定取哪一个图标变体） */
   ih: number;
 }
 
@@ -466,12 +470,14 @@ export function RootLedgerPageHeader({
 interface TagChipProps {
   /** 分类名（中文），为 null 时不渲染 */
   category?: string | null;
+  /** 当前页面已构建好的分类视觉注册表 */
+  categoryVisuals?: Record<string, CategoryVisual>;
   /** 显示未分类警示样式 */
   warning?: boolean;
 }
 
 /** TagChip — 分类标签徽章 */
-export function TagChip({ category, warning }: TagChipProps) {
+export function TagChip({ category, categoryVisuals, warning }: TagChipProps) {
   if (warning) {
     return (
       <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, fontWeight: 700, background: C.pinkBg, color: "#D85A30", border: "1px dashed #D85A30", whiteSpace: "nowrap" }}>
@@ -480,10 +486,10 @@ export function TagChip({ category, warning }: TagChipProps) {
     );
   }
   if (!category) return null;
-  const meta = CAT[category];
-  if (!meta) return null;
+  const visual = resolveCategoryVisual(category, categoryVisuals);
+  if (!visual) return null;
   return (
-    <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
+    <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 999, fontWeight: 700, background: visual.bg, color: visual.color, whiteSpace: "nowrap" }}>
       {category}
     </span>
   );
@@ -714,11 +720,12 @@ export function DisplayBoard({
 interface OverviewCardProps {
   rangeLabel: string;
   overview: OverviewItem[];
+  categoryVisuals: Record<string, CategoryVisual>;
   onOpen: () => void;
 }
 
 /** OverviewCard — 分类概览横条图 */
-export function OverviewCard({ rangeLabel, overview, onOpen }: OverviewCardProps) {
+export function OverviewCard({ rangeLabel, overview, categoryVisuals, onOpen }: OverviewCardProps) {
   return (
     <div style={{ margin: "6px 16px", background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "10px 14px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -732,8 +739,8 @@ export function OverviewCard({ rangeLabel, overview, onOpen }: OverviewCardProps
             style={{
               width: `${Math.max(item.percent, 4)}%`,
               background: item.category === "未分类"
-                ? `repeating-linear-gradient(45deg,${OVERVIEW_COLORS["未分类"]}33,${OVERVIEW_COLORS["未分类"]}33 2px,${OVERVIEW_COLORS["未分类"]}55 2px,${OVERVIEW_COLORS["未分类"]}55 4px)`
-                : OVERVIEW_COLORS[item.category] ?? C.gray,
+                ? `repeating-linear-gradient(45deg,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}33,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}33 2px,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}55 2px,${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}55 4px)`
+                : (resolveCategoryVisual(item.category, categoryVisuals)?.overviewColor ?? C.gray),
             }}
           />
         ))}
@@ -744,8 +751,10 @@ export function OverviewCard({ rangeLabel, overview, onOpen }: OverviewCardProps
             <span
               style={{
                 width: 6, height: 6, borderRadius: 1.5,
-                background: item.category === "未分类" ? UNCLASSIFIED_STRIPE : OVERVIEW_COLORS[item.category] ?? C.gray,
-                border: item.category === "未分类" ? `1px solid ${OVERVIEW_COLORS["未分类"]}` : "none",
+                background: item.category === "未分类"
+                  ? UNCLASSIFIED_STRIPE
+                  : (resolveCategoryVisual(item.category, categoryVisuals)?.overviewColor ?? C.gray),
+                border: item.category === "未分类" ? `1px solid ${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}` : "none",
                 display: "inline-block",
               }}
             />
@@ -803,6 +812,7 @@ interface DayCardProps {
   day: HomeDayGroup;
   isExpanded: boolean;
   hideCategoryTag?: boolean;
+  categoryVisuals: Record<string, CategoryVisual>;
   /** 该天是否正处于 AI 处理状态（显示流光边框和骨架屏） */
   isAi: boolean;
   /** AI 是否处于软停止过渡状态（显示琥珀色"正在完成…"） */
@@ -816,7 +826,7 @@ interface DayCardProps {
 }
 
 /** DayCard — 按天分组流水卡片（三阶段展开：收起/展开/AI工作态） */
-export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, onItemPointerCancel, dayRef }: DayCardProps) {
+export function DayCard({ day, isExpanded, hideCategoryTag = false, categoryVisuals, isAi, aiStop, onToggle, onItemPointerDown, onItemPointerMove, onItemPointerUp, onItemPointerCancel, dayRef }: DayCardProps) {
   /**
    * 日卡条目已改为“收支混排”，因此头部摘要不能再默认把所有金额都当成支出。
    * 当前展示策略：
@@ -888,7 +898,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
              * - 卡片体继续完整展示当天真实流水，不再用骨架覆盖后续条目。
              */
             const category = getCategory(item);
-            const meta = category ? CAT[category] : null;
+            const visual = resolveCategoryVisual(category, categoryVisuals);
             const sourceBadge = getSourceBadgeVisual(item.sourceType);
             // aiOnly：只有 AI 分类，没有用户确认分类
             const aiOnly = !item.userCat;
@@ -903,8 +913,8 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                 style={{ display: "flex", alignItems: "center", padding: "7px 0", borderBottom: index < day.visibleItems.length - 1 ? `0.5px solid ${C.line}` : "none", cursor: "pointer", userSelect: "none", touchAction: "none" }}
               >
                 {/* 左侧图标区：有分类用 emoji，无分类用斜杠纹 + 问号 */}
-                <div style={{ width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, marginRight: 10, flexShrink: 0, background: category && meta ? meta.bg : UNCLASSIFIED_STRIPE, border: category ? "none" : `1.5px dashed ${OVERVIEW_COLORS["未分类"]}` }}>
-                  {category && meta ? meta.icons[item.ih % meta.icons.length] : <span style={{ fontSize: 13, color: "#D85A30", fontWeight: 700 }}>?</span>}
+                <div style={{ width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, marginRight: 10, flexShrink: 0, background: category && visual ? visual.bg : UNCLASSIFIED_STRIPE, border: category ? "none" : `1.5px dashed ${UNCLASSIFIED_CATEGORY_VISUAL.overviewColor}` }}>
+                  {category && visual ? pickCategoryIcon(visual, item.ih) : <span style={{ fontSize: 13, color: UNCLASSIFIED_CATEGORY_VISUAL.color, fontWeight: 700 }}>?</span>}
                 </div>
                 {/* 中间：商户名 + 分类徽章 + AI 理由 + 时间支付方式 */}
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -929,7 +939,7 @@ export function DayCard({ day, isExpanded, hideCategoryTag = false, isAi, aiStop
                     >
                       {item.sourceLabel?.trim() || sourceBadge.label}
                     </span>
-                    {!hideCategoryTag && (category ? <TagChip category={category} /> : <TagChip warning />)}
+                    {!hideCategoryTag && (category ? <TagChip category={category} categoryVisuals={categoryVisuals} /> : <TagChip warning />)}
                   </div>
                   <div style={{ fontSize: 9, color: C.muted, marginTop: 2, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
                     {/* 手记说明优先显示 user_note，其余条目在 AI 暂定态显示 reasoning */}
@@ -977,30 +987,32 @@ interface DragOverlayProps {
   onClose: () => void;
   /** 当前账本可用分类列表（来自 LedgerService，替代全局 CAT） */
   availableCategories?: string[];
+  /** 当前页面已构建好的分类视觉注册表 */
+  categoryVisuals: Record<string, CategoryVisual>;
 }
 
 /**
  * 拖拽预览卡片需要继承首页原条目的图标语义。
  * 若条目已有分类，则继续使用该分类当前在首页列表中的图标与色彩；仅未分类时回退到问号占位。
  */
-function resolveDragPreviewVisual(item: HomeTransaction) {
+function resolveDragPreviewVisual(item: HomeTransaction, categoryVisuals?: Record<string, CategoryVisual>) {
   const category = getCategory(item);
-  const meta = category ? CAT[category] : null;
-  if (!meta) {
+  const visual = resolveCategoryVisual(category, categoryVisuals);
+  if (!visual) {
     return {
       icon: "?",
-      accentColor: "#D85A30",
+      accentColor: UNCLASSIFIED_CATEGORY_VISUAL.color,
       tileBackground: C.orangeBg,
-      tileBorder: "1.5px dashed #D85A30",
+      tileBorder: `1.5px dashed ${UNCLASSIFIED_CATEGORY_VISUAL.color}`,
       isFallback: true,
     };
   }
 
   return {
-    icon: meta.icons[item.ih % meta.icons.length],
-    accentColor: meta.color,
-    tileBackground: meta.bg,
-    tileBorder: `1.5px solid ${meta.color}33`,
+    icon: pickCategoryIcon(visual, item.ih),
+    accentColor: visual.color,
+    tileBackground: visual.bg,
+    tileBorder: `1.5px solid ${visual.color}33`,
     isFallback: false,
   };
 }
@@ -1014,6 +1026,7 @@ export function DragOverlay({
   onDrop,
   onClose,
   availableCategories,
+  categoryVisuals,
 }: DragOverlayProps) {
   const CATEGORY_ZONE_TOP_MARGIN_PX = 12;
   /**
@@ -1027,7 +1040,7 @@ export function DragOverlay({
   const [panelEntered, setPanelEntered] = useState(false);
   const isExpanded = panelState === "expanded";
   const displayTitle = dragItem ? resolveTransactionDisplayTitle(dragItem) : "未知交易";
-  const previewVisual = dragItem ? resolveDragPreviewVisual(dragItem) : null;
+  const previewVisual = dragItem ? resolveDragPreviewVisual(dragItem, categoryVisuals) : null;
   const displayCategory = dragItem?.userCat?.trim() || dragItem?.aiCat?.trim() || "未分类";
   const detailLine = dragItem?.userCat?.trim()
     ? (dragItem.userNote?.trim() || "")
@@ -1113,8 +1126,8 @@ export function DragOverlay({
     return () => window.cancelAnimationFrame(rafId);
   }, [dragItem]);
 
-  // 使用当前账本可用分类；若未传入则回退到全局 CAT 键
-  const cats = availableCategories ?? Object.keys(CAT);
+  // 使用当前账本可用分类；若未传入则回退到已生成的视觉注册表。
+  const cats = availableCategories ?? Object.keys(categoryVisuals);
   if (!dragItem) return null;
   if (typeof document === "undefined") return null;
 
@@ -1164,8 +1177,8 @@ export function DragOverlay({
           }}
         >
           {cats.map((category) => {
-            const meta = CAT[category];
-            if (!meta) return null;
+            const visual = resolveCategoryVisual(category, categoryVisuals);
+            if (!visual) return null;
             return (
               <div
                 key={category}
@@ -1173,7 +1186,7 @@ export function DragOverlay({
                 onClick={(event) => { event.stopPropagation(); onDrop(category); }}
                 style={{
                   background: C.white,
-                  border: `2.5px solid ${hoverCategory === category ? meta.color : C.border}`,
+                  border: `2.5px solid ${hoverCategory === category ? visual.color : C.border}`,
                   borderRadius: 12,
                   padding: "10px 8px 12px",
                   textAlign: "center",
@@ -1183,8 +1196,8 @@ export function DragOverlay({
                   boxShadow: hoverCategory === category ? "0 8px 18px rgba(0,0,0,.14)" : "0 1px 0 rgba(0,0,0,.04)",
                 }}
               >
-                <div style={{ fontSize: 20, marginBottom: 2 }}>{meta.icons[0]}</div>
-                <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700, color: meta.color, wordBreak: "break-word" }}>{category}</div>
+                <div style={{ fontSize: 20, marginBottom: 2 }}>{pickCategoryIcon(visual, 0)}</div>
+                <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700, color: visual.color, wordBreak: "break-word" }}>{category}</div>
               </div>
             );
           })}

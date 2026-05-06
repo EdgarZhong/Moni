@@ -160,6 +160,7 @@ export interface MoniHomeData {
     updateCategory: (transactionId: string, category: string, reasoning?: string) => void;
     updateUserReasoning: (transactionId: string, note: string) => void;
     setTransactionVerification: (transactionId: string, isVerified: boolean) => void;
+    deleteTransaction: (transactionId: string) => Promise<void>;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
     setHomeDateRange: (range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => void;
@@ -278,6 +279,9 @@ export function useMoniHomeData(): MoniHomeData {
   const setTransactionVerification = useCallback((transactionId: string, isVerified: boolean) => {
     appFacade.setTransactionVerification(transactionId, isVerified);
   }, []);
+  const deleteTransaction = useCallback(async (transactionId: string) => {
+    await appFacade.deleteTransaction(transactionId);
+  }, []);
   const startAiProcessing = useCallback(() => appFacade.startAiProcessing(), []);
   const stopAiProcessing = useCallback(() => {
     appFacade.stopAiProcessing();
@@ -318,6 +322,7 @@ export function useMoniHomeData(): MoniHomeData {
       updateCategory,
       updateUserReasoning,
       setTransactionVerification,
+      deleteTransaction,
       startAiProcessing,
       stopAiProcessing,
       setHomeDateRange: updateHomeDateRange,
@@ -325,6 +330,7 @@ export function useMoniHomeData(): MoniHomeData {
       refresh: loadReadModel,
     }),
     [
+      deleteTransaction,
       loadReadModel,
       setTransactionVerification,
       startAiProcessing,
