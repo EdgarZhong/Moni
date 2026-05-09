@@ -34,7 +34,7 @@
 | A1 | CSV 导入（微信/支付宝） | 🔴 | ✅ 已有 |
 | A2 | 手动记账（随手记）：必填=分类+金额，可选=主题（subject）+描述（description），无独立备注字段 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` |
 | A3 | 手记条目逻辑身份独立（`sourceType: 'manual'`），物理存储与 CSV 导入条目共用同一 `records` 映射 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` §1.2 |
-| A4 | 手记条目学习信号：subject（`product` 字段）非空时作为 D 类实例进入共用实例库，参与分类注入与学习会话 | 🔴 | ✅ 规格已定稿，见 `Moni_Manual_Entry_Spec_v3.md` §3.3 及 `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2 |
+| A4 | 手记条目学习信号：subject（`product` 字段）非空时作为 D 类实例进入共用实例库，参与分类注入与学习会话 | 🔴 | ✅ 规格已定稿，见 `docs/done/Moni_Manual_Entry_Spec_v3.md` §3.3 及 `AI_SELF_LEARNING_DESIGN_v8.md` §2.1.2 |
 | A5 | 随手记语音输入 → AI 解析为结构化条目 | 🟡 | ✅ P2 |
 
 ### 模块 B：AI 智能分类

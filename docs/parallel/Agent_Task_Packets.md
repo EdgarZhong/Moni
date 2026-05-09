@@ -2,7 +2,7 @@
 
 ## 统一前置
 
-- 必读文档：`CLAUDE.md`、`README.md`、`docs/Moni_Homepage_Integration_Spec.md`、`docs/Moni_Budget_System_Spec_v2.md`、`docs/Moni_Manual_Entry_Spec_v3.md`、`docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- 必读文档：`CLAUDE.md`、`README.md`、`docs/done/Moni_Homepage_Integration_Spec.md`、`docs/done/Moni_Budget_System_Spec_v2.md`、`docs/done/Moni_Manual_Entry_Spec_v3.md`、`AI_SELF_LEARNING_DESIGN_v8.md`
 - 目标环境：Android Capacitor
 - 人工测试环境：浏览器 F12 移动端模式
 - worktree 根目录：`/home/edgar/code/moni-worktree`
@@ -28,7 +28,7 @@
 - 写入范围：`src/ui/pages/MoniHome.tsx`、`src/ui/features/moni-home/**`、`src/ui/components/moni/**`、`src/ui/hooks/useMoniHomeData.ts`
 - 不可触碰范围：application facade 内部实现、预算持久化、手记持久化、AI 记忆快照机制、`src/system/**`
 - 依赖前置：等待 Agent 1 的 facade 初版
-- 输入文档：`docs/Moni_Homepage_Integration_Spec.md`
+- 输入文档：`docs/done/Moni_Homepage_Integration_Spec.md`
 - 交付物：首页主舞台联调版、组件状态与动作接线、缺失接口清单
 - 验收标准：页面主要状态改由真实读模型驱动；未越权进入 service 内部；移动端模式下结构可用
 - 风险点：为追 UI 效果擅自补业务逻辑、与 Agent 1 双方各自定义状态模型
@@ -54,7 +54,7 @@
 - 写入范围：`src/logic/application/services/LedgerService.ts`、`src/logic/application/services/ExampleStore.ts`、`src/logic/application/services/**` 下手记相关新文件、`src/shared/types/metadata.ts`
 - 不可触碰范围：首页主舞台 UI、预算系统主体、v7 记忆快照机制、`src/system/**`
 - 依赖前置：可并行启动；若实例库结构被 Agent 5 升级，需要对齐 revision / change log 口径
-- 输入文档：`docs/Moni_Manual_Entry_Spec_v3.md`、`docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- 输入文档：`docs/done/Moni_Manual_Entry_Spec_v3.md`、`AI_SELF_LEARNING_DESIGN_v8.md`
 - 交付物：`ManualEntryManager` 或等价能力、LedgerService 单条写入能力、实例库同步逻辑、去重接口占位
 - 验收标准：手记条目以 `sourceType: 'manual'` 进入主记录；subject 非空时进入实例库；未侵入首页 UI
 - 风险点：与 Agent 5 同改 `ExampleStore.ts`；错误处理和字段映射不一致
@@ -67,7 +67,7 @@
 - 写入范围：`src/logic/application/ai/**`、`src/logic/application/llm/**`、`src/logic/application/services/MemoryManager.ts`、`src/logic/application/services/ExampleStore.ts`、`src/logic/application/services/SnapshotManager.ts`、相关共享类型
 - 不可触碰范围：首页舞台 UI、预算主体、手记页面主体、Capacitor 适配层
 - 依赖前置：高优先级，可立即启动；需与 Agent 4 协调 `ExampleStore` 接口
-- 输入文档：`docs/AI_SELF_LEARNING_DESIGN_v8.md`、`docs/Moni_Manual_Entry_Spec_v3.md`
+- 输入文档：`AI_SELF_LEARNING_DESIGN_v8.md`、`docs/done/Moni_Manual_Entry_Spec_v3.md`
 - 交付物：v7 记忆存储升级、学习窗口变更集能力、PromptBuilder / SystemPrompt 对齐、回退策略说明
 - 验收标准：revision 与 change log 语义清楚；学习失败不推进基线；B 类与 A/C/D 注入口径可区分
 - 风险点：与 Agent 4 冲突在实例库存储层；过度改动现有分类链路

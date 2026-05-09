@@ -55,14 +55,13 @@ src/
 - 品牌身份规范：[docs/design/Moni_Brand_Identity.md](./docs/design/Moni_Brand_Identity.md)
 - 表面系统规范：[docs/design/SURFACE_SYSTEM.md](./docs/design/SURFACE_SYSTEM.md)
 - Design Tokens 唯一代码注册表：[tailwind.config.js](./tailwind.config.js)
-- 首页集成规格：[docs/Moni_Homepage_Integration_Spec.md](./docs/Moni_Homepage_Integration_Spec.md)
-- 零记忆消费风险提示规格：[docs/ZERO_MEMORY_CONSUMPTION_WARNING_SPEC.md](./docs/ZERO_MEMORY_CONSUMPTION_WARNING_SPEC.md)
-- 零记忆弹窗设计页：[docs/design/SPEC_ZeroMemoryWarningDialog.md](./docs/design/SPEC_ZeroMemoryWarningDialog.md)
+- 首页集成早期记录：[docs/done/Moni_Homepage_Integration_Spec.md](./docs/done/Moni_Homepage_Integration_Spec.md)
+- 零记忆消费风险提示对话框规格：[docs/design/spec/SPEC_ZeroMemoryWarningDialog.md](./docs/design/spec/SPEC_ZeroMemoryWarningDialog.md)
 - 产品需求总表：[docs/Moni_Requirements_v3.md](./docs/Moni_Requirements_v3.md)
 - AI 自学习系统 v8：[docs/AI_SELF_LEARNING_DESIGN_v8.md](./docs/AI_SELF_LEARNING_DESIGN_v8.md)
-- 预算系统规格：[docs/Moni_Budget_System_Spec_v2.md](./docs/Moni_Budget_System_Spec_v2.md)
-- 随手记规格：[docs/Moni_Manual_Entry_Spec_v3.md](./docs/Moni_Manual_Entry_Spec_v3.md)
-- 浏览器调试入口与 MCP 验证记录：[docs/Moni_E2E_RECORD_INT1.md](./docs/Moni_E2E_RECORD_INT1.md)
+- 预算系统规格：[docs/done/Moni_Budget_System_Spec_v2.md](./docs/done/Moni_Budget_System_Spec_v2.md)
+- 随手记规格：[docs/done/Moni_Manual_Entry_Spec_v3.md](./docs/done/Moni_Manual_Entry_Spec_v3.md)
+- 浏览器调试入口与 E2E 指南：[docs/Moni_Browser_Debug_Entry_and_E2E_Guide.md](./docs/Moni_Browser_Debug_Entry_and_E2E_Guide.md)
 
 ## 当前稳定状态
 
@@ -146,7 +145,7 @@ npm run build:release
 
 调试入口的字段说明、使用方式、MCP 联调用法与首轮验证记录见：
 
-- [docs/Moni_E2E_RECORD_INT1.md](./docs/Moni_E2E_RECORD_INT1.md)
+- [docs/Moni_Browser_Debug_Entry_and_E2E_Guide.md](./docs/Moni_Browser_Debug_Entry_and_E2E_Guide.md)
 
 当前默认 E2E 测试画像：
 
@@ -163,7 +162,7 @@ npm run build:release
 - Layer 0 品牌身份：`docs/design/Moni_Brand_Identity.md`
 - Layer 1 表面系统：`docs/design/SURFACE_SYSTEM.md`
 - Layer 2 Design Tokens：`tailwind.config.js`
-- Layer 3 页面规格：`docs/` 下对应专项 spec 文档
+- Layer 3 页面规格：`docs/design/spec/` 下对应专项 spec 文档
 
 ## 浏览器 F12 测试系统
 

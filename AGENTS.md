@@ -6,6 +6,7 @@
 - `AGENTS.md`：只记录协作规则、开发原则、文档分工、测试流程和通用验收要求
 - `CLAUDE.md`：只记录当前版本迭代任务看板、剩余风险、优先级、交接状态、阶段性决策，以及按 release 归档的 feature change log
 - 专项规格、专项说明、浏览器调试入口与测试记录统一写入 `docs/`
+- `docs/plans/` 下的文件名必须带日期前缀，不使用抽象无日期命名
 
 ## 基本边界
 
@@ -77,7 +78,7 @@
   - Layer 0：`docs/design/Moni_Brand_Identity.md`
   - Layer 1：`docs/design/SURFACE_SYSTEM.md`
   - Layer 2：`tailwind.config.js`
-  - Layer 3：`docs/` 下对应页面 / 功能 spec 文档
+  - Layer 3：`docs/design/spec/` 下对应页面 / 功能 spec 文档
 - 后续不再使用 `DESIGN.md`、旧主仓库 `design/` 工作台、`/__design` 开发态入口、独立原型仓库工作流作为现行设计规则入口
 - 表现层实现前必须先判断本次变更落在哪一层；组件与页面实现至少先查阅 Layer 1 / Layer 2，以及对应 Layer 3 页面规格
 - Page Spec 只定义结构、字段、交互、状态流转与接口约定；不直接承担品牌层和 token 层的职责
@@ -132,3 +133,5 @@ Release 固定约定：
 - `version`：`0.3.6`
 - `versionCode`：`7`
 - 当前 APK：`release/moni-alpha-v0.3.6.apk`
+
+**注意：**用户使用语音输入，可能包含口误/转录错误，需要注意甄别。

@@ -241,13 +241,17 @@ await this.syncDirtyIndexForTouchedRecords(
 3. **弱化为日志**：保留 revision 用于审计，但不用来防护
    - 问题：失去预防能力
 
+4. **后期复审**：重新评估 `BatchProcessor` 为并发保护引入 revision 的必要性、维护成本与替代模型
+   - 重点看 CAS 粒度是否过细、是否可以改为更简单的账本级版本戳或显式串行化策略
+   - 这条属于后期优化课题，不影响当前已修复的 `bumpRevision` 口径
+
 **当前建议**：保持修复后的现状，继续使用 revision 防护。虽然现实触发率低，但防护成本也低，没必要删除。
 
 ---
 
 ## 参考资料
 
-- 设计规范：`docs/AI_SELF_LEARNING_DESIGN_v7.md`
+- 设计规范：`AI_SELF_LEARNING_DESIGN_v8.md`
 - 实现代码：`src/logic/application/ai/ClassifyQueue.ts`
 - 服务集成：`src/logic/application/services/LedgerService.ts`
 - 运行时数据：`classify_runtime.json` (revision / dirty_count_by_date / queue)

@@ -27,10 +27,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 梳理当前 UI 对 application/service 的访问路径
@@ -74,10 +74,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 等待并消费 Agent 1 的 facade / 读模型初版
@@ -118,10 +118,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 按独立文件方案设计预算配置读写
@@ -164,10 +164,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 落实 `sourceType: 'manual'`
@@ -212,10 +212,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 升级实例库存储结构，支持 revision 与 change log
@@ -259,10 +259,10 @@
 必读文档：
 - `CLAUDE.md`
 - `README.md`
-- `docs/Moni_Homepage_Integration_Spec.md`
+- `docs/done/Moni_Homepage_Integration_Spec.md`
 - `docs/Moni_Budget_System_Spec_v2.md`
 - `docs/Moni_Manual_Entry_Spec_v3.md`
-- `docs/AI_SELF_LEARNING_DESIGN_v8.md`
+- `AI_SELF_LEARNING_DESIGN_v8.md`
 
 具体任务：
 - 核对 Capacitor 配置、文件系统适配、设备能力与 mock 差异

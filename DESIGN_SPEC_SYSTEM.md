@@ -71,7 +71,7 @@ Layer 3 — Page Spec
 
 **内容**：页面区域结构、字段展示规则（含空值处理）、状态流转（用伪代码或状态机表示）、动画时序、与其他系统的接口约定（TypeScript interface + 函数签名）。
 
-**载体**：每个 design scope 一份独立的 spec 文档，如 `SPEC_DragDetailPanel_and_TransactionDetailPage.md`。
+**载体**：每个 design scope 一份独立的 spec 文档，统一放在 `docs/design/spec/` 下，如 `docs/design/spec/SPEC_DragDetailPanel_and_TransactionDetailPage.md`。
 
 **消费者**：编码 agent。这是它的"施工图"。
 

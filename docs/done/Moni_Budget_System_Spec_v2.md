@@ -19,7 +19,7 @@
 ## 1. 参考来源与权重
 
 1. `design/`：UI / UX 设计工作台与已拍板执行标准
-2. `Moni_Homepage_Integration_Spec.md`：首页集成边界与读模型口径
+2. `docs/done/Moni_Homepage_Integration_Spec.md`：首页集成边界与读模型口径
 3. `AI_SELF_LEARNING_DESIGN_v6.md`：存储位置总览、标签管理连锁处理、账本生命周期
 4. `Moni_Requirements_v2.md`：功能需求参考
 5. `Moni_Brand_Design_Spec.md`：品牌色值定义

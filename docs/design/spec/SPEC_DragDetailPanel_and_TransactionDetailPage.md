@@ -5,7 +5,7 @@
 > 本文档覆盖：状态流转、逻辑设计、展示与交互规格  
 > 不覆盖：像素级视觉尺寸、容器排布细节
 
-**边界说明**：本文档只用于补充新增的 `DragDetailPanel`，以及细化 `TransactionDetailPage` 的具体定义；不改写 `docs/Moni_Homepage_Integration_Spec.md`、`docs/Moni_Requirements_v3.md` 等既有固定规格。首页拖拽投放后的可选理由输入仍沿用既有 `ReasonDialog` 口径。
+**边界说明**：本文档只用于补充新增的 `DragDetailPanel`，以及细化 `TransactionDetailPage` 的具体定义；不改写 `docs/done/Moni_Homepage_Integration_Spec.md`、`docs/Moni_Requirements_v3.md` 等既有固定规格。首页拖拽投放后的可选理由输入仍沿用既有 `ReasonDialog` 口径。
 
 ---
 
