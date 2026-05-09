@@ -680,7 +680,7 @@ function AIConfigPage({
   const [selectedModels, setSelectedModels] = useState<Record<string, string>>({
     deepseek: "deepseek-chat",
     moonshot: "kimi-k2.5",
-    siliconflow: "deepseek-ai/DeepSeek-V3",
+    siliconflow: "deepseek-ai/DeepSeek-R1",
     modelscope: "deepseek-ai/DeepSeek-R1",
     zhipu: "GLM-4.6",
   });
@@ -688,7 +688,7 @@ function AIConfigPage({
   const [customModels, setCustomModels] = useState([aiConfig?.activeModel || "custom-model-1", "custom-model-2", "custom-model-3"]);
   const [activeCustomIndex, setActiveCustomIndex] = useState(0);
   const [maxTokensDraft, setMaxTokensDraft] = useState(String(aiConfig?.maxTokens ?? 2000));
-  const [temperatureDraft, setTemperatureDraft] = useState(String(aiConfig?.temperature ?? 0.3));
+  const [temperatureDraft, setTemperatureDraft] = useState(String(aiConfig?.temperature ?? 0.2));
 
   useEffect(() => {
     if (aiConfig?.provider) {
@@ -709,12 +709,41 @@ function AIConfigPage({
       }
     }
     setMaxTokensDraft(String(aiConfig?.maxTokens ?? 2000));
-    setTemperatureDraft(String(aiConfig?.temperature ?? 0.3));
+    setTemperatureDraft(String(aiConfig?.temperature ?? 0.2));
   }, [aiConfig]);
 
   const currentProvider = useMemo(() => PROVIDERS.find((item) => item.id === provider), [provider]);
   const hasApiKey = provider === aiConfig?.provider ? Boolean(aiConfig?.hasApiKey) : false;
   const currentModel = provider === "custom" ? customModels[activeCustomIndex] : selectedModels[provider];
+  /**
+   * 本轮只接通 SiliconFlow 的 thinking 基础设施。
+   * 同时，SiliconFlow 里也只对 DeepSeek-R1 / DeepSeek-V3.2 两个模型做了真实参数透传。
+   * 这里把 UI 约束显式算出来，避免用户在界面里以为“所有 provider / 模型都已经生效”。
+   */
+  const siliconFlowThinkingSupport = useMemo(() => {
+    if (provider !== "siliconflow") {
+      return {
+        enabled: false,
+        note: "本轮仅适配 SiliconFlow。当前供应商不会透传 thinking 参数。",
+      };
+    }
+    if (/DeepSeek-R1/i.test(currentModel)) {
+      return {
+        enabled: true,
+        note: "当前模型已接通 SiliconFlow 推理链路：透传 thinking_budget，并检查返回里的 reasoning_content / reasoning_tokens。",
+      };
+    }
+    if (/DeepSeek-V3\.2/i.test(currentModel)) {
+      return {
+        enabled: true,
+        note: "当前模型已接通 SiliconFlow thinking 模式：透传 enable_thinking + thinking_budget，并检查返回里的 reasoning_content / reasoning_tokens。",
+      };
+    }
+    return {
+      enabled: false,
+      note: "当前 SiliconFlow 模型本轮未接通 thinking 参数透传。请切换到 DeepSeek-R1 或 DeepSeek-V3.2。",
+    };
+  }, [currentModel, provider]);
 
   const statusText = testing
     ? "● 测试中"
@@ -1025,11 +1054,24 @@ function AIConfigPage({
               <span style={{ fontSize: 12, color: C.sub }}>启用思考</span>
               <div
                 onClick={() => {
+                  if (!siliconFlowThinkingSupport.enabled) {
+                    return;
+                  }
                   const next = !thinking;
                   setThinking(next);
                   void onUpdateEnableThinking(next);
                 }}
-                style={{ width: 44, height: 24, borderRadius: 12, background: thinking ? C.mint : C.border, position: "relative", cursor: "pointer" }}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: siliconFlowThinkingSupport.enabled
+                    ? (thinking ? C.mint : C.border)
+                    : C.line,
+                  position: "relative",
+                  cursor: siliconFlowThinkingSupport.enabled ? "pointer" : "not-allowed",
+                  opacity: siliconFlowThinkingSupport.enabled ? 1 : 0.72,
+                }}
               >
                 <div
                   style={{
@@ -1044,6 +1086,9 @@ function AIConfigPage({
                   }}
                 />
               </div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: C.sub }}>
+              {siliconFlowThinkingSupport.note}
             </div>
           </div>
 

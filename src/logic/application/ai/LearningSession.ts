@@ -89,6 +89,7 @@ export interface LearningDeltaPayload {
   to_revision: number;
   upserts: LearningCorrection[];
   deletions: LearningCorrection[];
+  recent_examples: LearningCorrection[];
   current_examples?: LearningCorrection[];
 }
 
@@ -122,6 +123,7 @@ ${memorySection}
 The user message provides either:
 - \`mode: "delta"\`: only net changes since the last successful learning baseline
 - \`mode: "full_reconcile"\`: the change log cannot be trusted, so \`current_examples\` is the full current truth and should be treated as authoritative
+- \`recent_examples\`: the most recent confirmed/corrected examples. They provide recent preference context, and may overlap with the main learning window on purpose.
 
 When \`mode\` is \`full_reconcile\`, do not assume any removed pattern is still valid just because it exists in current memory.
 
@@ -150,17 +152,21 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 4. If newer examples contradict an existing memory entry, MODIFY or DELETE it.
 5. Focus on generalizable patterns, not individual transactions. "杨国福 at 45 yuan was meal" is a correction; "Fast food restaurants under 70 yuan during meal hours → meal" is a pattern.
 6. B examples are the strongest signal because they expose both the wrong path and the corrected answer.
-7. If the examples do not reveal any new or changed pattern, return an empty operations array: \`{"operations": []}\`
-8. Write entries in the same language the user uses (typically Chinese).
+7. If an example's \`user_note\` starts with \`[弱证据]\`, it is weak evidence. It only proves the final category fact. Do not invent the user's motive from it, and do not derive a stable rule from a single weak-evidence example alone.
+8. Prefer signals that future classification can really observe: merchant / counterparty, product / description, amount, time, source type, raw category, payment method, remark, direction, and stable historical category outcomes.
+9. \`user_note\` can help you understand why a past correction happened, but it is NOT a field that future uncategorized transactions normally have. Never create a rule that requires a future \`user_note\` to execute.
+10. Separate entity memory from generalized rules. One memory entry must be either a concrete entity-specific preference or a cross-entity general rule. Never mix both in the same entry.
+11. If you have both an entity-specific insight and a generalized rule, split them into two entries rather than mixing them.
+12. If you only have evidence about one concrete merchant / counterparty / platform, prefer an entity memory. Do not generalize too early without support from multiple entities.
+13. If the examples do not reveal any new or changed pattern, return an empty operations array: \`{"operations": []}\`
+14. Write entries in the same language the user uses (typically Chinese).
 `;
   }
 
   /**
    * 构建 User Message
    */
-  private static buildLearningUserMessage(delta: LearningExampleDelta): string {
-    const payload = this.buildLearningPayload(delta);
-
+  private static buildLearningUserMessage(payload: LearningDeltaPayload): string {
     return `以下是本次学习窗口的实例库数据：
 
 ${JSON.stringify(payload, null, 2)}
@@ -189,7 +195,7 @@ ${JSON.stringify(payload, null, 2)}
       ai_category: example.ai_category,
       ai_reasoning: example.ai_reasoning,
       is_verified: example.is_verified,
-      user_note: example.user_note
+      user_note: ExampleStore.toPromptUserNote(example.user_note)
     };
   }
 
@@ -197,13 +203,17 @@ ${JSON.stringify(payload, null, 2)}
    * 供运行时和浏览器调试入口共用的学习 payload 构造器。
    * 这样 E2E 可以直接断言 rich schema，而不是只通过字符串猜测 Prompt 内容。
    */
-  public static buildLearningPayload(delta: LearningExampleDelta): LearningDeltaPayload {
+  public static buildLearningPayload(
+    delta: LearningExampleDelta,
+    recentExamples: ExampleEntry[] = []
+  ): LearningDeltaPayload {
     return {
       mode: delta.mode === 'incremental' ? 'delta' : 'full_reconcile',
       from_revision: delta.lastLearnedRevision,
       to_revision: delta.currentRevision,
       upserts: delta.upserts.map(example => this.simplifyExample(example)),
       deletions: delta.deletions.map(example => this.simplifyExample(example)),
+      recent_examples: recentExamples.map(example => this.simplifyExample(example)),
       current_examples:
         delta.mode === 'full_reconcile'
           ? (delta.allEntries ?? []).map(example => this.simplifyExample(example))
@@ -249,7 +259,10 @@ ${JSON.stringify(payload, null, 2)}
       }
 
       const systemPrompt = this.generateLearningSystemPrompt(categories, currentMemory);
-      const userMessage = this.buildLearningUserMessage(delta);
+      const recentExamples = await ExampleStore.getRecentEntries(ledgerName, 30);
+      const userMessage = this.buildLearningUserMessage(
+        this.buildLearningPayload(delta, recentExamples)
+      );
 
       const configManager = ConfigManager.getInstance();
       const llmConfig = await configManager.getActiveModelConfig();
@@ -258,7 +271,9 @@ ${JSON.stringify(payload, null, 2)}
         apiKey: llmConfig.apiKey,
         baseUrl: llmConfig.baseUrl,
         model: llmConfig.model,
-        temperature: llmConfig.temperature
+        temperature: llmConfig.temperature,
+        maxTokens: llmConfig.maxTokens,
+        enableThinking: llmConfig.enableThinking,
       });
 
       const messages = [

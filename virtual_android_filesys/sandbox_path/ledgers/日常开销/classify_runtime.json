@@ -1,23 +1,11 @@
 {
   "version": "1.0",
-  "revision": 9,
+  "revision": 30,
   "metrics": {
     "emptyTaskConsumedCount": 0,
     "lastEmptyTaskDate": null
   },
   "queue": [
-    {
-      "date": "2026-04-20",
-      "enqueuedAt": 1778045416160
-    },
-    {
-      "date": "2026-04-19",
-      "enqueuedAt": 1778045416160
-    },
-    {
-      "date": "2026-04-18",
-      "enqueuedAt": 1778045416160
-    },
     {
       "date": "2026-04-17",
       "enqueuedAt": 1778045416160
@@ -176,9 +164,6 @@
     }
   ],
   "dirty_count_by_date": {
-    "2026-04-20": 6,
-    "2026-04-19": 9,
-    "2026-04-18": 4,
     "2026-04-17": 5,
     "2026-04-15": 6,
     "2026-04-14": 8,

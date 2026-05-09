@@ -22,8 +22,8 @@ const EMPTY_AI_CONFIG: SettingsAiConfig = {
   candidateModels: [],
   activeModel: '',
   maxTokens: 4096,
-  temperature: 0.3,
-  enableThinking: false,
+  temperature: 0.2,
+  enableThinking: true,
 };
 
 const EMPTY_LEARNING: SettingsLearningConfig = {

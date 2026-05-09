@@ -67,7 +67,7 @@ export class PromptBuilder {
           direction: tx.direction,
           counterparty: tx.counterparty,
           description: tx.product || tx.remark,
-          source: tx.sourceType,
+          sourceType: tx.sourceType,
           raw_category: tx.rawClass
         }))
       }))

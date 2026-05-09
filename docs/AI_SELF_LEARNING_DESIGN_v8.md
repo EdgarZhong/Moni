@@ -1309,12 +1309,12 @@ export const generateSystemPrompt = (config: SystemPromptConfig = { language: 'C
 ### Input Format
 The user will provide a JSON object with the following structure:
 - **category_list**: An object mapping category keys to their natural-language descriptions (e.g., {"meal": "Daily meals for two...", "others": "Everything else..."}). You MUST only use keys from this object.
-- **reference_corrections**: 实例库注入的参考案例对象，运行时分为 `misclassified_examples` 与 `confirmed_examples` 两个区块。每个区块内部再按 `time` 升序排列。`ai_reasoning` 和 `user_note` 始终作为字符串存在，可为空。遇到相似交易时必须遵循这些案例。
+- **reference_corrections**: 实例库注入的参考案例对象。当前实现分为四个区块：`recent_misclassified_examples`、`recent_confirmed_examples`、`retrieved_misclassified_examples`、`retrieved_confirmed_examples`。前两者强调近期偏好，后两者强调与当前待分类交易的语义相关性；最近样本与检索样本允许重复出现。`ai_reasoning` 和 `user_note` 始终作为字符串存在；若 `user_note` 以 `[弱证据]` 开头，表示用户未提供原因，只能作为最终分类事实，不可直接归纳稳定规则。遇到相似交易时必须综合这些案例。
   - `id`, `time`, `sourceType`, `rawClass`
   - `counterparty`, `product`, `amount`, `direction`
   - `paymentMethod`, `transactionStatus`, `remark`
   - `category`, `is_verified`
-  - B 类区块额外含 `ai_category`（前缀 `[错误判断] `）、`ai_reasoning`（前缀 `[错误判断] `）；A+C+D 区块含 `user_note`
+  - `*_misclassified_examples` 区块额外含 `ai_category`（前缀 `[错误判断] `）、`ai_reasoning`（前缀 `[错误判断] `）；`*_confirmed_examples` 区块含 `user_note`
 - **days**: An array of day-grouped transaction batches. Each day object contains:
   - \`date\`: The date of the transactions (YYYY-MM-DD).
   - \`weekday\`: The day of the week.

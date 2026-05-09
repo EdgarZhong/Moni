@@ -448,5 +448,48 @@
       "user_note": "在糖酒便利店买的关东煮，一般来说价格接近20左右。而且和甜蜜角落咖啡馆那个是同一个晚餐时段的。加在一起，显然是40左右，明显的双人金额。",
       "is_verified": true
     }
+  },
+  {
+    "revision": 19,
+    "type": "upsert",
+    "id": "24b4a8b67556a152",
+    "before": {
+      "id": "24b4a8b67556a152",
+      "created_at": "2026-05-06T05:33:15.901Z",
+      "time": "2026-05-03 13:17:54",
+      "sourceType": "alipay",
+      "rawClass": "文化休闲",
+      "counterparty": "美团",
+      "product": "小巷青花椒鱼-美团App-26050311100300001303346694613624",
+      "amount": 20.9,
+      "direction": "out",
+      "paymentMethod": "广发银行信用卡(6885)",
+      "transactionStatus": "SUCCESS",
+      "remark": "",
+      "category": "其他",
+      "ai_category": "正餐",
+      "ai_reasoning": "外卖正餐，金额适中",
+      "user_note": "这是单人的，不是双人用餐。",
+      "is_verified": true
+    },
+    "after": {
+      "id": "24b4a8b67556a152",
+      "created_at": "2026-05-09T13:53:42.072Z",
+      "time": "2026-05-03 13:17:54",
+      "sourceType": "alipay",
+      "rawClass": "文化休闲",
+      "counterparty": "美团",
+      "product": "小巷青花椒鱼-美团App-26050311100300001303346694613624",
+      "amount": 20.9,
+      "direction": "out",
+      "paymentMethod": "广发银行信用卡(6885)",
+      "transactionStatus": "SUCCESS",
+      "remark": "",
+      "category": "测试标签",
+      "ai_category": "正餐",
+      "ai_reasoning": "外卖正餐，金额适中",
+      "user_note": "测试变更之后的 UI 行为表现。",
+      "is_verified": true
+    }
   }
 ]

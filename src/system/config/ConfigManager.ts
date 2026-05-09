@@ -45,7 +45,11 @@ const DEFAULT_CONFIG: MultiProviderConfig = {
   candidateModels: ['deepseek::deepseek-chat'],
   globalParams: {
     maxTokens: 2000,
-    temperature: 0.3,
+    /**
+     * 本轮按自学习改造文档固定默认温度为 0.2。
+     * 这里是全局默认入口，分类 / 学习 / 收编都会从这条链路继承。
+     */
+    temperature: 0.2,
     enableThinking: true
   },
   ui: {
@@ -63,6 +67,7 @@ export interface LLMConfig {
   model: string;
   maxTokens: number;
   temperature: number;
+  enableThinking: boolean;
 }
 
 export class ConfigManager {
@@ -102,7 +107,7 @@ export class ConfigManager {
                  candidateModels: [`custom::${parsed.model || 'default-model'}`],
                  globalParams: {
                      maxTokens: parsed.maxTokens || 2000,
-                     temperature: parsed.temperature || 0.3,
+                     temperature: parsed.temperature || 0.2,
                      enableThinking: parsed.enableThinking ?? true
                  }
              };
@@ -214,7 +219,8 @@ export class ConfigManager {
           baseUrl: provider?.baseUrl || '',
           model: modelName || 'default',
           maxTokens: config.globalParams.maxTokens,
-          temperature: resolvedTemperature
+          temperature: resolvedTemperature,
+          enableThinking: config.globalParams.enableThinking ?? true
       };
   }
 

@@ -10,7 +10,7 @@
 ## 当前版本状态
 
 - 当前已发布稳定版本：`0.3.7`
-- 下一版本：待定义
+- 下一版本：版本号待定；当前阶段主题为“AI 自学习系统第一轮低成本精度优化”
 - 首页、记账页、设置页主要持久化链路以 `0.3.0` 为当前稳定基线
 
 ## 阶段基线
@@ -23,11 +23,14 @@
 
 - 本轮阶段按 `0.3.6 -> 0.3.7` 两个 release 里程碑收口：先完成返回手势、零记忆提示、分类索引与 UI / UX 收敛，再用 `0.3.7` 收尾 demo seed release 链路
 - 现有设计规格体系与页面规格路径统一收口到 `docs/design/spec/`
+- 当前任务优先级列表允许跨阶段并存；凡未完成事项，即使已推后或不属于本轮主线，也不得从优先级追踪中移除
+- AI 自学习系统第一轮优化中的“推理 / 思考模式基础设施”本轮只适配 `SiliconFlow`；其他供应商暂不实现 provider-specific thinking 参数透传，设置界面必须如实体现该限制
 下一个阶段开始重新维护。
 
 ## 进度同步
 
 - 本轮阶段内已确认的页面语义、真机反馈与字体口径，全部已迁移到 `Release Changelog` 或当前任务看板，不再保留阶段流水
+- 自学习相关文档当前分工固定为：`docs/AI_SELF_LEARNING_DESIGN_v8.md` 负责长期目标规格，`docs/自学习系统改进变更_v0.3.md` 负责本轮低成本精度优化实施项
 - 当前只维护尚未结束的修复项与后续排查项
 下一个阶段开始重新维护。
 
@@ -120,12 +123,30 @@
 - 收口 Android 关键修复，包括账本创建写盘、软键盘稳定画布与主要页面布局问题
 
 ## 当前进度同步
-待下一个阶段重新开始维护。
+
+- AI 自学习系统第一轮低成本精度优化已进入实施阶段。
+- 第二章实施项已完成代码落点核对：`AppFacade.startAiProcessing` 承接“分类前强制学习”，`LearningSession` 承接学习 Prompt 与学习窗口增强，`PromptBuilder + ExampleStore + SystemPrompt` 承接分类上下文增强，`ConfigManager + LLMClient + BatchProcessor` 承接模型参数链路与日志验证。
+- 当前唯一剩余工程歧义是不同供应商的 `thinking / reasoning` 参数名不完全统一；本轮实现口径固定为“先补统一参数链路、现有供应商映射与可验证日志”，不为此新增额外抽象层。
+- 2026-05-09 现状核查：最新本地 LLM 日志显示当前学习请求使用 `deepseek-ai/DeepSeek-V3.2`，但请求体未携带 `enable_thinking` / `thinking_budget`，响应 `usage.completion_tokens_details.reasoning_tokens = 0`，说明当前并未真正开启 SiliconFlow 思考模式。
+- 2026-05-09 基础设施修复与验证完成：`LearningSession / BatchProcessor / CompressionSession` 已补齐 `maxTokens / enableThinking` 透传，`LLMClient` 已按 SiliconFlow `DeepSeek-V3.2` 透传 `enable_thinking + thinking_budget`，并在浏览器 Playwright 中通过真实学习请求验证日志：最新 `llm_logs` 已出现 `temperature = 0.2`、`enableThinkingConfigured = true`、`siliconFlowThinkingMode = v32_toggle_and_budget`、`payload.enable_thinking = true`、`payload.thinking_budget = 1024`，响应同时返回 `reasoning_content` 与 `reasoning_tokens = 1024`。
+- 2026-05-09 自学习剩余三项已全部收口：学习会话已注入“学习窗口净变更 + 最近 30 条实例”，分类会话已改为“最近 / 检索 × 正例 / 反例”四区块，且无 `userNote` 样本统一标记弱证据；`AppFacade.startAiProcessing()` 现已在存在未学习实例时先学习再分类，并在学习阶段只点亮 AI 工作态、不点亮日级 `activeDates`。
+- 2026-05-09 统一验证完成：`npm run typecheck`、`npm run build` 通过；浏览器开发态已通过 `runExampleStoreSpecTest`、`runLearningPayloadSpecTest`、`runLearningAutomationSpecTest`、`runPreLearningBeforeProcessingTest`，并留档移动端截图 `artifacts/self-learning-optimization-mobile.png`。
+- 2026-05-09 第二章真实进度审查结论：
+  - 按核心主线看，第二章上下文工程已基本落地；但若严格按文档逐句验收，当前**不能宣称“第二章所有内容 100% 实施且 100% 测透”**。
+  - 已实施且已测试的主线项：`2.1 temperature=0.2`、`2.3 学习会话注入净变更 + 最近 30 条实例`、`2.4 分类会话四区块上下文`、`2.5 无 userNote 弱证据标记`、`2.7 分类前强制学习未学习实例`。
+  - `2.2 当前阶段统一使用推理模型，并检查 thinking 参数是否生效` 只能算**部分完成**：SiliconFlow 主链路已验证 `enable_thinking / thinking_budget / reasoning_tokens` 生效，但并未完成所有 provider 的统一推理模型保障；当前完成口径仅限 SiliconFlow。
+  - `2.6 学习 Prompt 禁止生成依赖未来 userNote 的规则` 与 `2.8 实体记忆 / 规律记忆不得混写` 均已落到 Prompt 约束层，并经过代码与结构化 payload 核对；但当前**没有针对真实 LLM 输出结果做行为级强验收**，因此只能算“已实施，Prompt 级已验证”，不能夸大为“模型行为已完全证明”。
+  - 第 5 章实施清单里的 `11 强制学习时复用顶部弹窗提示，并正确处理 AI 工作状态标识` 当前只能算**部分完成**：AI 工作状态与 `activeDates` 语义已实现并测试，但“复用已有顶部提示文案提醒用户正在先学习未处理实例”这半，本轮没有独立完成可见文案链路的专项验收。
+  - 因此，当前最准确的阶段结论应是：**第二章核心上下文工程已完成；若按严格逐条验收口径，仍残留 provider 覆盖、Prompt 约束行为级验证、以及前置学习提示文案专项验收 3 类尾项。**
 
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
+| AI 自学习系统第一轮优化参数链路核对 | Completed | 已先只落地 `SiliconFlow`：`temperature = 0.2` 默认值、核心会话 `enable_thinking / thinking_budget` 透传、设置界面对“仅适配 SiliconFlow”如实提示、浏览器 Playwright 真实学习请求已验证 `reasoning_content / reasoning_tokens` 返回；其他供应商本轮仍未适配 |
+| 学习会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.3 / §2.5 / §2.6 / §2.8 落地：学习 payload 注入“净变更 + 最近 30 条实例”，无 `userNote` 样本统一写入弱证据标记，Prompt 约束补齐“不得依赖未来 `userNote`”与“实体记忆 / 规律记忆不得混写” |
+| 分类会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.4 / §2.5 落地：分类会话实例注入改为 `recent/retrieved × misclassified/confirmed` 四区块；最近样本与检索样本允许重复出现；无 `userNote` 样本统一标记弱证据 |
+| 分类前强制学习未学习实例 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.7 落地：`AppFacade.startAiProcessing()` 检测到未学习实例时会先执行学习，再进入 `BatchProcessor`；学习阶段 AI 工作态立即亮起，但 `activeDates` 保持空数组，不误导为某日已开始正式分类 |
 | BatchProcessor revision 系统复审 | Deferred | 后期重新审视 `BatchProcessor` 为并发保护引入的 revision 机制是否仍然划算，重点评估现有 CAS 防护粒度、实现复杂度与更简化的替代设计；不影响当前已修复的 `bumpRevision` 口径 |
 | 真机反馈收口修复 | In Progress | 当前聚焦 8 个真机修复点：详情页分类入口点击异常、微信原始分类错误上浮到顶部 badge、设置页二级页返回手势未消费、随手记详情输入层被键盘顶起并改为顶部弹层、导入指南页改为全屏覆盖底部导航、压缩包密码输入页字体回退、首页理由弹窗未自动唤起键盘、随手记详情输入层误触遮罩易退出 |
 | Demo seed 首启解压刷新问题 | Pending | `0.3.7` 改为 zip 化 demo seed 后，首次打开时数据还在后台解压，当前页面无法立即刷新显示；需要退出软件再重新进入才能看到数据，需定位首启刷新/解压完成通知链路 |
@@ -137,12 +158,13 @@
 
 1. 真机反馈收口修复
 2. Demo seed 首启解压刷新问题
-3. Android 文件选择器真机验收
-4. 标签管理重分类流程全链路落实（推后）
-5. 全局字体统一治理（推后）
+3. Android 真机验收
+4. 标签管理重分类流程全链路落实（推后但持续追踪）
+5. 全局字体统一治理（推后但持续追踪）
 
 ## 当前阶段风险
 
+- 学习会话与分类会话都将引入最近 30 条实例；若上下文长度、实例格式或日志体积控制不当，可能带来 token 成本上升与日志膨胀风险
 - Demo seed zip 化后首启解压完成前，首页无法立即刷新显示数据，用户需要退出后重新进入才能看到完整内容；当前还没把“解压完成 -> 刷新显示”的链路接通
 - Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 

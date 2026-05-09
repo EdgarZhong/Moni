@@ -162,6 +162,7 @@ interface MoniE2EApi {
     runExampleStoreSpecTest: () => Promise<DebugTestReport>;
     runLearningPayloadSpecTest: () => Promise<DebugTestReport>;
     runLearningAutomationSpecTest: () => Promise<DebugTestReport>;
+    runPreLearningBeforeProcessingTest: () => Promise<DebugTestReport>;
     runCompressionSpecTest: () => Promise<DebugTestReport>;
     runHomeReadModelSmokeTest: () => Promise<DebugTestReport>;
     runBillImportBackendTest: () => Promise<DebugTestReport>;
@@ -785,7 +786,7 @@ async function runExampleStoreSpecTest(): Promise<DebugTestReport> {
       ai_category: '正餐',
       ai_reasoning: '错误示例：餐饮商户默认归正餐',
       user_category: '零食',
-      user_note: '用户明确修正为零食',
+      user_note: '',
       is_verified: false,
       updated_at: formatNowForRecord(),
     };
@@ -808,28 +809,35 @@ async function runExampleStoreSpecTest(): Promise<DebugTestReport> {
       },
     ]);
 
-    const misclassified = references?.misclassified_examples[0];
-    const confirmedManual = references?.confirmed_examples.find((entry) => entry.id === manualId);
+    const recentMisclassified = references?.recent_misclassified_examples.find((entry) => entry.id === correctedRecord.id);
+    const retrievedMisclassified = references?.retrieved_misclassified_examples.find((entry) => entry.id === correctedRecord.id);
+    const recentConfirmedManual = references?.recent_confirmed_examples.find((entry) => entry.id === manualId);
+    const retrievedConfirmedManual = references?.retrieved_confirmed_examples.find((entry) => entry.id === manualId);
     assertStep(
       report,
-      'runtimeInjectionMatchesV7Shape',
+      'runtimeInjectionMatchesLatestShape',
       Boolean(
         references &&
-          misclassified &&
-          confirmedManual &&
-          !Object.prototype.hasOwnProperty.call(misclassified, 'created_at') &&
-          !Object.prototype.hasOwnProperty.call(confirmedManual, 'created_at') &&
-          misclassified.ai_category.startsWith('[错误判断] ') &&
-          misclassified.ai_reasoning.startsWith('[错误判断] ') &&
-          !Object.prototype.hasOwnProperty.call(confirmedManual, 'ai_category') &&
-          Object.prototype.hasOwnProperty.call(confirmedManual, 'ai_reasoning') &&
-          Object.prototype.hasOwnProperty.call(confirmedManual, 'rawClass') &&
-          Object.prototype.hasOwnProperty.call(confirmedManual, 'paymentMethod') &&
-          Object.prototype.hasOwnProperty.call(confirmedManual, 'transactionStatus') &&
-          Object.prototype.hasOwnProperty.call(confirmedManual, 'remark')
+          recentMisclassified &&
+          retrievedMisclassified &&
+          recentConfirmedManual &&
+          retrievedConfirmedManual &&
+          !Object.prototype.hasOwnProperty.call(recentMisclassified, 'created_at') &&
+          !Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'created_at') &&
+          recentMisclassified.ai_category.startsWith('[错误判断] ') &&
+          recentMisclassified.ai_reasoning.startsWith('[错误判断] ') &&
+          recentMisclassified.user_note.startsWith('[弱证据]') &&
+          retrievedMisclassified.user_note.startsWith('[弱证据]') &&
+          !Object.prototype.hasOwnProperty.call(recentConfirmedManual, 'ai_category') &&
+          !Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'ai_category') &&
+          Object.prototype.hasOwnProperty.call(recentConfirmedManual, 'ai_reasoning') &&
+          Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'rawClass') &&
+          Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'paymentMethod') &&
+          Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'transactionStatus') &&
+          Object.prototype.hasOwnProperty.call(retrievedConfirmedManual, 'remark')
       ),
       references,
-      '分类阶段运行时注入应符合 v7 rich schema：去掉 created_at，B 区块前缀化错误字段，A+C+D 区块保留 ai_reasoning 但去掉 ai_category'
+      '分类阶段运行时注入应符合最新 schema：四个独立区块、允许最近样本与检索样本重复、无备注样本自动标记弱证据'
     );
 
     /**
@@ -1095,24 +1103,29 @@ async function runLearningPayloadSpecTest(): Promise<DebugTestReport> {
       ai_category: '正餐',
       ai_reasoning: '错误示例：餐饮商户默认归正餐',
       user_category: '零食',
-      user_note: '用户明确修正为零食',
+      user_note: '',
       is_verified: false,
       updated_at: formatNowForRecord(),
     };
     await ExampleStore.addOrUpdate(tempLedger, correctedRecord, true);
 
     const delta = await ExampleStore.getLearningDelta(tempLedger, baselineRevision);
-    const payload = LearningSession.buildLearningPayload(delta);
+    const payload = LearningSession.buildLearningPayload(
+      delta,
+      await ExampleStore.getRecentEntries(tempLedger, 30)
+    );
     const firstUpsert = payload.upserts[0];
     const firstDeletion = payload.deletions[0];
     assertStep(
       report,
-      'learningDeltaPayloadMatchesV7Shape',
+      'learningDeltaPayloadMatchesLatestShape',
       payload.mode === 'delta' &&
         payload.from_revision === baselineRevision &&
         payload.to_revision > baselineRevision &&
         Array.isArray(payload.upserts) &&
         Array.isArray(payload.deletions) &&
+        Array.isArray(payload.recent_examples) &&
+        payload.recent_examples.length >= 1 &&
         payload.current_examples === undefined &&
         Boolean(
           firstUpsert &&
@@ -1121,7 +1134,8 @@ async function runLearningPayloadSpecTest(): Promise<DebugTestReport> {
             Object.prototype.hasOwnProperty.call(firstUpsert, 'transactionStatus') &&
             Object.prototype.hasOwnProperty.call(firstUpsert, 'remark') &&
             Object.prototype.hasOwnProperty.call(firstUpsert, 'ai_category') &&
-            Object.prototype.hasOwnProperty.call(firstUpsert, 'is_verified')
+            Object.prototype.hasOwnProperty.call(firstUpsert, 'is_verified') &&
+            firstUpsert.user_note.startsWith('[弱证据]')
         ) &&
         Boolean(
           firstDeletion &&
@@ -1133,18 +1147,21 @@ async function runLearningPayloadSpecTest(): Promise<DebugTestReport> {
             Object.prototype.hasOwnProperty.call(firstDeletion, 'is_verified')
         ),
       payload,
-      '学习阶段 payload 应符合 v7 rich schema：mode=delta、from/to_revision、upserts+deletions 同时存在、字段完整且不带 created_at'
+      '学习阶段 payload 应符合最新 schema：mode=delta、from/to_revision、upserts+deletions+recent_examples 同时存在、弱证据标记生效且不带 created_at'
     );
 
-    const fullReconcilePayload = LearningSession.buildLearningPayload({
-      mode: 'full_reconcile',
-      lastLearnedRevision: 99,
-      currentRevision: 1,
-      upserts: [],
-      deletions: [],
-      allEntries: await ExampleStore.load(tempLedger),
-      reason: 'debug_full_reconcile',
-    });
+    const fullReconcilePayload = LearningSession.buildLearningPayload(
+      {
+        mode: 'full_reconcile',
+        lastLearnedRevision: 99,
+        currentRevision: 1,
+        upserts: [],
+        deletions: [],
+        allEntries: await ExampleStore.load(tempLedger),
+        reason: 'debug_full_reconcile',
+      },
+      await ExampleStore.getRecentEntries(tempLedger, 30)
+    );
     assertStep(
       report,
       'fullReconcileUsesCurrentExamples',
@@ -1269,6 +1286,146 @@ async function runLearningAutomationSpecTest(): Promise<DebugTestReport> {
       detail: error instanceof Error ? error.message : String(error),
     });
   } finally {
+    await cleanupTempLedger(originalLedger, tempLedger);
+  }
+
+  report.context = {
+    originalLedger,
+    finalActiveLedger: getActiveLedgerName(),
+  };
+  return report;
+}
+
+async function runPreLearningBeforeProcessingTest(): Promise<DebugTestReport> {
+  await ensureAppReady();
+
+  const report = createReport('runPreLearningBeforeProcessingTest');
+  const ledgerManager = LedgerManager.getInstance();
+  const originalLedger = getActiveLedgerName();
+  const tempLedger = buildTempLedgerName('分类前学习测试账本');
+  const batchProcessor = BatchProcessor.getInstance();
+  const appFacadeInternal = appFacade as unknown as {
+    aiStatus: string;
+    aiProgress: {
+      total: number;
+      current: number;
+      currentDate: string;
+      currentDates: string[];
+    };
+    notify: () => void;
+  };
+  const learningSessionInternal = LearningSession as unknown as {
+    run: typeof LearningSession.run;
+  };
+  const originalLearningRun = learningSessionInternal.run;
+  const originalBatchRun = batchProcessor.run.bind(batchProcessor);
+  const originalFacadeState = {
+    aiStatus: appFacadeInternal.aiStatus,
+    aiProgress: {
+      ...appFacadeInternal.aiProgress,
+      currentDates: [...appFacadeInternal.aiProgress.currentDates]
+    }
+  };
+
+  try {
+    const created = await ledgerManager.createLedger(tempLedger);
+    assertStep(report, 'createTempLedger', created, { tempLedger }, '分类前先学习测试需要独立临时账本');
+
+    const correctedRecord: FullTransactionRecord = {
+      id: `prelearn_${Date.now().toString(36)}`,
+      time: formatNowForRecord(),
+      sourceType: 'wechat',
+      category: '零食',
+      rawClass: '商户消费',
+      counterparty: '分类前学习测试商户',
+      product: '分类前学习测试奶茶',
+      amount: 18.8,
+      direction: 'out',
+      paymentMethod: '零钱',
+      transactionStatus: TransactionStatus.SUCCESS,
+      remark: '验证先学习后分类',
+      ai_category: '正餐',
+      ai_reasoning: '错误判断示例',
+      user_category: '零食',
+      user_note: '',
+      is_verified: false,
+      updated_at: formatNowForRecord(),
+    };
+    await ExampleStore.addOrUpdate(tempLedger, correctedRecord, true);
+
+    const learningState = await LearningAutomationService.inspect(tempLedger);
+    assertStep(
+      report,
+      'seedPendingLearningWindow',
+      learningState.pendingCount > 0,
+      learningState,
+      '临时账本应存在未学习实例，才能触发分类前先学习'
+    );
+
+    const callOrder: string[] = [];
+    let observedRunningState: { status: string; activeDates: string[] } | null = null;
+
+    learningSessionInternal.run = (async () => {
+      callOrder.push('learning');
+      const model = await appFacade.getMoniHomeReadModel();
+      observedRunningState = {
+        status: model.aiEngineUiState.status,
+        activeDates: [...model.aiEngineUiState.activeDates]
+      };
+      return {
+        success: true,
+        operations: [],
+        summary: 'mock learning ok'
+      };
+    }) as typeof LearningSession.run;
+
+    batchProcessor.run = (async () => {
+      callOrder.push('batch');
+      return {
+        success: true,
+        processedCount: 0,
+        errors: []
+      };
+    }) as typeof batchProcessor.run;
+
+    await appFacade.startAiProcessing();
+    const finalObservedRunningState = observedRunningState as { status: string; activeDates: string[] } | null;
+
+    assertStep(
+      report,
+      'preLearningRunsBeforeBatchProcessing',
+      callOrder.join(' -> ') === 'learning -> batch',
+      { callOrder },
+      '存在未学习实例时，startAiProcessing 应先学习再进入正式分类'
+    );
+
+    assertStep(
+      report,
+      'preLearningUsesRunningStateWithoutActiveDates',
+      Boolean(
+        finalObservedRunningState &&
+          finalObservedRunningState.status === 'running' &&
+          Array.isArray(finalObservedRunningState.activeDates) &&
+          finalObservedRunningState.activeDates.length === 0
+      ),
+      finalObservedRunningState,
+      '学习阶段应立即进入 AI 工作态，但不能点亮任何日级 activeDates'
+    );
+  } catch (error) {
+    pushStep(report, {
+      name: 'unexpectedError',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    learningSessionInternal.run = originalLearningRun;
+    batchProcessor.run = originalBatchRun as typeof batchProcessor.run;
+    appFacadeInternal.aiStatus = originalFacadeState.aiStatus;
+    appFacadeInternal.aiProgress = {
+      ...originalFacadeState.aiProgress,
+      currentDates: [...originalFacadeState.aiProgress.currentDates]
+    };
+    appFacadeInternal.notify();
     await cleanupTempLedger(originalLedger, tempLedger);
   }
 
@@ -2137,7 +2294,10 @@ function createDebugApi(): MoniDebugApi {
           throw new Error('No active ledger loaded');
         }
         const delta = await ExampleStore.getLearningDelta(targetLedger, baselineRevision);
-        return LearningSession.buildLearningPayload(delta);
+        return LearningSession.buildLearningPayload(
+          delta,
+          await ExampleStore.getRecentEntries(targetLedger, 30)
+        );
       },
       getAutoTriggerState: async (ledgerId?: string) => {
         await ensureAppReady();
@@ -2217,6 +2377,7 @@ function createE2EApi(): MoniE2EApi {
       runExampleStoreSpecTest,
       runLearningPayloadSpecTest,
       runLearningAutomationSpecTest,
+      runPreLearningBeforeProcessingTest,
       runCompressionSpecTest,
       runHomeReadModelSmokeTest,
       runBillImportBackendTest,

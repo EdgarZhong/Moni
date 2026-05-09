@@ -26,11 +26,16 @@ ${config.memory.trim()}
 ### Input Format
 The user will provide a JSON object with the following structure:
 - **category_list**: An object mapping category keys to their natural-language descriptions (e.g., {"meal": "Daily meals for two...", "others": "Everything else..."}). You MUST only use keys from this object.
-- **reference_corrections**: An optional object with two blocks:
-  - \`misclassified_examples\`: B 类案例。这里的 \`ai_category\` 和 \`ai_reasoning\` 都带有 \`[错误判断]\` 前缀，表示这是 AI 曾经犯错时的判断，不是你要模仿的答案；真正正确的答案始终是 \`category\`。
-  - \`confirmed_examples\`: A / C / D 类案例。这里的 \`category\` 是用户确认过的正确分类，直接作为参考依据。
+- **reference_corrections**: An optional object with four blocks:
+  - \`recent_misclassified_examples\`: 最近 30 条 B 类案例。表示用户最近纠正过的错误判断，强调近期偏好。
+  - \`recent_confirmed_examples\`: 最近 30 条 A / C / D 类案例。表示用户最近直接确认过的正确分类。
+  - \`retrieved_misclassified_examples\`: 与当前待分类交易相似度较高的 B 类案例，强调相关历史错误。
+  - \`retrieved_confirmed_examples\`: 与当前待分类交易相似度较高的 A / C / D 类案例，强调相关正确历史。
+  - \`recent_*\` 与 \`retrieved_*\` 允许重复出现；重复是有意设计，用于同时强调“近期性”和“相关性”。
+  - 所有 B 类区块里的 \`ai_category\` 和 \`ai_reasoning\` 都带有 \`[错误判断]\` 前缀，表示这是 AI 曾经犯错时的判断，不是你要模仿的答案；真正正确的答案始终是 \`category\`。
+  - 若某条案例的 \`user_note\` 以 \`[弱证据]\` 开头，表示用户没有提供原因；你只能把它当作“最终分类事实”，不能把它当作强解释证据。
   - 每条案例都包含：\`id / time / sourceType / rawClass / counterparty / product / amount / direction / paymentMethod / transactionStatus / remark / category / ai_reasoning / user_note / is_verified\`
-  - 只有 \`misclassified_examples\` 额外包含 \`ai_category\`
+  - 只有 \`*_misclassified_examples\` 额外包含 \`ai_category\`
   - \`created_at\` 不会出现在运行时注入里，它只属于实例库存储层
 - **days**: An array of day batches. Each day object contains:
   - \`date\`: The date of this batch (YYYY-MM-DD).
@@ -42,7 +47,7 @@ The user will provide a JSON object with the following structure:
     - \`direction\`: "in" (income) or "out" (expense).
     - \`counterparty\`: The merchant or person involved.
     - \`description\`: Product name or remark.
-    - \`source\`: Payment source (e.g., wechat, alipay).
+    - \`sourceType\`: Payment source type (e.g., wechat, alipay).
     - \`raw_category\`: The original category from the payment platform (for reference only).
 
 ### Output Format
@@ -70,7 +75,8 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
 8. **Use exact-ID matches as confirmed anchors**: If a transaction in \`days\` has the same \`id\` as a transaction in \`reference_corrections\`, treat the reference \`category\` as confirmed ground truth for that transaction unless the surrounding input is clearly inconsistent.
 9. **Income default rule**: If a transaction is truly an incoming payment and the user has given no conflicting instruction, prefer categorizing it as \`收入\`.
 10. **Refund exception**: Do NOT treat every incoming payment as income. If the incoming transaction is actually a refund, reversal, returned payment, or cancellation of a prior expense, do not default it to \`收入\`; instead infer the category from the original spending context and the user's category system.
-11. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
+11. **Weak evidence handling**: If a reference example is marked as \`[弱证据]\`, only use it as evidence of the final category choice. Do not invent hidden motives or stable explanatory rules from that example alone.
+12. **Infer when needed**: If no correction, preference, or self-description applies, use logical inference based on the description, amount, time, and \`raw_category\`.
 
 ### Priority Hierarchy
 When information sources conflict, follow this priority (highest to lowest):
@@ -91,5 +97,7 @@ When information sources conflict, follow this priority (highest to lowest):
 - Do not force all nearby transactions into one category when an individual transaction's own evidence points to a different interpretation.
 - Never imitate a \`[错误判断]\`-prefixed \`ai_category\`. Those fields exist only to show what mistake should be avoided.
 - Manual-entry examples may have empty \`counterparty\`; when that happens, rely more on \`description\`, amount, and the confirmed \`category\`.
+- Treat \`recent_*\` blocks as “what the user cared about most recently”, and \`retrieved_*\` blocks as “what is most semantically similar to the current batch”. Use both.
+- Future transactions usually do not have a user-provided correction note yet. Never rely on a future \`user_note\` to classify the current input.
 ${selfDescriptionSection}${memorySection}`;
 };

@@ -18,17 +18,19 @@ const MAX_LOG_FILES = 300;
 
 export class RawLogger {
   /**
-   * 适配 LLMClient 的实例方法
+   * 适配 LLMClient 的实例方法。
+   * 这里直接落完整请求载荷，而不是只记 messages，
+   * 这样后续排查“是否真的开启 thinking / reasoning 参数”时，
+   * 可以直接从日志里看到最终发出去的字段。
    */
   public async logInteraction(
-    messages: unknown[],
+    requestPayload: unknown,
     response: unknown,
-    duration: number,
-    model: string
+    duration: number
   ) {
     const batchId = `LLM_${Date.now()}`;
     await RawLogger.log(batchId, {
-      request: { model, messages },
+      request: requestPayload,
       response,
       duration_ms: duration,
       status: 'SUCCESS'

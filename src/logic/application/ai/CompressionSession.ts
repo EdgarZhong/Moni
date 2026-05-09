@@ -187,6 +187,8 @@ ${JSON.stringify(context.currentExamples, null, 2)}`;
         baseUrl: llmConfig.baseUrl,
         model: llmConfig.model,
         temperature: llmConfig.temperature,
+        maxTokens: llmConfig.maxTokens,
+        enableThinking: llmConfig.enableThinking,
       });
 
       const response = await client.chat(

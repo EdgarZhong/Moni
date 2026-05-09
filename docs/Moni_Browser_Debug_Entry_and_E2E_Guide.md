@@ -77,6 +77,7 @@
 - `tests.runExampleStoreSpecTest()`
 - `tests.runLearningPayloadSpecTest()`
 - `tests.runLearningAutomationSpecTest()`
+- `tests.runPreLearningBeforeProcessingTest()`
 - `tests.runCompressionSpecTest()`
 - `tests.runHomeReadModelSmokeTest()`
 - `tests.runBillImportBackendTest()`
@@ -91,8 +92,9 @@
 - 随手记增删 + ExampleStore 联动 + 首页读模型映射
 - 预算配置读写 + 预算统计 + 首页预算卡读模型
 - 实例库 v7 运行时注入字段 + 手记 D 类映射规格
-- 学习阶段 delta / full_reconcile payload v7 rich schema
+- 学习阶段 delta / full_reconcile payload 最新 rich schema（含 `recent_examples` 与弱证据标记）
 - 自动学习偏好配置与真实触发判定
+- 用户开启分类时“存在未学习实例则先学习再分类”的前置编排
 - 收编配置、上下文构造与结果上限校验
 - 账单导入后端探测、密码判定、压缩包解压、微信 Excel 转 CSV 与真实账本导入
 

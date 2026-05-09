@@ -6,8 +6,14 @@ interface LLMResponse {
   choices?: Array<{
     message?: {
       content?: string;
+      reasoning_content?: string;
     };
   }>;
+  usage?: {
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
+  };
 }
 
 /**
@@ -22,6 +28,11 @@ export class LLMClient {
   private config: LLMConfig;
   private logger: RawLogger;
   private static readonly DEBUG_TAG = '[MONI_AI_DEBUG][LLMClient]';
+  /**
+   * SiliconFlow 官方示例里用 1024 作为 thinking_budget。
+   * 本轮先固定为常量，不额外暴露 UI，避免在基础设施还没收口前继续扩配置面。
+   */
+  private static readonly SILICONFLOW_THINKING_BUDGET = 1024;
 
   constructor(config: LLMConfig) {
     this.config = config;
@@ -47,6 +58,62 @@ export class LLMClient {
     return (isMoonshotByBaseUrl || isMoonshotByModel) ? 120000 : 60000;
   }
 
+  /**
+   * 只按 baseUrl 判断是否走 SiliconFlow 兼容分支。
+   * 本轮用户已经明确范围只做这一家，因此这里不提前抽更多 provider 适配层。
+   */
+  private isSiliconFlow(baseUrl: string): boolean {
+    return /api\.siliconflow\.cn/i.test(baseUrl);
+  }
+
+  /**
+   * 本轮只显式接通两个 SiliconFlow 模型族：
+   * 1. DeepSeek-R1：原生推理模型，只透传 thinking_budget
+   * 2. DeepSeek-V3.2：通过 enable_thinking 切到 thinking 模式，并同时补 thinking_budget
+   *
+   * 其他 SiliconFlow 模型本轮不做 provider-specific 参数透传，避免假适配。
+   */
+  private resolveSiliconFlowThinkingOptions(model: string): {
+    requestPatch: Record<string, unknown>;
+    mode: 'disabled' | 'r1_budget_only' | 'v32_toggle_and_budget' | 'unsupported_model';
+    effective: boolean;
+  } {
+    if (!this.config.enableThinking) {
+      return {
+        requestPatch: {},
+        mode: 'disabled',
+        effective: false,
+      };
+    }
+
+    if (/DeepSeek-R1/i.test(model)) {
+      return {
+        requestPatch: {
+          thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+        },
+        mode: 'r1_budget_only',
+        effective: true,
+      };
+    }
+
+    if (/DeepSeek-V3\.2/i.test(model)) {
+      return {
+        requestPatch: {
+          enable_thinking: true,
+          thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+        },
+        mode: 'v32_toggle_and_budget',
+        effective: true,
+      };
+    }
+
+    return {
+      requestPatch: {},
+      mode: 'unsupported_model',
+      effective: false,
+    };
+  }
+
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     // 修复双斜杠问题：如果 baseUrl 以 / 结尾，去掉它
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
@@ -54,15 +121,26 @@ export class LLMClient {
     const responseFormat = options.responseFormat ?? 'json_object';
     const temperature = this.resolveTemperature(baseUrl, this.config.model);
     const timeoutMs = this.resolveTimeoutMs(baseUrl, this.config.model);
-    
+    const siliconFlowThinking = this.isSiliconFlow(baseUrl)
+      ? this.resolveSiliconFlowThinkingOptions(this.config.model)
+      : {
+          requestPatch: {},
+          mode: 'disabled' as const,
+          effective: false,
+        };
+
     const payload = {
       model: this.config.model,
       messages: messages,
       ...(responseFormat === 'json_object'
         ? { response_format: { type: 'json_object' } }
         : {}),
+      ...(typeof this.config.maxTokens === 'number' && this.config.maxTokens > 0
+        ? { max_tokens: this.config.maxTokens }
+        : {}),
       temperature,
-      stream: false
+      stream: false,
+      ...siliconFlowThinking.requestPatch,
     };
 
     const startTime = Date.now();
@@ -77,7 +155,13 @@ export class LLMClient {
         payload: {
           model: this.config.model,
           temperature,
+          maxTokens: this.config.maxTokens,
           responseFormat,
+          enableThinkingConfigured: this.config.enableThinking ?? false,
+          siliconFlowThinkingMode: siliconFlowThinking.mode,
+          siliconFlowThinkingEffective: siliconFlowThinking.effective,
+          siliconFlowThinkingBudget:
+            siliconFlowThinking.requestPatch.thinking_budget ?? null,
           messages: messages.map(m => ({ role: m.role, contentLength: m.content.length }))
         }
       }, null, 2)
@@ -104,7 +188,21 @@ export class LLMClient {
 
       // Extract content
       const content = response.choices?.[0]?.message?.content;
+      const reasoningContent = response.choices?.[0]?.message?.reasoning_content ?? '';
+      const reasoningTokens = response.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
       console.log(`${LLMClient.DEBUG_TAG} Response content length: ${content?.length ?? 0}`);
+      console.log(
+        `${LLMClient.DEBUG_TAG} Reasoning trace`,
+        JSON.stringify(
+          {
+            siliconFlowThinkingMode: siliconFlowThinking.mode,
+            reasoningContentLength: reasoningContent.length,
+            reasoningTokens,
+          },
+          null,
+          2,
+        )
+      );
       
       if (!content) {
         console.error(`${LLMClient.DEBUG_TAG} Empty response structure:`, JSON.stringify(response, null, 2));
@@ -113,10 +211,18 @@ export class LLMClient {
 
       // Log Interaction
       await this.logger.logInteraction(
-        messages,
+        {
+          url,
+          model: this.config.model,
+          temperature,
+          max_tokens: this.config.maxTokens,
+          response_format: responseFormat,
+          enableThinkingConfigured: this.config.enableThinking ?? false,
+          siliconFlowThinkingMode: siliconFlowThinking.mode,
+          payload,
+        },
         response,
-        duration,
-        this.config.model
+        duration
       );
 
       return content;
@@ -138,7 +244,13 @@ export class LLMClient {
       // Log Error
       try {
         await RawLogger.log(`LLM_ERR_${Date.now()}`, {
-          request: { model: this.config.model, messages },
+          request: {
+            url,
+            model: this.config.model,
+            messages,
+            enableThinkingConfigured: this.config.enableThinking ?? false,
+            payload,
+          },
           response: null,
           duration_ms: duration,
           status: 'ERROR',
@@ -159,11 +271,20 @@ export class LLMClient {
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
     const temperature = this.resolveTemperature(baseUrl, this.config.model);
+    const siliconFlowThinking = this.isSiliconFlow(baseUrl)
+      ? this.resolveSiliconFlowThinkingOptions(this.config.model)
+      : {
+          requestPatch: {},
+          mode: 'disabled' as const,
+          effective: false,
+        };
     console.log(
       `${LLMClient.DEBUG_TAG} TEST_START`,
       JSON.stringify({
         url,
-        model: this.config.model
+        model: this.config.model,
+        enableThinkingConfigured: this.config.enableThinking ?? false,
+        siliconFlowThinkingMode: siliconFlowThinking.mode,
       })
     );
 
@@ -175,6 +296,7 @@ export class LLMClient {
         temperature,
         max_tokens: 8,
         stream: false,
+        ...siliconFlowThinking.requestPatch,
       },
       {
         'Authorization': `Bearer ${this.config.apiKey}`

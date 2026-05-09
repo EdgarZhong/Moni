@@ -384,7 +384,9 @@ export class BatchProcessor {
           apiKey,
           baseUrl,
           model,
-          temperature: llmConfig.temperature
+          temperature: llmConfig.temperature,
+          maxTokens: llmConfig.maxTokens,
+          enableThinking: llmConfig.enableThinking,
         });
 
         let processedCount = 0;

@@ -180,6 +180,18 @@ function toHomeTransaction(txId: string, record: FullTransactionRecord, index: n
 
 export class AppFacade {
   private static instance: AppFacade;
+  /**
+   * 只在“切换 provider 且该 provider 尚未选过模型”时使用的推荐默认值。
+   * 本轮基础设施只适配 SiliconFlow，因此这里直接把 SiliconFlow 默认指向推理模型。
+   */
+  private static readonly PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+    deepseek: 'deepseek-chat',
+    moonshot: 'moonshot-v1-8k',
+    siliconflow: 'deepseek-ai/DeepSeek-R1',
+    modelscope: 'deepseek-ai/DeepSeek-R1',
+    zhipu: 'GLM-4.6',
+    custom: 'default-model',
+  };
 
   private readonly ledgerService = LedgerService.getInstance();
   private readonly ledgerManager = LedgerManager.getInstance();
@@ -503,6 +515,32 @@ export class AppFacade {
 
     if (currentLedgerId) {
       /**
+       * 用户主动点击“开始分类”时，先检查是否存在尚未学习的实例增量。
+       * 若存在，必须先做一轮学习，再进入正式分类。
+       *
+       * UI 口径：
+       * 1. AI 工作态立即亮起，表示系统已经开始处理用户请求
+       * 2. currentDates 保持为空，避免首页误以为“某一天已经在分类”
+       */
+      const learningState = await LearningAutomationService.inspect(currentLedgerId).catch((error) => {
+        console.warn('[MONI_AI_DEBUG][AppFacade] Failed to inspect pending learning window, continue:', error);
+        return null;
+      });
+
+      if (learningState && learningState.pendingCount > 0) {
+        const previousAiState = this.snapshotAiState();
+        this.setPreLearningAiWorkingState();
+
+        const categories = this.ledgerService.getState().ledgerMemory?.defined_categories ?? {};
+        const learningResult = await LearningSession.run(currentLedgerId, categories);
+        if (!learningResult.success) {
+          console.error('[MONI_AI_DEBUG][AppFacade] Pre-learning failed, abort AI processing:', learningResult.error);
+          this.restoreAiState(previousAiState);
+          return;
+        }
+      }
+
+      /**
        * 新口径下，”开始消费”是纯只读启动信号：
        * - 只允许读取当前 queue 状态
        * - 不允许在 queue 为空时重扫账本并补生产任务
@@ -607,6 +645,49 @@ export class AppFacade {
     const startDate = new Date(latestDate);
     startDate.setDate(startDate.getDate() - 6);
     return { start: startDate, end: latestDate };
+  }
+
+  /**
+   * 复制当前 facade 层 AI 状态。
+   * 这里要显式复制 currentDates，避免后续被引用共享污染。
+   */
+  private snapshotAiState(): { status: AIStatus; progress: AIProgress } {
+    return {
+      status: this.aiStatus,
+      progress: {
+        ...this.aiProgress,
+        currentDates: [...this.aiProgress.currentDates]
+      }
+    };
+  }
+
+  /**
+   * 恢复 facade 层 AI 状态。
+   * 主要用于“强制学习失败，尚未真正进入 BatchProcessor”这一类早停场景。
+   */
+  private restoreAiState(state: { status: AIStatus; progress: AIProgress }): void {
+    this.aiStatus = state.status;
+    this.aiProgress = {
+      ...state.progress,
+      currentDates: [...state.progress.currentDates]
+    };
+    this.notify();
+  }
+
+  /**
+   * 进入“分类前先学习”的临时工作态。
+   * 这时只点亮 AI 正在处理，不声明任何 activeDate / activeDates，
+   * 避免首页把学习阶段误渲染成某几天已经开始正式分类。
+   */
+  private setPreLearningAiWorkingState(): void {
+    this.aiStatus = 'ANALYZING';
+    this.aiProgress = {
+      total: 0,
+      current: 0,
+      currentDate: '',
+      currentDates: []
+    };
+    this.notify();
   }
 
   private toHomeAiState(
@@ -810,7 +891,7 @@ export class AppFacade {
       candidateModels,
       activeModel,
       maxTokens: config.globalParams?.maxTokens ?? 4096,
-      temperature: config.globalParams?.temperature ?? 0.3,
+      temperature: config.globalParams?.temperature ?? 0.2,
       enableThinking: config.globalParams?.enableThinking ?? false,
     };
 
@@ -943,7 +1024,8 @@ export class AppFacade {
         };
       })
       .find((item) => item.providerName === provider)?.model;
-    config.candidateModels = [`${provider}::${currentModel || 'default-model'}`];
+    const fallbackModel = AppFacade.PROVIDER_DEFAULT_MODELS[provider] ?? 'default-model';
+    config.candidateModels = [`${provider}::${currentModel || fallbackModel}`];
     await cm.saveConfig(config);
     this.notify();
   }
@@ -991,7 +1073,7 @@ export class AppFacade {
   public async updateTemperature(value: number): Promise<void> {
     const cm = ConfigManager.getInstance();
     const config = await cm.getConfig();
-    const normalized = Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : 0.3;
+    const normalized = Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : 0.2;
     config.globalParams.temperature = normalized;
     await cm.saveConfig(config);
     this.notify();
@@ -1016,6 +1098,8 @@ export class AppFacade {
         baseUrl: llmConfig.baseUrl,
         model: llmConfig.model,
         temperature: llmConfig.temperature,
+        maxTokens: llmConfig.maxTokens,
+        enableThinking: llmConfig.enableThinking,
       });
       await client.testConnection();
       return true;

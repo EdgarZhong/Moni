@@ -1,5 +1,5 @@
 {
-  "revision": 18,
+  "revision": 19,
   "entries": [
     {
       "id": "531df9ecf7d8bf3c",
@@ -288,7 +288,7 @@
     },
     {
       "id": "24b4a8b67556a152",
-      "created_at": "2026-05-06T05:33:15.901Z",
+      "created_at": "2026-05-09T13:53:42.072Z",
       "time": "2026-05-03 13:17:54",
       "sourceType": "alipay",
       "rawClass": "文化休闲",
@@ -299,10 +299,10 @@
       "paymentMethod": "广发银行信用卡(6885)",
       "transactionStatus": "SUCCESS",
       "remark": "",
-      "category": "其他",
+      "category": "测试标签",
       "ai_category": "正餐",
       "ai_reasoning": "外卖正餐，金额适中",
-      "user_note": "这是单人的，不是双人用餐。",
+      "user_note": "测试变更之后的 UI 行为表现。",
       "is_verified": true
     },
     {

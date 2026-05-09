@@ -78,8 +78,10 @@ export interface MisclassifiedReferenceCorrection extends InjectedReferenceBase 
 export type ConfirmedReferenceCorrection = InjectedReferenceBase;
 
 export interface ReferenceCorrectionBundle {
-  misclassified_examples: MisclassifiedReferenceCorrection[];
-  confirmed_examples: ConfirmedReferenceCorrection[];
+  recent_misclassified_examples: MisclassifiedReferenceCorrection[];
+  recent_confirmed_examples: ConfirmedReferenceCorrection[];
+  retrieved_misclassified_examples: MisclassifiedReferenceCorrection[];
+  retrieved_confirmed_examples: ConfirmedReferenceCorrection[];
 }
 
 export interface PendingTransaction {
@@ -104,6 +106,13 @@ type MealTime = 'breakfast' | 'lunch' | 'dinner' | 'other';
 
 export class ExampleStore {
   private static readonly ERROR_PREFIX = '[错误判断] ';
+  /**
+   * 无备注样本仍可作为“最终分类事实”进入上下文，
+   * 但不能被模型误读成带有完整解释依据的强证据。
+   */
+  public static readonly WEAK_EVIDENCE_USER_NOTE =
+    '[弱证据] 用户未提供原因；仅可作为最终分类事实，不可用于归纳原因或稳定规则。';
+  private static readonly RECENT_REFERENCE_LIMIT = 30;
 
   private static getFilePath(ledgerName: string): string {
     return getLedgerExamplesPath(ledgerName);
@@ -203,8 +212,37 @@ export class ExampleStore {
     transactions: PendingTransaction[]
   ): Promise<ReferenceCorrectionBundle | undefined> {
     const entries = await this.load(ledgerName);
-    if (entries.length === 0 || transactions.length === 0) {
+    if (entries.length === 0) {
       return undefined;
+    }
+
+    /**
+     * “最近 30 条”与“检索命中”是两套并列上下文：
+     * - 最近样本强调近期偏好
+     * - 检索样本强调与当前待分类交易的相关性
+     *
+     * 两套上下文允许重复出现，因此这里绝不跨区块去重。
+     */
+    const recentEntries = this.getRecentEntriesFromList(entries, this.RECENT_REFERENCE_LIMIT);
+    const recent_misclassified_examples = recentEntries
+      .filter(entry => this.getEntryKind(entry) === 'B')
+      .slice(0, this.RECENT_REFERENCE_LIMIT)
+      .map(entry => this.toMisclassifiedReference(entry));
+    const recent_confirmed_examples = recentEntries
+      .filter(entry => this.getEntryKind(entry) !== 'B')
+      .slice(0, this.RECENT_REFERENCE_LIMIT)
+      .map(entry => this.toConfirmedReference(entry));
+
+    if (transactions.length === 0) {
+      if (recent_misclassified_examples.length === 0 && recent_confirmed_examples.length === 0) {
+        return undefined;
+      }
+      return {
+        recent_misclassified_examples,
+        recent_confirmed_examples,
+        retrieved_misclassified_examples: [],
+        retrieved_confirmed_examples: []
+      };
     }
 
     const merged = new Map<string, ExampleEntry>();
@@ -216,21 +254,47 @@ export class ExampleStore {
     }
 
     const sorted = this.sortEntries(Array.from(merged.values()));
-    const misclassified_examples = sorted
+    const retrieved_misclassified_examples = sorted
       .filter(entry => this.getEntryKind(entry) === 'B')
       .map(entry => this.toMisclassifiedReference(entry));
-    const confirmed_examples = sorted
+    const retrieved_confirmed_examples = sorted
       .filter(entry => this.getEntryKind(entry) !== 'B')
       .map(entry => this.toConfirmedReference(entry));
 
-    if (misclassified_examples.length === 0 && confirmed_examples.length === 0) {
+    if (
+      recent_misclassified_examples.length === 0 &&
+      recent_confirmed_examples.length === 0 &&
+      retrieved_misclassified_examples.length === 0 &&
+      retrieved_confirmed_examples.length === 0
+    ) {
       return undefined;
     }
 
     return {
-      misclassified_examples,
-      confirmed_examples
+      recent_misclassified_examples,
+      recent_confirmed_examples,
+      retrieved_misclassified_examples,
+      retrieved_confirmed_examples
     };
+  }
+
+  /**
+   * 学习会话需要独立拿到“最近 30 条实例”作为近期语境。
+   * 这里按 created_at / time 倒序截取，保留最近发生的确认或纠错记录。
+   */
+  public static async getRecentEntries(ledgerName: string, limit: number = this.RECENT_REFERENCE_LIMIT): Promise<ExampleEntry[]> {
+    const entries = await this.load(ledgerName);
+    return this.getRecentEntriesFromList(entries, limit);
+  }
+
+  /**
+   * Prompt 注入阶段统一规范 user_note：
+   * - 有用户备注时，原样保留
+   * - 没有用户备注时，显式标记为弱证据
+   */
+  public static toPromptUserNote(userNote: string): string {
+    const normalized = userNote.trim();
+    return normalized || this.WEAK_EVIDENCE_USER_NOTE;
   }
 
   public static async getLearningDelta(
@@ -600,7 +664,7 @@ export class ExampleStore {
       category: entry.category,
       ai_category: `${this.ERROR_PREFIX}${entry.ai_category}`,
       ai_reasoning: `${this.ERROR_PREFIX}${entry.ai_reasoning}`,
-      user_note: entry.user_note,
+      user_note: this.toPromptUserNote(entry.user_note),
       is_verified: entry.is_verified
     };
   }
@@ -620,9 +684,25 @@ export class ExampleStore {
       remark: entry.remark,
       category: entry.category,
       ai_reasoning: entry.ai_reasoning,
-      user_note: entry.user_note,
+      user_note: this.toPromptUserNote(entry.user_note),
       is_verified: entry.is_verified
     };
+  }
+
+  private static getRecentEntriesFromList(entries: ExampleEntry[], limit: number): ExampleEntry[] {
+    return [...entries]
+      .sort((left, right) => {
+        const createdCompare = right.created_at.localeCompare(left.created_at);
+        if (createdCompare !== 0) {
+          return createdCompare;
+        }
+        const timeCompare = right.time.localeCompare(left.time);
+        if (timeCompare !== 0) {
+          return timeCompare;
+        }
+        return right.id.localeCompare(left.id);
+      })
+      .slice(0, Math.max(0, limit));
   }
 
   private static sortEntries(entries: ExampleEntry[]): ExampleEntry[] {
