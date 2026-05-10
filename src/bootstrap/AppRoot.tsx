@@ -3,6 +3,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { appFacade } from '@bootstrap/appFacade';
 import type { TopNoticeEvent } from '@logic/application/facades/AppFacade';
+import { scheduleSplashHideAfterFirstPaint } from '@bootstrap/startup/splashController';
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
@@ -180,9 +181,15 @@ function RuntimeApp() {
     updateExitToastVisible,
   ]);
 
+  // React 根组件 mount = 首帧已提交，此时安排隐藏 Splash
+  useEffect(() => {
+    scheduleSplashHideAfterFirstPaint('app-root-mounted');
+    console.info('[MONI_STARTUP] root mounted', Date.now());
+  }, []);
+
   useEffect(() => {
     /**
-     * 顶部 safe area 的“设备额外下沉”统一在 Root 层写成一个 CSS 变量。
+     * 顶部 safe area 的”设备额外下沉”统一在 Root 层写成一个 CSS 变量。
      * 这样所有 header / 二级页只消费同一套 `APP_HEADER_PADDING_TOP`，
      * 不再让每个页面自己判断 Android、自己减像素。
      *

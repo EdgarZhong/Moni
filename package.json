@@ -23,6 +23,7 @@
     "@capacitor/filesystem": "^8.1.0",
     "@capacitor/haptics": "^8.0.0",
     "@capacitor/keyboard": "^8.0.2",
+    "@capacitor/splash-screen": "^8.0.1",
     "@types/dom-webcodecs": "^0.1.18",
     "@types/papaparse": "^5.5.2",
     "@zip.js/zip.js": "^2.8.26",
