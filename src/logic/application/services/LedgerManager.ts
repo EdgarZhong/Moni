@@ -33,6 +33,7 @@ import {
 } from '@system/filesystem/persistence-paths';
 import { MemoryManager } from './MemoryManager';
 import { BudgetManager } from './BudgetManager';
+import { HomeHintStateManager } from './HomeHintStateManager';
 import { LedgerPreferencesManager } from './LedgerPreferencesManager';
 
 /**
@@ -767,6 +768,14 @@ export class LedgerManager {
     } catch {
       // 文件不存在时静默忽略
     }
+
+    // 6. 删除首页提示状态文件（沙箱）
+    try {
+      await HomeHintStateManager.getInstance().deleteLedgerState(ledgerName);
+      console.log(`[LedgerManager] Deleted home hint state for: ${ledgerName}`);
+    } catch {
+      // 文件不存在时静默忽略
+    }
   }
 
   /**
@@ -885,6 +894,14 @@ export class LedgerManager {
     try {
       await LedgerPreferencesManager.getInstance().renameLedgerPreferences(oldName, newName);
       console.log(`[LedgerManager] Migrated ledger preferences: ${oldName} -> ${newName}`);
+    } catch {
+      // 文件不存在时静默忽略
+    }
+
+    // 6. 迁移首页提示状态文件（沙箱）
+    try {
+      await HomeHintStateManager.getInstance().renameLedgerState(oldName, newName);
+      console.log(`[LedgerManager] Migrated home hint state: ${oldName} -> ${newName}`);
     } catch {
       // 文件不存在时静默忽略
     }

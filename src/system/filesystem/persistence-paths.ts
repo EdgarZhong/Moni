@@ -36,6 +36,7 @@ export const LEDGER_BUDGET_FILE_NAME = 'budget.json';
 export const LEDGER_EXAMPLES_FILE_NAME = 'examples.json';
 export const LEDGER_EXAMPLE_CHANGES_FILE_NAME = 'example_changes.json';
 export const LEDGER_CLASSIFY_RUNTIME_FILE_NAME = 'classify_runtime.json';
+export const LEDGER_HOME_HINT_STATE_FILE_NAME = 'home_hint_state.json';
 export const LEDGER_MEMORY_DIR_NAME = 'memory';
 export const LEDGER_MEMORY_INDEX_FILE_NAME = 'index.json';
 
@@ -86,6 +87,13 @@ export function getLedgerExampleChangesPath(ledgerName: string): string {
  */
 export function getLedgerClassifyRuntimePath(ledgerName: string): string {
   return `${getLedgerDirectoryPath(ledgerName)}/${LEDGER_CLASSIFY_RUNTIME_FILE_NAME}`;
+}
+
+/**
+ * 构造账本首页情景提示状态路径。
+ */
+export function getLedgerHomeHintStatePath(ledgerName: string): string {
+  return `${getLedgerDirectoryPath(ledgerName)}/${LEDGER_HOME_HINT_STATE_FILE_NAME}`;
 }
 
 /**

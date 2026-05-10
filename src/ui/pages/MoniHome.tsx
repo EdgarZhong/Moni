@@ -21,7 +21,6 @@ import {
   DRAG_PANEL_EXPAND_ARM_DISTANCE_PX,
   DisplayBoard,
   DragOverlay,
-  HintCard,
   OverviewCard,
   ReasonDialog,
   RootLedgerPageHeader,
@@ -30,6 +29,7 @@ import {
   type HomeDayGroup,
   type HomeTransaction,
 } from "@ui/features/moni-home/components";
+import { HomeHintCard } from "@ui/features/moni-home/HomeHintCard";
 import {
   restoreHomeRangeUiSessionState,
   saveHomeRangeUiSessionState,
@@ -75,6 +75,7 @@ interface ReasonItem {
 
 interface MoniHomeProps {
   onNavigate?: (page: "home" | "entry" | "settings") => void;
+  onOpenSettingsSubPage?: (page: "selfDesc" | "budget") => void;
   currentLedger: LedgerOption;
   availableLedgers: LedgerOption[];
   onSwitchLedger: (ledgerId: string) => void | Promise<unknown>;
@@ -88,7 +89,8 @@ interface DetailContext {
 }
 
 export default function MoniHome({
-  onNavigate: _onNavigate,
+  onNavigate,
+  onOpenSettingsSubPage,
   currentLedger: shellCurrentLedger,
   availableLedgers,
   onSwitchLedger,
@@ -154,6 +156,7 @@ export default function MoniHome({
   const restoredRangeSessionKeyRef = useRef<string | null>(null);
 
   const primaryHint = hintCards[0] ?? null;
+  const primaryHintAction = primaryHint?.action ?? null;
   const aiStop = aiEngineUiState.status === "draining";
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
   const aiCurrentDates = aiEngineUiState.activeDates;
@@ -519,6 +522,7 @@ export default function MoniHome({
     moveThreshold: 8,
     axisLockRatio: 1.15,
     onTapItem: (item) => {
+      void actions.markPostAiInteractionCompleted();
       setDetailTxId(String(item.id));
     },
     onDragStart: ({ item, x, y }) => {
@@ -914,11 +918,29 @@ export default function MoniHome({
           trendHandlers={trendHandlers}
         />
 
-        <HintCard
+        <HomeHintCard
           visible={hintVisible}
-          icon={primaryHint?.type === "budget_alert" ? "⚠️" : "💡"}
+          icon={primaryHint?.type === "budget_alert" ? "⚠️" : primaryHint?.type === "budget_nudge" ? "💰" : "💡"}
           title={primaryHint?.title}
           description={primaryHint?.description}
+          actionLabel={primaryHintAction?.label ?? null}
+          onAction={
+            primaryHintAction
+              ? () => {
+                  if (primaryHintAction.target === "entry_import") {
+                    onNavigate?.("entry");
+                    return;
+                  }
+                  if (primaryHintAction.target === "settings_self_description") {
+                    onOpenSettingsSubPage?.("selfDesc");
+                    return;
+                  }
+                  if (primaryHintAction.target === "settings_budget") {
+                    onOpenSettingsSubPage?.("budget");
+                  }
+                }
+              : null
+          }
           onClose={() => setHintVisible(false)}
         />
 
@@ -1022,6 +1044,7 @@ export default function MoniHome({
         onSubmit={(reason) => {
           const pending = pendingDropRef.current;
           if (pending) {
+            void actions.markPostAiInteractionCompleted();
             actions.updateCategory(pending.txId, pending.category, reason);
             pendingDropRef.current = null;
           }

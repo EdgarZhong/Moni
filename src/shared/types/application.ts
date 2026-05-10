@@ -67,13 +67,24 @@ export interface HomeCategoryBudgetItemReadModel {
   overageAmount: number;
 }
 
+export type HomeHintCardType = 'onboarding_step' | 'budget_alert' | 'budget_nudge';
+export type HomeHintCardPriority = 'high' | 'medium' | 'low';
+export type HomeHintActionTarget = 'settings_self_description' | 'settings_budget' | 'entry_import';
+
+export interface HomeHintActionReadModel {
+  kind: 'navigate';
+  target: HomeHintActionTarget;
+  label: string;
+}
+
 export interface HomeHintCardReadModel {
   id: string;
-  type: 'budget_alert' | 'budget_nudge';
-  priority: 'high' | 'medium' | 'low';
+  type: HomeHintCardType;
+  priority: HomeHintCardPriority;
   title: string;
   description: string;
   dismissible: boolean;
+  action: HomeHintActionReadModel | null;
 }
 
 export interface HomeTransactionReadModel {

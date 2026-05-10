@@ -5,6 +5,8 @@ import { LearningAutomationService, type AutoLearningEvent } from '@logic/applic
 import { LearningSession } from '@logic/application/ai/LearningSession';
 import type { AIProgress, AIStatus } from '@logic/application/ai/types';
 import { ExampleStore } from '@logic/application/services/ExampleStore';
+import { HomeHintStateManager } from '@logic/application/services/HomeHintStateManager';
+import { HomeHintSystemBuilder } from '@logic/application/services/HomeHintSystemBuilder';
 import { LedgerPreferencesManager } from '@logic/application/services/LedgerPreferencesManager';
 import { MemoryManager } from '@logic/application/services/MemoryManager';
 import { SelfDescriptionManager } from '@system/config/SelfDescriptionManager';
@@ -43,6 +45,15 @@ import type { FullTransactionRecord } from '@shared/types/metadata';
 const HOME_TREND_DAYS = 30;
 const HOME_TREND_WINDOW_SIZE = 7;
 type ZeroMemoryWarningChoice = 'classify7days' | 'consumeAll' | 'cancel';
+
+/**
+ * 顶部轻提示事件。
+ * AppRoot 订阅后会把这些事件渲染成全局顶部提示。
+ */
+export interface TopNoticeEvent {
+  title: string;
+  message: string;
+}
 
 function toDateKey(time: string): string {
   return time.slice(0, 10);
@@ -200,6 +211,18 @@ export class AppFacade {
   private readonly batchProcessor = BatchProcessor.getInstance();
   private readonly manualEntryManager = ManualEntryManager.getInstance();
   private readonly listeners = new Set<() => void>();
+  private readonly topNoticeListeners = new Set<(event: TopNoticeEvent) => void>();
+  /**
+   * 记录“分类真正开始前，用户已经请求停止”这一瞬时意图。
+   *
+   * 目前最关键的场景是：
+   * 1. 用户手动开启分类
+   * 2. 系统先进入前置学习会话
+   * 3. 用户在学习进行中点了“停止”
+   *
+   * 此时学习会话本身仍继续完成，但后续必须中断，不再进入 BatchProcessor 分类阶段。
+   */
+  private stopRequestedBeforeBatchStart = false;
 
   private aiStatus: AIStatus = 'IDLE';
   private aiProgress: AIProgress = { total: 0, current: 0, currentDate: '', currentDates: [] };
@@ -230,8 +253,31 @@ export class AppFacade {
     };
   }
 
+  /**
+   * 订阅顶部轻提示事件。
+   */
+  public subscribeTopNoticeEvents(listener: (event: TopNoticeEvent) => void): () => void {
+    this.topNoticeListeners.add(listener);
+    return () => {
+      this.topNoticeListeners.delete(listener);
+    };
+  }
+
   public subscribeAutoLearningEvents(listener: (event: AutoLearningEvent) => void): () => void {
     return LearningAutomationService.subscribe(listener);
+  }
+
+  /**
+   * 统一向外发出顶部轻提示。
+   */
+  private emitTopNotice(event: TopNoticeEvent): void {
+    for (const listener of this.topNoticeListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.warn('[AppFacade] top notice listener failed:', error);
+      }
+    }
   }
 
   public getLedgerState(): LedgerFacadeState {
@@ -288,11 +334,13 @@ export class AppFacade {
       fullDataRange
     );
 
-    const [availableLedgers, homeBudget, pendingTasks, lastLearningMeta] = await Promise.all([
+    const [availableLedgers, homeBudget, pendingTasks, lastLearningMeta, selfDescription, onboardingState] = await Promise.all([
       this.listLedgerOptions({ syncWithFiles: false }).catch(() => [currentLedger]),
       this.budgetManager.getHomeBudgetReadModel(currentLedgerId, ledgerState.ledgerMemory, { now }),
       classifyIndex.getPending(currentLedgerId).catch(() => []),
       this.loadLastLearningMeta(currentLedgerId),
+      SelfDescriptionManager.load().catch(() => '') ?? '',
+      HomeHintStateManager.getInstance().load(currentLedgerId),
     ]);
 
     const todayKey = toLocalDateKey(now);
@@ -369,7 +417,21 @@ export class AppFacade {
     const budgetCard: HomeBudgetCardReadModel | null = homeBudget.monthlyBudget.enabled
       ? this.budgetManager.toBudgetCard(homeBudget.monthlyBudget)
       : null;
-    const hintCards: HomeHintCardReadModel[] = homeBudget.budgetHints;
+    /**
+     * onboarding 的“导入账单”步骤只认真实账单导入结果。
+     * 因此这里不能把 manual 条目算作“已导入”。
+     */
+    const hasImportedTransactions = Object.values(records).some((record) =>
+      record.transactionStatus === 'SUCCESS' &&
+      (record.sourceType === 'wechat' || record.sourceType === 'alipay')
+    );
+    const hintCards: HomeHintCardReadModel[] = HomeHintSystemBuilder.build({
+      selfDescription,
+      hasMonthlyBudget: homeBudget.monthlyBudget.enabled,
+      hasImportedTransactions,
+      onboardingState,
+      budgetHints: homeBudget.budgetHints,
+    });
     return {
       currentLedger,
       availableLedgers,
@@ -512,8 +574,35 @@ export class AppFacade {
   ): Promise<void> {
     const currentLedgerId = this.ledgerManager.getActiveLedgerName();
     console.log(`[MONI_AI_DEBUG][AppFacade] startAiProcessing triggered for ledger: ${currentLedgerId}`);
+    this.stopRequestedBeforeBatchStart = false;
 
     if (currentLedgerId) {
+      let completedPreLearningBeforeClassification = false;
+      /**
+       * 关键口径收口：
+       * “开始分类”只应服务于当前真的存在可分类任务的场景。
+       *
+       * 因此前置学习不能先于“是否有可消费分类任务”这个判断。
+       * 否则会出现：
+       * 1. 当前 data range 内根本没有可分类日期
+       * 2. 但实例库恰好还有未学习增量
+       * 3. 用户点击“开始分类”后，系统意外触发学习
+       *
+       * 这不符合用户对“分类引擎”入口的预期。
+       */
+      const ledgerState = this.ledgerService.getState();
+      const currentDateRange = ledgerState.dateRange;
+      const pendingTasks = await classifyIndex.getPending(currentLedgerId).catch(() => []);
+      const consumableTasks = pendingTasks.filter((task) => isDateKeyInRange(task.date, currentDateRange));
+      const pendingCount = pendingTasks.length;
+      const consumableDates = Array.from(new Set(consumableTasks.map((task) => task.date))).sort();
+
+      if (consumableDates.length === 0) {
+        console.log('[MONI_AI_DEBUG][AppFacade] No consumable classify tasks in current data range, skip pre-learning and classification start.');
+        this.stopRequestedBeforeBatchStart = false;
+        return;
+      }
+
       /**
        * 用户主动点击“开始分类”时，先检查是否存在尚未学习的实例增量。
        * 若存在，必须先做一轮学习，再进入正式分类。
@@ -529,15 +618,33 @@ export class AppFacade {
 
       if (learningState && learningState.pendingCount > 0) {
         const previousAiState = this.snapshotAiState();
+        this.emitTopNotice({
+          title: 'AI 正在自动学习',
+          message: '有尚未学习的实例，AI 正在自动学习。',
+        });
         this.setPreLearningAiWorkingState();
 
         const categories = this.ledgerService.getState().ledgerMemory?.defined_categories ?? {};
         const learningResult = await LearningSession.run(currentLedgerId, categories);
         if (!learningResult.success) {
           console.error('[MONI_AI_DEBUG][AppFacade] Pre-learning failed, abort AI processing:', learningResult.error);
+          this.stopRequestedBeforeBatchStart = false;
           this.restoreAiState(previousAiState);
           return;
         }
+
+        /**
+         * 学习阶段如果用户已经点过“停止”，本轮要求是：
+         * - 允许这次学习会话自然完成
+         * - 但学习结束后不得继续进入分类
+         */
+        if (this.stopRequestedBeforeBatchStart) {
+          console.log('[MONI_AI_DEBUG][AppFacade] Stop requested during pre-learning, skip classification start.');
+          this.stopRequestedBeforeBatchStart = false;
+          this.restoreAiState(previousAiState);
+          return;
+        }
+        completedPreLearningBeforeClassification = true;
       }
 
       /**
@@ -547,26 +654,11 @@ export class AppFacade {
        *
        * 任务生产必须由导入 / 重分类 / 用户操作等被动外部事件同步完成。
        */
-      const pendingCount = await classifyIndex.size(currentLedgerId).catch(() => 0);
       console.log(`[MONI_AI_DEBUG][AppFacade] Existing pending queue size: ${pendingCount}`);
 
       // 检查零记忆警告条件
       if (onShowZeroMemoryDialog && pendingCount > 7) {
         try {
-          // 获取当前 data range
-          const ledgerState = this.ledgerService.getState();
-          const currentDateRange = ledgerState.dateRange;
-
-          // 获取待处理任务列表并过滤到当前范围内
-          const pendingTasks = await classifyIndex.getPending(currentLedgerId);
-          const consumableDates = Array.from(
-            new Set(
-              pendingTasks
-                .filter((task) => isDateKeyInRange(task.date, currentDateRange))
-                .map((task) => task.date)
-            )
-          ).sort();
-
           // 如果过滤后的消费日期数 > 7，显示零记忆警告弹窗
           if (consumableDates.length > 7) {
             const hasMemory = await this.checkHasMemory(currentLedgerId);
@@ -589,6 +681,7 @@ export class AppFacade {
                * 这里必须直接返回，不能继续跑 BatchProcessor。
                */
               if (userChoice === 'cancel') {
+                this.stopRequestedBeforeBatchStart = false;
                 return;
               }
 
@@ -608,6 +701,40 @@ export class AppFacade {
           // 检查失败时不阻断消费，直接继续
         }
       }
+
+      /**
+       * 前置学习完成后，如果在真正进入 BatchProcessor 之前用户又发出了停止请求，
+       * 也必须直接中断，不允许继续开始分类。
+       */
+      if (this.stopRequestedBeforeBatchStart) {
+        console.log('[MONI_AI_DEBUG][AppFacade] Stop requested before BatchProcessor.run(), abort classification start.');
+        this.stopRequestedBeforeBatchStart = false;
+        this.aiStatus = 'IDLE';
+        this.aiProgress = {
+          total: 0,
+          current: 0,
+          currentDate: '',
+          currentDates: []
+        };
+        this.notify();
+        return;
+      }
+
+      if (completedPreLearningBeforeClassification) {
+        this.emitTopNotice({
+          title: '已学习完成',
+          message: '已学习完成，开始进行分类。',
+        });
+      }
+
+      /**
+       * 只有走过前置检查且没有被中途取消，这次“主动开启 AI 分类”才算成立。
+       * 这里再落盘 onboarding 状态，避免用户只打开了风险提示或半路取消，也被误判成完成。
+       */
+      await HomeHintStateManager.getInstance().markAiStarted(currentLedgerId).catch((error) => {
+        console.warn('[MONI_AI_DEBUG][AppFacade] Failed to persist ai-started onboarding state:', error);
+      });
+      this.notify();
     }
 
     console.log(`[MONI_AI_DEBUG][AppFacade] Invoking BatchProcessor.run()`);
@@ -616,11 +743,42 @@ export class AppFacade {
       console.log(`[MONI_AI_DEBUG][AppFacade] BatchProcessor.run() completed.`);
     } catch (err) {
       console.error(`[MONI_AI_DEBUG][AppFacade] BatchProcessor.run() error:`, err);
+    } finally {
+      this.stopRequestedBeforeBatchStart = false;
     }
   }
 
   public stopAiProcessing(): void {
+    /**
+     * 若当前 facade 正处于“只亮 AI 工作态、但 아직未进入任何 activeDates”的阶段，
+     * 这代表系统仍在前置学习或即将进入分类前的短暂窗口。
+     * 此时停止请求应被记住，等学习完成后直接中断，不再继续开始分类。
+     */
+    if (
+      this.aiStatus === 'ANALYZING' &&
+      !this.aiProgress.currentDate &&
+      this.aiProgress.currentDates.length === 0
+    ) {
+      this.stopRequestedBeforeBatchStart = true;
+      this.notify();
+    }
     this.batchProcessor.stop();
+  }
+
+  /**
+   * 标记：用户已经完成一次分类后交互学习。
+   * 当前由首页在“打开详情页”或“完成拖拽改分类”后调用。
+   */
+  public async markHomePostAiInteractionCompleted(): Promise<void> {
+    const currentLedgerId = this.ledgerManager.getActiveLedgerName();
+    if (!currentLedgerId) {
+      return;
+    }
+
+    await HomeHintStateManager.getInstance().markPostAiInteractionCompleted(currentLedgerId).catch((error) => {
+      console.warn('[AppFacade] Failed to persist post-ai interaction onboarding state:', error);
+    });
+    this.notify();
   }
 
   /**
@@ -701,7 +859,7 @@ export class AppFacade {
     const status: HomeAiEngineUiState['status'] = this.aiStatus === 'ERROR'
       ? 'error'
       : this.aiStatus === 'ANALYZING'
-        ? (this.batchProcessor.isStopping ? 'draining' : 'running')
+        ? ((this.batchProcessor.isStopping || this.stopRequestedBeforeBatchStart) ? 'draining' : 'running')
         : pendingCount > 0
           ? 'paused'
           : 'idle';

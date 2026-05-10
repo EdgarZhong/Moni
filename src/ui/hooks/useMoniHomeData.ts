@@ -163,6 +163,7 @@ export interface MoniHomeData {
     deleteTransaction: (transactionId: string) => Promise<void>;
     startAiProcessing: () => Promise<void>;
     stopAiProcessing: () => void;
+    markPostAiInteractionCompleted: () => Promise<void>;
     setHomeDateRange: (range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => void;
     setTrendWindowOffset: (offset: number) => void;
     refresh: () => Promise<void>;
@@ -286,6 +287,10 @@ export function useMoniHomeData(): MoniHomeData {
   const stopAiProcessing = useCallback(() => {
     appFacade.stopAiProcessing();
   }, []);
+  const markPostAiInteractionCompleted = useCallback(
+    () => appFacade.markHomePostAiInteractionCompleted(),
+    []
+  );
   const updateHomeDateRange = useCallback((range: { start: Date | null; end: Date | null; isEmpty?: boolean }) => {
     /**
      * 这里必须保持回调稳定，不能把 `homeDateRange` 本身放进依赖里。
@@ -325,6 +330,7 @@ export function useMoniHomeData(): MoniHomeData {
       deleteTransaction,
       startAiProcessing,
       stopAiProcessing,
+      markPostAiInteractionCompleted,
       setHomeDateRange: updateHomeDateRange,
       setTrendWindowOffset: updateTrendWindowOffset,
       refresh: loadReadModel,
@@ -332,6 +338,7 @@ export function useMoniHomeData(): MoniHomeData {
     [
       deleteTransaction,
       loadReadModel,
+      markPostAiInteractionCompleted,
       setTransactionVerification,
       startAiProcessing,
       stopAiProcessing,

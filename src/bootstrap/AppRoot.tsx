@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { appFacade } from '@bootstrap/appFacade';
+import type { TopNoticeEvent } from '@logic/application/facades/AppFacade';
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
@@ -30,6 +31,11 @@ type ShellChromeState = {
   showBottomNav: boolean;
 };
 
+type SettingsEntryState = {
+  page: 'root' | 'selfDesc' | 'budget';
+  nonce: number;
+};
+
 function RuntimeApp() {
   /**
    * 在应用根层锁定稳定画布高度。
@@ -38,6 +44,10 @@ function RuntimeApp() {
   useAppViewportLock();
 
   const [activePage, setActivePage] = useState<Page>('home');
+  const [settingsEntryState, setSettingsEntryState] = useState<SettingsEntryState>({
+    page: 'root',
+    nonce: 0,
+  });
   const { isKeyboardVisible } = useKeyboard();
 
   /**
@@ -250,16 +260,36 @@ function RuntimeApp() {
     };
   }, [clearExitToastTimer, handleRootNativeBack]);
 
-  const [autoLearningNotice, setAutoLearningNotice] = useState<{
+  const [topNotice, setTopNotice] = useState<{
     visible: boolean;
+    title: string;
     message: string;
   }>({
     visible: false,
+    title: '',
     message: '',
   });
 
   const handleNavigate = useCallback((page: Page) => {
+    if (page === 'settings') {
+      setSettingsEntryState((previous) => ({
+        page: 'root',
+        nonce: previous.nonce + 1,
+      }));
+    }
     setActivePage(page);
+  }, []);
+
+  /**
+   * 首页提示卡若需要直达设置页二级页，必须走这条专门入口。
+   * 否则只跳到设置首页，会让“快捷操作按钮”失去快捷意义。
+   */
+  const handleOpenSettingsSubPage = useCallback((page: 'selfDesc' | 'budget') => {
+    setSettingsEntryState((previous) => ({
+      page,
+      nonce: previous.nonce + 1,
+    }));
+    setActivePage('settings');
   }, []);
 
   useEffect(() => {
@@ -279,7 +309,7 @@ function RuntimeApp() {
   }, []);
 
   useEffect(() => {
-    if (!autoLearningNotice.visible) {
+    if (!topNotice.visible) {
       if (autoLearningNoticeTimerRef.current != null) {
         clearTimeout(autoLearningNoticeTimerRef.current);
         autoLearningNoticeTimerRef.current = null;
@@ -291,7 +321,7 @@ function RuntimeApp() {
       clearTimeout(autoLearningNoticeTimerRef.current);
     }
     autoLearningNoticeTimerRef.current = setTimeout(() => {
-      setAutoLearningNotice((value) => ({ ...value, visible: false }));
+      setTopNotice((value) => ({ ...value, visible: false }));
       autoLearningNoticeTimerRef.current = null;
     }, 3200);
 
@@ -301,7 +331,7 @@ function RuntimeApp() {
         autoLearningNoticeTimerRef.current = null;
       }
     };
-  }, [autoLearningNotice.visible]);
+  }, [topNotice.visible]);
 
   useEffect(() => {
     const unsubscribe = appFacade.subscribeAutoLearningEvents((event) => {
@@ -309,9 +339,24 @@ function RuntimeApp() {
         return;
       }
 
-      setAutoLearningNotice({
+      setTopNotice({
         visible: true,
+        title: '自动学习已触发',
         message: `账本「${event.ledgerName}」已触发自动学习，AI 正在后台更新记忆。`,
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = appFacade.subscribeTopNoticeEvents((event: TopNoticeEvent) => {
+      setTopNotice({
+        visible: true,
+        title: event.title,
+        message: event.message,
       });
     });
 
@@ -364,11 +409,14 @@ function RuntimeApp() {
           <MoniSettings
             onNavigate={handleNavigate}
             onBottomNavVisibilityChange={handleBottomNavVisibilityChange}
+            entryPage={settingsEntryState.page}
+            entryNonce={settingsEntryState.nonce}
           />
         ) : null}
         {activePage === 'home' ? (
           <MoniHome
             onNavigate={handleNavigate}
+            onOpenSettingsSubPage={handleOpenSettingsSubPage}
             currentLedger={currentLedger}
             availableLedgers={availableLedgers}
             onSwitchLedger={switchLedger}
@@ -414,7 +462,7 @@ function RuntimeApp() {
         onClose={aiEngineControl.zeroMemoryWarning.handleClose}
       />
 
-      {autoLearningNotice.visible ? (
+      {topNotice.visible ? (
         <div
           style={{
             position: 'fixed',
@@ -436,10 +484,10 @@ function RuntimeApp() {
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 700, color: '#126b63', marginBottom: 4 }}>
-              自动学习已触发
+              {topNotice.title}
             </div>
             <div style={{ fontSize: 12, lineHeight: 1.5, color: '#24534e', wordBreak: 'break-word' }}>
-              {autoLearningNotice.message}
+              {topNotice.message}
             </div>
           </div>
         </div>
