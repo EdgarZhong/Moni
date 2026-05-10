@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon 前景层：Moni icon 内容（M logo + 装饰色块）。
+  画布 108dp × 108dp，安全区为居中的 72dp × 72dp（四周各 18dp 可能被遮罩裁切）。
+  内容区设为 64dp，translateX/Y = (108-64)/2 = 22，保证所有元素都在安全区内。
+  scaleX/Y = 64/52 ≈ 1.2308（将 SVG 52×52 的内容坐标映射到 64dp 内容区）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:translateX="22"
+        android:translateY="22"
+        android:scaleX="1.2308"
+        android:scaleY="1.2308">
+
+        <!-- M 猫耳路径；对应 SVG 中 <g transform="translate(0.8 1)"> 内的 path -->
+        <group android:translateX="0.8" android:translateY="1">
+            <path
+                android:strokeColor="#F5F0EB"
+                android:strokeWidth="3.2"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round"
+                android:fillColor="#00000000"
+                android:pathData="M12.7,38 C12.7,38 12.7,18 15,14.5 C16.7,13 17.8,13.5 23,25 C23,25 23.9,27 24.7,25 C25.5,23 29.3,13.5 31,14.5 C32.8,15.5 33.4,38 33.4,38"/>
+        </group>
+
+        <!-- 红色装饰圆：cx=37 cy=14 r=4 opacity=0.8 -->
+        <path
+            android:fillColor="#FF6B6B"
+            android:fillAlpha="0.8"
+            android:pathData="M37,14 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"/>
+
+        <!-- 蓝色装饰圆：cx=31 cy=9 r=2.6 opacity=0.7 -->
+        <path
+            android:fillColor="#7EC8E3"
+            android:fillAlpha="0.7"
+            android:pathData="M31,9 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0"/>
+
+        <!-- 黄色装饰方块：x=34 y=7 w=4 h=4 rx=0.8 rotate(18, 36, 9) opacity=0.6 -->
+        <group
+            android:pivotX="36"
+            android:pivotY="9"
+            android:rotation="18">
+            <path
+                android:fillColor="#F9D56E"
+                android:fillAlpha="0.6"
+                android:pathData="M34.8,7 L37.2,7 Q38,7 38,7.8 L38,10.2 Q38,11 37.2,11 L34.8,11 Q34,11 34,10.2 L34,7.8 Q34,7 34.8,7 Z"/>
+        </group>
+
+    </group>
+
+</vector>
