@@ -9,9 +9,9 @@
 
 ## 当前版本状态
 
-- 当前已发布稳定版本：`0.4.1`
-- 下一版本：版本号待定；当前阶段主题为“AI 自学习系统第一轮低成本精度优化”
-- 首页、记账页、设置页主要持久化链路以 `0.4.1` 为当前稳定基线
+- 当前已发布稳定版本：`0.4.2`
+- 下一版本：版本号待定；当前阶段主题为”AI 自学习系统第一轮低成本精度优化”（继续推进）
+- 首页、记账页、设置页主要持久化链路以 `0.4.2` 为当前稳定基线
 
 ## 阶段基线
 
@@ -37,9 +37,21 @@
 - 2026-05-10 口径收敛：设置页推理参数面板的前端提示文案统一为开发者向单句，不再按 DeepSeek / SiliconFlow 分别展示说明；页面骨架继续复用现有设置页，只按 provider 填充各自标签页内容和默认值。
 - 2026-05-10 口径收敛：special release 的随包数据回到第一版 `demo-seed-manifest.json` 写盘路径，但 manifest 白名单进一步收窄为仅保留 `secure_config.bin`；不再走 ZIP 解包，也不再走原始 `secure_config.bin` 裸文件直拷贝入口。
 - 2026-05-10 修复进展：已撤回本轮 special release 里新增的首启单飞保护、重试 fetch 与默认补写增强；`AppFacade.init()`、`ConfigManager`、`SelfDescriptionManager` 已回到历史稳定启动链路，仅保留“manifest 中只携带 `secure_config.bin`”这一项 special release 差异。
-- 2026-05-10 构建结果：本地 `npm run build:release` 已通过，`release/moni-alpha-v0.4.1.apk` 已产出；APK 内确认仅携带 `assets/public/demo-seed-manifest.json`，且 manifest 中只包含 `secure_config.bin`，签名验证通过 `APK Signature Scheme v2`；仍待用户在真机复核“首启不黑屏且 API Key 成功落盘”。
+- 2026-05-10 构建结果：本地 `npm run build:release` 已通过，`release/moni-alpha-v0.4.1.apk` 已产出；APK 内确认仅携带 `assets/public/demo-seed-manifest.json`，且 manifest 中只包含 `secure_config.bin`，签名验证通过 `APK Signature Scheme v2`；仍待用户在真机复核”首启不黑屏且 API Key 成功落盘”。
+- 2026-05-11 构建结果：`release/moni-alpha-v0.4.2.apk` 已产出，已在两台真机验收通过：冷启动黑屏问题不再复现，Splash 背景与 icon 深色统一，App icon 裁切问题修复（右上角装饰色块完整显示）。
 
 ## Release Changelog
+
+### `0.4.2`
+
+- 修复 Android 冷启动黑屏：窗口背景从 `@null`（透明）改为应用主色 `#F5F0EB`，消除 Splash 消失到 WebView 首帧之间的黑色窗口
+- 接入 `@capacitor/splash-screen`，关闭自动隐藏，改由 React 首帧 mount 后通过 double-RAF 主动 hide，补充 1200ms / 2500ms 双重兜底
+- 新增启动 repaint workaround：冷启动 double-RAF + 延迟兜底，以及 `appStateChange` / `visibilitychange` / `focus` 事件触发的 resume repaint
+- `index.html` 加入 inline 背景色与 `#root:empty` 占位，CSS 加载前 WebView 即有内容可绘制
+- Android 12+ 新增 `values-v31/styles.xml`，补齐 `windowSplashScreenBackground` 与 `postSplashScreenTheme`
+- Splash 背景色统一为 icon 深色 `#222222`，与 App icon 视觉一致
+- 修复 App icon 裁切：正确拆分 Adaptive Icon 背景 / 前景层；前景 vector 将 icon 内容居中缩放到 108dp 画布的 72dp 安全区内，右上角三个装饰色块不再被启动器遮罩截断
+- 从 `public/icon.svg` 重新生成各密度传统 PNG（mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi）
 
 ### `0.4.1`
 
@@ -171,31 +183,25 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| AI 自学习系统第一轮优化参数链路核对 | In Progress | 供应商分支正在按“各写各的”方式收口：`SiliconFlow` 继续保留 `enable_thinking / thinking_budget` 口径，`DeepSeek` 正在补 `thinking / reasoning_effort` 口径；前端设置页继续复用现有骨架，只接读模型和内容，不重做页面 |
-| 学习会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.3 / §2.5 / §2.6 / §2.8 落地：学习 payload 注入“净变更 + 最近 30 条实例”，无 `userNote` 样本统一写入弱证据标记，Prompt 约束补齐“不得依赖未来 `userNote`”与“实体记忆 / 规律记忆不得混写” |
-| 分类会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.4 / §2.5 落地：分类会话实例注入改为 `recent/retrieved × misclassified/confirmed` 四区块；最近样本与检索样本允许重复出现；无 `userNote` 样本统一标记弱证据 |
-| 分类前强制学习未学习实例 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.7 落地：`AppFacade.startAiProcessing()` 检测到未学习实例时会先执行学习，再进入 `BatchProcessor`；学习阶段 AI 工作态立即亮起，但 `activeDates` 保持空数组，不误导为某日已开始正式分类 |
-| 前置学习顶部提示链路补齐 | Completed | 已补齐两段式顶部提示：前置学习开始提示、学习完成后转入分类提示；并修正时序，只有当后续确实继续进入分类时才弹“开始进行分类”；学习阶段仍只亮 AI 工作态、不点亮任何日级 `activeDates` |
-| 首页 onboarding 情景提示引擎第一轮 | Completed | 已按 `设置自述 -> 设置月预算 -> 导入账单 -> 开启 AI 分类 -> 学习分类后交互方式` 落地第一张未完成步骤策略；关闭仍仅隐藏当前会话；现有预算类提示已并入统一结构；自述完成判定改为“用户已改写默认 demo 自述”；按钮可直达真实页面入口 |
+| AI 自学习系统第一轮优化参数链路核对 | In Progress | 供应商分支正在按”各写各的”方式收口：`SiliconFlow` 继续保留 `enable_thinking / thinking_budget` 口径，`DeepSeek` 正在补 `thinking / reasoning_effort` 口径；前端设置页继续复用现有骨架，只接读模型和内容，不重做页面 |
 | BatchProcessor revision 系统复审 | Deferred | 后期重新审视 `BatchProcessor` 为并发保护引入的 revision 机制是否仍然划算，重点评估现有 CAS 防护粒度、实现复杂度与更简化的替代设计；不影响当前已修复的 `bumpRevision` 口径 |
 | 真机反馈收口修复 | In Progress | 当前聚焦 8 个真机修复点：详情页分类入口点击异常、微信原始分类错误上浮到顶部 badge、设置页二级页返回手势未消费、随手记详情输入层被键盘顶起并改为顶部弹层、导入指南页改为全屏覆盖底部导航、压缩包密码输入页字体回退、首页理由弹窗未自动唤起键盘、随手记详情输入层误触遮罩易退出 |
 | Demo seed 首启解压刷新问题 | Pending | `0.3.7` 改为 zip 化 demo seed 后，首次打开时数据还在后台解压，当前页面无法立即刷新显示；需要退出软件再重新进入才能看到数据，需定位首启刷新/解压完成通知链路 |
-| Android 真机验收 | Pending | 由用户每次 release 后在真机上异步持续验收；当前浏览器开发态回归已通过，真机闭环尚未完成 |
+| Android 真机验收 | In Progress | `0.4.2` 冷启动黑屏与 icon 裁切已在两台真机验收通过；8 个真机反馈修复点仍待后续验收 |
 | 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式在 `MoniSettings.tsx`（当前实际渲染路径）中尚未接入；现有 `SettingsPage.tsx` 中的接线未被加载；本轮仅做不影响运行的最小修补（predicate 简化 + label 语义修正），完整接线推后；落实时需确认：① `MoniSettings.tsx` 中新增标签后改走 `ReclassifyConfirmDialog` 范围选择流程，② `SettingsPage.tsx` 中对应接线是否仍需保留 |
 | 全局字体统一治理 | Deferred | 当前只对高频可编辑控件做补丁修正，避免桌面端回退到 serif；完整字体治理与历史覆盖层梳理推后单独收口，0.3.7轮不扩展到详情页复制能力 |
 
 ## 当前优先级
 
-1. 真机反馈收口修复
-2. Special release 的 secure_config 单文件打包与首启默认重建链路确认
-3. Android 真机验收
+1. AI 自学习系统第一轮优化 DeepSeek 供应商参数链路收口
+2. 真机反馈收口修复（8 个修复点）
+3. Android 真机验收（持续进行）
 4. 标签管理重分类流程全链路落实（推后但持续追踪）
 5. 全局字体统一治理（推后但持续追踪）
 
 ## 当前阶段风险
 
 - 学习会话与分类会话都将引入最近 30 条实例；若上下文长度、实例格式或日志体积控制不当，可能带来 token 成本上升与日志膨胀风险
-- 特别版 release 已切回第一版 manifest 写盘路径，并把白名单收窄为仅 `secure_config.bin`；仍需真机确认首启时 manifest 写盘链路稳定，且不会出现黑屏或 API Key 丢失
 - Android 文件选择器与真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 
 
@@ -211,7 +217,7 @@
 - 评委演示包当前固定口径：构建脚本从 `virtual_android_filesys/sandbox_path/secure_config.bin` 生成 `public/demo-seed-manifest.json`，APK 随包只携带该 manifest；原生首启仅在正式沙盒缺失 `secure_config.bin` 时按 manifest 写回配置，不携带账本、自述、记忆和其他运行态数据
 - Android 安装打包链路已建成，可按当前工程状态随时产出安装包
 - Release 快捷入口当前固定为 `npm run build:release`；标准流程为“编码完成 -> 改版本号 -> 构建 -> 提交代码与文档”
-- Android App Icon 当前固定口径：以 `public/icon.svg` 为唯一信源，生成 launcher icon 时必须保持原图构图与装饰位置，不允许使用会导致错位/裁切的渲染链
+- Android App Icon 当前固定口径：以 `public/icon.svg` 为唯一信源；Adaptive Icon（API 26+）必须拆分背景/前景两层：背景层用纯色 `#222222`（`drawable/ic_launcher_bg.xml`），前景层（`drawable-v24/ic_launcher_foreground.xml`）将 icon 内容缩放居中到 108dp 画布的 72dp 安全区内；传统 PNG 用 `rsvg-convert` 从 SVG 重新生成，不允许使用会导致错位/裁切的渲染链
 - 分类运行态统一规划为 `ledgers/{ledger}/classify_runtime.json`，承载 classify index 主状态、`enqueue_recovery` 与 `confirm_recovery`
 - 分类消费顺序本轮收口为“最近日期优先”
 - 单次分类会话当前默认最多消费 `3` 天；该值暂不暴露 UI，也不额外落盘到 `ai_prefs.json`
