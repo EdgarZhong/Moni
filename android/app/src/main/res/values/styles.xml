@@ -23,7 +23,9 @@
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <!-- Splash 背景与 icon 背景色保持一致（icon 为 #222） -->
+        <item name="android:background">#222222</item>
+        <item name="android:windowBackground">#222222</item>
         <!-- 告知 Android 12+ Splash 消失后切换到运行时主题，避免过渡帧出现黑屏 -->
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
