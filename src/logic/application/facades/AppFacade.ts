@@ -193,10 +193,10 @@ export class AppFacade {
   private static instance: AppFacade;
   /**
    * 只在“切换 provider 且该 provider 尚未选过模型”时使用的推荐默认值。
-   * 本轮基础设施只适配 SiliconFlow，因此这里直接把 SiliconFlow 默认指向推理模型。
+   * 当前 release 以 DeepSeek 为默认供应商，因此这里把 DeepSeek 默认指向 V4 Pro。
    */
   private static readonly PROVIDER_DEFAULT_MODELS: Record<string, string> = {
-    deepseek: 'deepseek-chat',
+    deepseek: 'deepseek-v4-pro',
     moonshot: 'moonshot-v1-8k',
     siliconflow: 'deepseek-ai/DeepSeek-R1',
     modelscope: 'deepseek-ai/DeepSeek-R1',
@@ -1048,9 +1048,9 @@ export class AppFacade {
       baseUrl: providerConfig?.baseUrl ?? '',
       candidateModels,
       activeModel,
-      maxTokens: config.globalParams?.maxTokens ?? 4096,
+      maxTokens: config.globalParams?.maxTokens ?? 8000,
       temperature: config.globalParams?.temperature ?? 0.2,
-      enableThinking: config.globalParams?.enableThinking ?? false,
+      enableThinking: config.globalParams?.enableThinking ?? true,
     };
 
     const selfDescription = await SelfDescriptionManager.load().catch(() => '') ?? '';
@@ -1268,7 +1268,6 @@ export class AppFacade {
 
   private resolveActiveProviderAndModel(config: Awaited<ReturnType<ConfigManager['getConfig']>>): { provider: string; model: string } {
     const fallbackProvider = Object.keys(config.providers).find((name) => Boolean(config.providers[name]?.apiKey))
-      ?? Object.keys(config.providers)[0]
       ?? 'deepseek';
     const candidate = config.candidateModels[0] ?? '';
     const [providerName, ...modelParts] = candidate.split('::');

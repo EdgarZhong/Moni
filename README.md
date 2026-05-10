@@ -95,7 +95,7 @@ npm run build:release
 
 稳定约定：
 
-- 该命令会自动刷新 `public/demo-seed-manifest.json`
+- 该命令会自动刷新当前发布所需的 demo seed 资产
 - 该命令会自动执行前端构建、`npx cap sync android` 和 Android release 打包
 - release APK 固定输出到 `release/moni-alpha-v{version}.apk`
 - release 签名固定读取 `android/release-signing.properties`

@@ -35,9 +35,9 @@ export type SecureConfig = MultiProviderConfig;
 
 const DEFAULT_CONFIG: MultiProviderConfig = {
   providers: {
-    'modelscope': { apiKey: '', baseUrl: 'https://api-inference.modelscope.cn/v1' },
-    'siliconflow': { apiKey: '', baseUrl: 'https://api.siliconflow.cn/v1' },
     'deepseek': { apiKey: '', baseUrl: 'https://api.deepseek.com' },
+    'siliconflow': { apiKey: '', baseUrl: 'https://api.siliconflow.cn/v1' },
+    'modelscope': { apiKey: '', baseUrl: 'https://api-inference.modelscope.cn/v1' },
     'moonshot': { apiKey: '', baseUrl: 'https://api.moonshot.cn/v1' },
     'zhipu': { apiKey: '', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
     'custom': { apiKey: '', baseUrl: 'https://api.openai.com/v1' }

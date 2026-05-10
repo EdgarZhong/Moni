@@ -24,7 +24,7 @@
 - 本轮阶段按 `0.4.0 -> 0.4.1` 两个 release 里程碑收口：`0.4.0` 完成自学习系统第一轮低成本精度优化，`0.4.1` 收口顶部提示与首页情景提示系统
 - 现有设计规格体系与页面规格路径统一收口到 `docs/design/spec/`
 - 当前任务优先级列表允许跨阶段并存；凡未完成事项，即使已推后或不属于本轮主线，也不得从优先级追踪中移除
-- AI 自学习系统第一轮优化中的“推理 / 思考模式基础设施”本轮只适配 `SiliconFlow`；其他供应商暂不实现 provider-specific thinking 参数透传，设置界面必须如实体现该限制
+- AI 自学习系统第一轮优化中的“推理 / 思考模式基础设施”按供应商分别实现：`DeepSeek` 走 `thinking / reasoning_effort`，`SiliconFlow` 继续保留 `thinking_budget / enable_thinking`；前端页面骨架继续复用现有设置页，只接读模型和内容，不重做页面
 下一个阶段开始重新维护。
 
 ## 进度同步
@@ -34,6 +34,10 @@
 - 当前只维护尚未结束的修复项与后续排查项
 下一个阶段开始重新维护。
 - 2026-05-10 口径收敛：本轮首页 UI 表现层收口改以“新用户无首次引导直达空首页”的上手路径为主线；中部情景提示卡优先承接 onboarding 顺序，自学习过程态反馈统一走顶部提示，不混入中部卡片。
+- 2026-05-10 口径收敛：设置页推理参数面板的前端提示文案统一为开发者向单句，不再按 DeepSeek / SiliconFlow 分别展示说明；页面骨架继续复用现有设置页，只按 provider 填充各自标签页内容和默认值。
+- 2026-05-10 口径收敛：special release 的随包数据回到第一版 `demo-seed-manifest.json` 写盘路径，但 manifest 白名单进一步收窄为仅保留 `secure_config.bin`；不再走 ZIP 解包，也不再走原始 `secure_config.bin` 裸文件直拷贝入口。
+- 2026-05-10 修复进展：已撤回本轮 special release 里新增的首启单飞保护、重试 fetch 与默认补写增强；`AppFacade.init()`、`ConfigManager`、`SelfDescriptionManager` 已回到历史稳定启动链路，仅保留“manifest 中只携带 `secure_config.bin`”这一项 special release 差异。
+- 2026-05-10 构建结果：本地 `npm run build:release` 已通过，`release/moni-alpha-v0.4.1.apk` 已产出；APK 内确认仅携带 `assets/public/demo-seed-manifest.json`，且 manifest 中只包含 `secure_config.bin`，签名验证通过 `APK Signature Scheme v2`；仍待用户在真机复核“首启不黑屏且 API Key 成功落盘”。
 
 ## Release Changelog
 
@@ -139,7 +143,7 @@
 
 - AI 自学习系统第一轮低成本精度优化已进入实施阶段。
 - 第二章实施项已完成代码落点核对：`AppFacade.startAiProcessing` 承接“分类前强制学习”，`LearningSession` 承接学习 Prompt 与学习窗口增强，`PromptBuilder + ExampleStore + SystemPrompt` 承接分类上下文增强，`ConfigManager + LLMClient + BatchProcessor` 承接模型参数链路与日志验证。
-- 当前唯一剩余工程歧义是不同供应商的 `thinking / reasoning` 参数名不完全统一；本轮实现口径固定为“先补统一参数链路、现有供应商映射与可验证日志”，不为此新增额外抽象层。
+- 当前实现口径固定为“供应商分支直写，不做过早统一抽象层”：`DeepSeek` 与 `SiliconFlow` 的后端请求体、默认模型、设置页提示都分别维护；前端则复用现有页面骨架，只通过读模型接内容与状态。
 - 2026-05-09 现状核查：最新本地 LLM 日志显示当前学习请求使用 `deepseek-ai/DeepSeek-V3.2`，但请求体未携带 `enable_thinking` / `thinking_budget`，响应 `usage.completion_tokens_details.reasoning_tokens = 0`，说明当前并未真正开启 SiliconFlow 思考模式。
 - 2026-05-09 基础设施修复与验证完成：`LearningSession / BatchProcessor / CompressionSession` 已补齐 `maxTokens / enableThinking` 透传，`LLMClient` 已按 SiliconFlow `DeepSeek-V3.2` 透传 `enable_thinking + thinking_budget`，并在浏览器 Playwright 中通过真实学习请求验证日志：最新 `llm_logs` 已出现 `temperature = 0.2`、`enableThinkingConfigured = true`、`siliconFlowThinkingMode = v32_toggle_and_budget`、`payload.enable_thinking = true`、`payload.thinking_budget = 1024`，响应同时返回 `reasoning_content` 与 `reasoning_tokens = 1024`。
 - 2026-05-09 自学习剩余三项已全部收口：学习会话已注入“学习窗口净变更 + 最近 30 条实例”，分类会话已改为“最近 / 检索 × 正例 / 反例”四区块，且无 `userNote` 样本统一标记弱证据；`AppFacade.startAiProcessing()` 现已在存在未学习实例时先学习再分类，并在学习阶段只点亮 AI 工作态、不点亮日级 `activeDates`。
@@ -147,7 +151,7 @@
 - 2026-05-09 第二章真实进度审查结论：
   - 按核心主线看，第二章上下文工程已基本落地；但若严格按文档逐句验收，当前**不能宣称“第二章所有内容 100% 实施且 100% 测透”**。
   - 已实施且已测试的主线项：`2.1 temperature=0.2`、`2.3 学习会话注入净变更 + 最近 30 条实例`、`2.4 分类会话四区块上下文`、`2.5 无 userNote 弱证据标记`、`2.7 分类前强制学习未学习实例`。
-  - `2.2 当前阶段统一使用推理模型，并检查 thinking 参数是否生效` 只能算**部分完成**：SiliconFlow 主链路已验证 `enable_thinking / thinking_budget / reasoning_tokens` 生效，但并未完成所有 provider 的统一推理模型保障；当前完成口径仅限 SiliconFlow。
+  - `2.2 当前阶段统一使用推理模型，并检查 thinking 参数是否生效` 需要按供应商分别验收：`SiliconFlow` 主链路已验证 `enable_thinking / thinking_budget / reasoning_tokens` 生效；`DeepSeek` 需按官方 `thinking / reasoning_effort` 口径单独验证，二者不共享一套伪统一适配。
   - `2.6 学习 Prompt 禁止生成依赖未来 userNote 的规则` 与 `2.8 实体记忆 / 规律记忆不得混写` 均已落到 Prompt 约束层，并经过代码与结构化 payload 核对；但当前**没有针对真实 LLM 输出结果做行为级强验收**，因此只能算“已实施，Prompt 级已验证”，不能夸大为“模型行为已完全证明”。
   - 第 5 章实施清单里的 `11 强制学习时复用顶部弹窗提示，并正确处理 AI 工作状态标识` 当前只能算**部分完成**：AI 工作状态与 `activeDates` 语义已实现并测试，但“复用已有顶部提示文案提醒用户正在先学习未处理实例”这半，本轮没有独立完成可见文案链路的专项验收。
   - 因此，当前最准确的阶段结论应是：**第二章核心上下文工程已完成；若按严格逐条验收口径，仍残留 provider 覆盖、Prompt 约束行为级验证、以及前置学习提示文案专项验收 3 类尾项。**
@@ -167,7 +171,7 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| AI 自学习系统第一轮优化参数链路核对 | Completed | 已先只落地 `SiliconFlow`：`temperature = 0.2` 默认值、核心会话 `enable_thinking / thinking_budget` 透传、设置界面对“仅适配 SiliconFlow”如实提示、浏览器 Playwright 真实学习请求已验证 `reasoning_content / reasoning_tokens` 返回；其他供应商本轮仍未适配 |
+| AI 自学习系统第一轮优化参数链路核对 | In Progress | 供应商分支正在按“各写各的”方式收口：`SiliconFlow` 继续保留 `enable_thinking / thinking_budget` 口径，`DeepSeek` 正在补 `thinking / reasoning_effort` 口径；前端设置页继续复用现有骨架，只接读模型和内容，不重做页面 |
 | 学习会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.3 / §2.5 / §2.6 / §2.8 落地：学习 payload 注入“净变更 + 最近 30 条实例”，无 `userNote` 样本统一写入弱证据标记，Prompt 约束补齐“不得依赖未来 `userNote`”与“实体记忆 / 规律记忆不得混写” |
 | 分类会话上下文增强 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.4 / §2.5 落地：分类会话实例注入改为 `recent/retrieved × misclassified/confirmed` 四区块；最近样本与检索样本允许重复出现；无 `userNote` 样本统一标记弱证据 |
 | 分类前强制学习未学习实例 | Completed | 已按 `docs/自学习系统改进变更_v0.3.md` §2.7 落地：`AppFacade.startAiProcessing()` 检测到未学习实例时会先执行学习，再进入 `BatchProcessor`；学习阶段 AI 工作态立即亮起，但 `activeDates` 保持空数组，不误导为某日已开始正式分类 |
@@ -183,7 +187,7 @@
 ## 当前优先级
 
 1. 真机反馈收口修复
-2. Demo seed 首启解压刷新问题
+2. Special release 的 secure_config 单文件打包与首启默认重建链路确认
 3. Android 真机验收
 4. 标签管理重分类流程全链路落实（推后但持续追踪）
 5. 全局字体统一治理（推后但持续追踪）
@@ -191,8 +195,8 @@
 ## 当前阶段风险
 
 - 学习会话与分类会话都将引入最近 30 条实例；若上下文长度、实例格式或日志体积控制不当，可能带来 token 成本上升与日志膨胀风险
-- Demo seed zip 化后首启解压完成前，首页无法立即刷新显示数据，用户需要退出后重新进入才能看到完整内容；当前还没把“解压完成 -> 刷新显示”的链路接通
-- Android 文件选择器与解压密码输入的真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
+- 特别版 release 已切回第一版 manifest 写盘路径，并把白名单收窄为仅 `secure_config.bin`；仍需真机确认首启时 manifest 写盘链路稳定，且不会出现黑屏或 API Key 丢失
+- Android 文件选择器与真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
 
 
 ## 当前已固定口径
@@ -204,7 +208,7 @@
 - 正式运行时持久化统一写入 `Directory.Data`；`Directory.Documents` 仅作为历史迁移来源，不再作为正式落盘目标
 - 顶层只保留全局文件：`ledgers.json / secure_config.bin / self_description.md / logs`
 - 所有账本级文件统一收口到 `Directory.Data/ledgers/{ledger}/`
-- 评委演示包当前固定口径：APK 随包携带由 `virtual_android_filesys/sandbox_path` 生成的 demo seed，原生首启仅在正式沙盒为空时自动导入，避免覆盖已有用户数据
+- 评委演示包当前固定口径：构建脚本从 `virtual_android_filesys/sandbox_path/secure_config.bin` 生成 `public/demo-seed-manifest.json`，APK 随包只携带该 manifest；原生首启仅在正式沙盒缺失 `secure_config.bin` 时按 manifest 写回配置，不携带账本、自述、记忆和其他运行态数据
 - Android 安装打包链路已建成，可按当前工程状态随时产出安装包
 - Release 快捷入口当前固定为 `npm run build:release`；标准流程为“编码完成 -> 改版本号 -> 构建 -> 提交代码与文档”
 - Android App Icon 当前固定口径：以 `public/icon.svg` 为唯一信源，生成 launcher icon 时必须保持原图构图与装饰位置，不允许使用会导致错位/裁切的渲染链

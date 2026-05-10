@@ -124,14 +124,14 @@ Release 固定约定：
 - APK 命名：`moni-alpha-v{versionName}.apk`
 - APK 输出目录：`release/`
 - Android 签名配置：`android/release-signing.properties`
-- release 构建自动携带 `public/demo-seed-manifest.json`
+- release 构建自动携带当前构建脚本生成的 demo seed 资产
 - 签名验收统一使用 `apksigner verify --verbose --print-certs`
 - 不使用 `jarsigner` 作为 release APK 验签依据
 
 当前版本：
 
-- `version`：`0.3.6`
-- `versionCode`：`7`
-- 当前 APK：`release/moni-alpha-v0.3.6.apk`
+- `version`：`0.4.1`
+- `versionCode`：`9`
+- 当前 APK：`release/moni-alpha-v0.4.1.apk`
 
 **注意：**用户使用语音输入，可能包含口误/转录错误，需要注意甄别。
