@@ -12,11 +12,21 @@
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <!-- 冷启动窗口背景：从 @null（透明/黑底）改为应用主色，防止 WebView 首帧前出现黑屏 -->
+        <item name="android:windowBackground">#F5F0EB</item>
+        <item name="android:background">#F5F0EB</item>
+        <!-- 状态栏/导航栏统一为浅色，与应用背景色匹配 -->
+        <item name="android:statusBarColor">#F5F0EB</item>
+        <item name="android:navigationBarColor">#F5F0EB</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <!-- Splash 背景与 icon 背景色保持一致（icon 为 #222） -->
+        <item name="android:background">#222222</item>
+        <item name="android:windowBackground">#222222</item>
+        <!-- 告知 Android 12+ Splash 消失后切换到运行时主题，避免过渡帧出现黑屏 -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

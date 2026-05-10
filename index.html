@@ -4,6 +4,32 @@
     <meta charset='UTF-8' />
     <link rel='icon' type='image/svg+xml' href='/icon.svg' />
     <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover' />
+    <!--
+      最早期 inline 背景色：在外部 CSS 和 JS 加载前即生效。
+      防止 WebView 首帧渲染完成前出现黑屏或白闪。
+      #root:empty 的伪元素提供"Moni"占位，使空白期有内容可绘制。
+    -->
+    <style>
+      html, body, #root {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #F5F0EB;
+      }
+      #root:empty::before {
+        content: 'Moni';
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 28px;
+        font-weight: 800;
+        color: #222222;
+        background: #F5F0EB;
+        pointer-events: none;
+      }
+    </style>
     <link rel='preconnect' href='https://fonts.googleapis.com'>
     <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
     <link href='https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Press+Start+2P&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap' rel='stylesheet'>
