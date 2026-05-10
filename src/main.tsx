@@ -2,6 +2,12 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@ui/styles/index.css'
 import App from '@bootstrap/AppRoot'
+import { installStartupRepaintWorkarounds } from '@bootstrap/startup/repaintWorkaround'
+
+console.info('[MONI_STARTUP] script loaded', Date.now())
+
+// 尽早安装冷启动 repaint 兜底，覆盖"WebView 首帧未提交"和"resume 后黑屏"场景
+installStartupRepaintWorkarounds()
 
 /**
  * 开发态自动挂载浏览器调试入口。
@@ -14,6 +20,8 @@ if (import.meta.env.DEV) {
     installMoniDebugTools()
   })
 }
+
+console.info('[MONI_STARTUP] root render start', Date.now())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

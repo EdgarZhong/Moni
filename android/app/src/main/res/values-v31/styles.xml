@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Android 12+ (API 31+) 专属 Splash 配置。
+      系统会在 Activity 首帧绘制完成前强制展示 Splash；
+      这里设置背景色与应用主色一致，避免首帧过渡时出现黑色闪烁。
+    -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <!-- Splash 背景色与应用主色保持一致 -->
+        <item name="android:windowSplashScreenBackground">#F5F0EB</item>
+        <!-- Splash 消失后自动切换到运行时主题 -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+
+</resources>
