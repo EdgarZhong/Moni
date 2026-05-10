@@ -60,58 +60,17 @@ export class LLMClient {
 
   /**
    * 只按 baseUrl 判断是否走 SiliconFlow 兼容分支。
-   * 本轮用户已经明确范围只做这一家，因此这里不提前抽更多 provider 适配层。
+   * 这里不抽统一的 provider 适配层，直接在请求构造阶段按供应商分开处理。
    */
   private isSiliconFlow(baseUrl: string): boolean {
     return /api\.siliconflow\.cn/i.test(baseUrl);
   }
 
   /**
-   * 本轮只显式接通两个 SiliconFlow 模型族：
-   * 1. DeepSeek-R1：原生推理模型，只透传 thinking_budget
-   * 2. DeepSeek-V3.2：通过 enable_thinking 切到 thinking 模式，并同时补 thinking_budget
-   *
-   * 其他 SiliconFlow 模型本轮不做 provider-specific 参数透传，避免假适配。
+   * 只按 baseUrl 判断是否走 DeepSeek 官方 endpoint。
    */
-  private resolveSiliconFlowThinkingOptions(model: string): {
-    requestPatch: Record<string, unknown>;
-    mode: 'disabled' | 'r1_budget_only' | 'v32_toggle_and_budget' | 'unsupported_model';
-    effective: boolean;
-  } {
-    if (!this.config.enableThinking) {
-      return {
-        requestPatch: {},
-        mode: 'disabled',
-        effective: false,
-      };
-    }
-
-    if (/DeepSeek-R1/i.test(model)) {
-      return {
-        requestPatch: {
-          thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
-        },
-        mode: 'r1_budget_only',
-        effective: true,
-      };
-    }
-
-    if (/DeepSeek-V3\.2/i.test(model)) {
-      return {
-        requestPatch: {
-          enable_thinking: true,
-          thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
-        },
-        mode: 'v32_toggle_and_budget',
-        effective: true,
-      };
-    }
-
-    return {
-      requestPatch: {},
-      mode: 'unsupported_model',
-      effective: false,
-    };
+  private isDeepSeek(baseUrl: string): boolean {
+    return /api\.deepseek\.com/i.test(baseUrl);
   }
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
@@ -121,13 +80,51 @@ export class LLMClient {
     const responseFormat = options.responseFormat ?? 'json_object';
     const temperature = this.resolveTemperature(baseUrl, this.config.model);
     const timeoutMs = this.resolveTimeoutMs(baseUrl, this.config.model);
-    const siliconFlowThinking = this.isSiliconFlow(baseUrl)
-      ? this.resolveSiliconFlowThinkingOptions(this.config.model)
-      : {
-          requestPatch: {},
-          mode: 'disabled' as const,
-          effective: false,
-        };
+    let thinkingProvider: 'siliconflow' | 'deepseek' | 'other' = 'other';
+    let thinkingMode: 'disabled' | 'r1_budget_only' | 'v32_toggle_and_budget' | 'enabled' | 'unsupported_model' = 'disabled';
+    let thinkingEffective = false;
+    let thinkingBudget: number | null = null;
+    let reasoningEffort: string | null = null;
+    let thinkingRequestPatch: Record<string, unknown> = {};
+
+    if (this.isSiliconFlow(baseUrl)) {
+      thinkingProvider = 'siliconflow';
+      if (this.config.enableThinking) {
+        if (/DeepSeek-R1/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+          };
+          thinkingMode = 'r1_budget_only';
+          thinkingEffective = true;
+          thinkingBudget = LLMClient.SILICONFLOW_THINKING_BUDGET;
+        } else if (/DeepSeek-V3\.2/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            enable_thinking: true,
+            thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+          };
+          thinkingMode = 'v32_toggle_and_budget';
+          thinkingEffective = true;
+          thinkingBudget = LLMClient.SILICONFLOW_THINKING_BUDGET;
+        } else {
+          thinkingMode = 'unsupported_model';
+        }
+      }
+    } else if (this.isDeepSeek(baseUrl)) {
+      thinkingProvider = 'deepseek';
+      if (this.config.enableThinking) {
+        if (/^deepseek-v4-(pro|flash)$/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            thinking: { type: 'enabled' },
+            reasoning_effort: 'high',
+          };
+          thinkingMode = 'enabled';
+          thinkingEffective = true;
+          reasoningEffort = 'high';
+        } else {
+          thinkingMode = 'unsupported_model';
+        }
+      }
+    }
 
     const payload = {
       model: this.config.model,
@@ -140,7 +137,7 @@ export class LLMClient {
         : {}),
       temperature,
       stream: false,
-      ...siliconFlowThinking.requestPatch,
+      ...thinkingRequestPatch,
     };
 
     const startTime = Date.now();
@@ -158,10 +155,11 @@ export class LLMClient {
           maxTokens: this.config.maxTokens,
           responseFormat,
           enableThinkingConfigured: this.config.enableThinking ?? false,
-          siliconFlowThinkingMode: siliconFlowThinking.mode,
-          siliconFlowThinkingEffective: siliconFlowThinking.effective,
-          siliconFlowThinkingBudget:
-            siliconFlowThinking.requestPatch.thinking_budget ?? null,
+          thinkingProvider,
+          thinkingMode,
+          thinkingEffective,
+          thinkingBudget,
+          reasoningEffort,
           messages: messages.map(m => ({ role: m.role, contentLength: m.content.length }))
         }
       }, null, 2)
@@ -195,7 +193,8 @@ export class LLMClient {
         `${LLMClient.DEBUG_TAG} Reasoning trace`,
         JSON.stringify(
           {
-            siliconFlowThinkingMode: siliconFlowThinking.mode,
+            thinkingProvider,
+            thinkingMode,
             reasoningContentLength: reasoningContent.length,
             reasoningTokens,
           },
@@ -218,7 +217,8 @@ export class LLMClient {
           max_tokens: this.config.maxTokens,
           response_format: responseFormat,
           enableThinkingConfigured: this.config.enableThinking ?? false,
-          siliconFlowThinkingMode: siliconFlowThinking.mode,
+          thinkingProvider,
+          thinkingMode,
           payload,
         },
         response,
@@ -249,6 +249,8 @@ export class LLMClient {
             model: this.config.model,
             messages,
             enableThinkingConfigured: this.config.enableThinking ?? false,
+            thinkingProvider,
+            thinkingMode,
             payload,
           },
           response: null,
@@ -271,20 +273,50 @@ export class LLMClient {
     const baseUrl = this.config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/chat/completions`;
     const temperature = this.resolveTemperature(baseUrl, this.config.model);
-    const siliconFlowThinking = this.isSiliconFlow(baseUrl)
-      ? this.resolveSiliconFlowThinkingOptions(this.config.model)
-      : {
-          requestPatch: {},
-          mode: 'disabled' as const,
-          effective: false,
-        };
+    let thinkingProvider: 'siliconflow' | 'deepseek' | 'other' = 'other';
+    let thinkingMode: 'disabled' | 'r1_budget_only' | 'v32_toggle_and_budget' | 'enabled' | 'unsupported_model' = 'disabled';
+    let thinkingRequestPatch: Record<string, unknown> = {};
+
+    if (this.isSiliconFlow(baseUrl)) {
+      thinkingProvider = 'siliconflow';
+      if (this.config.enableThinking) {
+        if (/DeepSeek-R1/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+          };
+          thinkingMode = 'r1_budget_only';
+        } else if (/DeepSeek-V3\.2/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            enable_thinking: true,
+            thinking_budget: LLMClient.SILICONFLOW_THINKING_BUDGET,
+          };
+          thinkingMode = 'v32_toggle_and_budget';
+        } else {
+          thinkingMode = 'unsupported_model';
+        }
+      }
+    } else if (this.isDeepSeek(baseUrl)) {
+      thinkingProvider = 'deepseek';
+      if (this.config.enableThinking) {
+        if (/^deepseek-v4-(pro|flash)$/i.test(this.config.model)) {
+          thinkingRequestPatch = {
+            thinking: { type: 'enabled' },
+            reasoning_effort: 'high',
+          };
+          thinkingMode = 'enabled';
+        } else {
+          thinkingMode = 'unsupported_model';
+        }
+      }
+    }
     console.log(
       `${LLMClient.DEBUG_TAG} TEST_START`,
       JSON.stringify({
         url,
         model: this.config.model,
         enableThinkingConfigured: this.config.enableThinking ?? false,
-        siliconFlowThinkingMode: siliconFlowThinking.mode,
+        thinkingProvider,
+        thinkingMode,
       })
     );
 
@@ -296,7 +328,7 @@ export class LLMClient {
         temperature,
         max_tokens: 8,
         stream: false,
-        ...siliconFlowThinking.requestPatch,
+        ...thinkingRequestPatch,
       },
       {
         'Authorization': `Bearer ${this.config.apiKey}`

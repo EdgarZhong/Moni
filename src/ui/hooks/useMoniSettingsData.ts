@@ -19,9 +19,9 @@ const EMPTY_AI_CONFIG: SettingsAiConfig = {
   provider: 'deepseek',
   hasApiKey: false,
   baseUrl: 'https://api.deepseek.com',
-  candidateModels: [],
-  activeModel: '',
-  maxTokens: 4096,
+  candidateModels: ['deepseek-v4-pro'],
+  activeModel: 'deepseek-v4-pro',
+  maxTokens: 8000,
   temperature: 0.2,
   enableThinking: true,
 };

@@ -55,7 +55,7 @@ const PREDEFINED_PROVIDERS = [
 // 预定义的模型列表
 // Moonshot (Kimi) 模型列表来源: https://platform.moonshot.cn/docs/introduction
 const PREDEFINED_MODELS: Record<string, string[]> = {
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],
   // Moonshot v1 系列: https://platform.moonshot.cn/docs/introduction#%E6%96%87%E6%9C%AC%E7%94%9F%E6%88%90%E6%A8%A1%E5%9E%8B
   moonshot: [
     'moonshot-v1-8k',      // 标准版，8k 上下文
@@ -68,6 +68,19 @@ const PREDEFINED_MODELS: Record<string, string[]> = {
   modelscope: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1'],
   zhipu: ['glm-4-flash', 'glm-4-air', 'glm-4-plus'],
   custom: [],
+};
+
+/**
+ * 各供应商在保存时使用的默认模型。
+ * 这里不抽象成更高一级的 provider 配置层，直接在页面内按供应商维护。
+ */
+const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+  deepseek: 'deepseek-v4-pro',
+  moonshot: 'kimi-k2.5',
+  siliconflow: 'deepseek-ai/DeepSeek-R1',
+  modelscope: 'deepseek-ai/DeepSeek-R1',
+  zhipu: 'GLM-4.6',
+  custom: 'default',
 };
 
 type PanelView = 'main' | 'ai-config' | 'theme' | 'user-context' | 'ai-memory' | 'manage-categories' | 'budget';
@@ -430,7 +443,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
         const cfg = await manager.getConfig();
 
         // 解析当前激活的提供商和模型
-        const candidate = cfg.candidateModels[0] || 'deepseek::deepseek-chat';
+        const candidate = cfg.candidateModels[0] || 'deepseek::deepseek-v4-pro';
         const [provider, model] = candidate.split('::');
 
         setSelectedProvider(provider in cfg.providers ? provider : 'custom');
@@ -483,14 +496,16 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
       };
 
       // 确定使用的模型名称
-      const modelName = selectedProvider === 'custom' ? customModel.trim() : selectedModel;
+      const modelName = selectedProvider === 'custom'
+        ? customModel.trim()
+        : (selectedModel || DEFAULT_MODEL_BY_PROVIDER[selectedProvider] || 'default');
 
       const newConfig: Partial<MultiProviderConfig> = {
         providers: {
           ...currentConfig.providers,
           [selectedProvider]: providerConfig,
         },
-        candidateModels: [`${selectedProvider}::${modelName || 'default'}`],
+        candidateModels: [`${selectedProvider}::${modelName}`],
       };
 
       await manager.saveConfig(newConfig);
@@ -521,7 +536,9 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
         ? baseUrl.trim()
         : (PREDEFINED_PROVIDERS.find(p => p.key === selectedProvider)?.baseUrl || baseUrl.trim());
 
-      const finalModel = selectedProvider === 'custom' ? customModel.trim() : selectedModel;
+      const finalModel = selectedProvider === 'custom'
+        ? customModel.trim()
+        : (selectedModel || DEFAULT_MODEL_BY_PROVIDER[selectedProvider] || 'default');
 
       if (!apiKey.trim()) {
         throw new Error('请先填写 API Key');
@@ -534,7 +551,32 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
       const cleanBaseUrl = finalBaseUrl.replace(/\/$/, '');
       const url = `${cleanBaseUrl}/chat/completions`;
 
-      const testTemperature = selectedProvider === 'moonshot' ? 1 : 0.1;
+      let testTemperature = 0.2;
+      if (selectedProvider === 'moonshot') {
+        testTemperature = 1;
+      }
+      const requestBody: Record<string, unknown> = {
+        model: finalModel,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 5,
+        temperature: testTemperature,
+        stream: false,
+      };
+
+      if (selectedProvider === 'deepseek' && /^deepseek-v4-(pro|flash)$/i.test(finalModel)) {
+        requestBody.thinking = { type: 'enabled' };
+        requestBody.reasoning_effort = 'high';
+      }
+
+      if (selectedProvider === 'siliconflow') {
+        if (/DeepSeek-R1/i.test(finalModel)) {
+          requestBody.thinking_budget = 1024;
+        }
+        if (/DeepSeek-V3\.2/i.test(finalModel)) {
+          requestBody.enable_thinking = true;
+          requestBody.thinking_budget = 1024;
+        }
+      }
 
       // 发送一个简单的测试请求
       const response = await fetch(url, {
@@ -543,12 +585,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({ onBack, transition }) => 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey.trim()}`,
         },
-        body: JSON.stringify({
-          model: finalModel || 'default',
-          messages: [{ role: 'user', content: 'Hi' }],
-          max_tokens: 5,
-          temperature: testTemperature,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

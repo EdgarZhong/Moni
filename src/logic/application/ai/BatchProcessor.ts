@@ -343,7 +343,7 @@ export class BatchProcessor {
 
         const apiKey = llmConfig.apiKey;
         const baseUrl = llmConfig.baseUrl || 'https://api.deepseek.com';
-        const model = llmConfig.model || 'deepseek-chat';
+        const model = llmConfig.model || 'deepseek-v4-pro';
 
         console.log('[MONI_AI_DEBUG][BatchProcessor] Config loaded:', {
           model,
