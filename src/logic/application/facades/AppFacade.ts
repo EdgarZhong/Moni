@@ -140,6 +140,7 @@ function buildTrendCard(
   return {
     windowSize: HOME_TREND_WINDOW_SIZE,
     points: sliced,
+    allPoints: points,
     windowStart: sliced[0]?.key ?? null,
     windowEnd: sliced[sliced.length - 1]?.key ?? null,
     hasEarlierWindow: startIndex > 0,
@@ -399,11 +400,21 @@ export class AppFacade {
       isDateKeyInRange(group.id, selectedHomeDateRange)
     );
 
-    const trendRangeEnd = selectedHomeDateRange.end ?? now;
-    const recentDayKeys = buildRecentDays(trendRangeEnd, HOME_TREND_DAYS);
+    // 趋势图覆盖账本全历史：从账本实际最早有记录的日期到今天，而不是固定天数。
+    // 当账本无任何记录时退回到 HOME_TREND_DAYS（30天）保底。
+    const sortedDayKeys = Array.from(dayMap.keys()).sort();
+    const earliestKey = sortedDayKeys.length > 0 ? sortedDayKeys[0] : null;
+    const trendDays = earliestKey
+      ? Math.max(HOME_TREND_DAYS, Math.round(
+          (new Date(toLocalDateKey(now) + 'T00:00:00').getTime() -
+           new Date(earliestKey + 'T00:00:00').getTime()) / 86400000
+        ) + 1)
+      : HOME_TREND_DAYS;
+    const recentDayKeys = buildRecentDays(now, trendDays);
     const trendHistory: HomeTrendPoint[] = recentDayKeys.map((key) => {
-      const dayItems = isDateKeyInRange(key, selectedHomeDateRange) ? (dayMap.get(key) ?? []) : [];
-      const amount = dayItems.reduce((sum, item) => sum + item.amount, 0);
+      const dayItems = dayMap.get(key) ?? [];
+      // 趋势图只统计支出（direction === 'out'），收入不计入
+      const amount = dayItems.filter((item) => item.direction === 'out').reduce((sum, item) => sum + item.amount, 0);
       const [, month, day] = key.split('-');
       return {
         key,
@@ -429,6 +440,7 @@ export class AppFacade {
       selfDescription,
       hasMonthlyBudget: homeBudget.monthlyBudget.enabled,
       hasImportedTransactions,
+      lastBillImportAt: onboardingState.lastBillImportAt,
       onboardingState,
       budgetHints: homeBudget.budgetHints,
     });
@@ -530,7 +542,13 @@ export class AppFacade {
     files: File[],
     options: BillImportOptions = {},
   ): Promise<BillImportExecutionResult> {
-    return await this.billImportManager.importFiles(files, options);
+    const result = await this.billImportManager.importFiles(files, options);
+    // 导入成功后记录时间戳，供首页提示引擎计算距上次导入天数
+    const currentLedgerId = this.ledgerManager.getActiveLedgerName();
+    if (currentLedgerId && result.importedCount > 0) {
+      HomeHintStateManager.getInstance().markBillImported(currentLedgerId).catch(() => {});
+    }
+    return result;
   }
 
   public updateTransactionCategory(id: string, category: string, reasoning?: string): void {

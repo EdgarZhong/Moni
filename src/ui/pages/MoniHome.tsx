@@ -8,7 +8,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AUTO_CAROUSEL_MS,
   C,
-  MANUAL_IDLE_LOCK_MS,
   MANUAL_RESUME_MS,
   PHONE_FRAME_WIDTH_CSS,
 } from "@ui/features/moni-home/config";
@@ -59,14 +58,6 @@ interface SwipeState {
   axis: "vertical" | "horizontal" | null;
 }
 
-interface TrendDragState extends SwipeState {
-  /**
-   * 趋势图当前跟手预览位移。
-   * 我们先在 UI 层做有限位移预览，松手后再折算成真实日期偏移，
-   * 让用户感知到"自由滑动"，而不是每次只触发一个固定步长。
-   */
-  offsetPx: number;
-}
 
 interface ReasonItem {
   n: string;
@@ -133,20 +124,26 @@ export default function MoniHome({
   const [dragPanelState, setDragPanelState] = useState<"collapsed" | "expanded">("collapsed");
   const [reasonItem, setReasonItem] = useState<ReasonItem | null>(null);
   const [detailTxId, setDetailTxId] = useState<string | null>(null);
-  const [trendDragOffsetPx, setTrendDragOffsetPx] = useState(0);
+  // 趋势图连续滚动位移（像素）：0=最早，大值=最新。初始设为超大值，让组件自动 clamp 到最新位置
+  const [trendScrollOffsetPx, setTrendScrollOffsetPx] = useState(9999);
+  // DisplayBoard 每次渲染时写入实测 maxScrollOffset，拖拽时用来正确 clamp
+  const trendMaxScrollRef = useRef(9999);
 
   const [stickyRail, setStickyRail] = useState(false);
   const [scrollStage, setScrollStage] = useState<"初始" | "过渡" | "完全">("初始");
   const [expandedDays, setExpandedDays] = useState<string[]>([]);
 
   const [manualTouchedAt, setManualTouchedAt] = useState<number | null>(null);
-  const [resumeClock, setResumeClock] = useState(Date.now());
+  // 用 ref 在 setTimeout 回调触发时读取最新值，防止竞态漏触发
+  const manualTouchedAtRef = useRef<number | null>(null);
+  manualTouchedAtRef.current = manualTouchedAt;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const dayRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const boardSwipeRef = useRef<SwipeState | null>(null);
-  const trendSwipeRef = useRef<TrendDragState | null>(null);
+  // 趋势图拖拽轨迹追踪（记录拖拽起点和起始滚动偏移，支持轴判定）
+  const trendScrollRef = useRef<{ startX: number; startY: number; startOffset: number; axis: "h" | "v" | null } | null>(null);
   const hoverCategoryRef = useRef<string | null>(null);
   const dragLockRef = useRef<DragLock | null>(null);
   const dragPanelStateRef = useRef<"collapsed" | "expanded">("collapsed");
@@ -160,12 +157,6 @@ export default function MoniHome({
   const aiStop = aiEngineUiState.status === "draining";
   const aiOn = aiEngineUiState.status === "running" || aiEngineUiState.status === "draining";
   const aiCurrentDates = aiEngineUiState.activeDates;
-/**
-   * 趋势图每跨一格对应一天。
-   * 这里复用 DisplayBoard 当前 260 宽度 / 6 间隔的视觉节奏，保证拖拽位移和日期位移直觉一致。
-   */
-  const TREND_DAY_STEP_PX = 260 / 6;
-  const MAX_TREND_DRAG_PREVIEW_PX = TREND_DAY_STEP_PX * 3;
   /**
    * 组件内部继续使用稳定的日期格式化 helper，
    * 但实现直接复用外层的 `toLocalDateKey`，避免存在两套口径。
@@ -306,8 +297,9 @@ export default function MoniHome({
     setDraftCustomStart(restored.draftCustomStart);
     setDraftCustomEnd(restored.draftCustomEnd);
     setRestoredLedgerId(currentLedger.id);
-    actions.setTrendWindowOffset(0);
-  }, [actions.setTrendWindowOffset, currentLedger.id]);
+    // 账本切换时，趋势图回到最新位置（超大值 → clamp 到 maxOffset）
+    setTrendScrollOffsetPx(9999);
+  }, [currentLedger.id]);
 
   useEffect(() => {
     /**
@@ -359,7 +351,6 @@ export default function MoniHome({
     rangeMode,
   ]);
 
-  const trendTrackMax = Math.max(...trendCard.points.map((item) => item.amount), 1);
 
   /**
    * `realDays` 已经是 facade 按 `homeDateRange` 过滤后的结果。
@@ -557,33 +548,35 @@ export default function MoniHome({
     if (scrollStage === "完全") setExpandedDays(renderDays.map((day) => day.id));
   }, [scrollStage, renderDays, resetInitialExpanded]);
 
+  // 无预算时把轮播 index 归零，避免预算恢复后仍停在旧位置
   useEffect(() => {
-    if (!hasBudget) return undefined;
-    const now = Date.now();
-    if (manualTouchedAt) {
-      const idleLockUntil = manualTouchedAt + MANUAL_IDLE_LOCK_MS;
-      const resumeAt = manualTouchedAt + MANUAL_RESUME_MS;
-      if (now < idleLockUntil) {
-        const timer = setTimeout(() => setResumeClock(Date.now()), idleLockUntil - now);
-        return () => clearTimeout(timer);
-      }
-      if (now < resumeAt) {
-        const timer = setTimeout(() => setResumeClock(Date.now()), resumeAt - now);
-        return () => clearTimeout(timer);
-      }
-    }
-    const timer = setTimeout(() => {
+    if (!hasBudget) setCarouselIndex(0);
+  }, [hasBudget]);
+
+  // Effect 1：暂停期倒计时，到期后清除 manualTouchedAt，让 Effect 2 恢复轮播
+  useEffect(() => {
+    if (!manualTouchedAt) return undefined;
+    const remaining = MANUAL_RESUME_MS - (Date.now() - manualTouchedAt);
+    if (remaining <= 0) { setManualTouchedAt(null); return undefined; }
+    const t = setTimeout(() => setManualTouchedAt(null), remaining);
+    return () => clearTimeout(t);
+  }, [manualTouchedAt]);
+
+  // Effect 2：自动轮播；暂停期内（manualTouchedAt 非空）直接跳过不启动
+  useEffect(() => {
+    if (!hasBudget || manualTouchedAt !== null) return undefined;
+    const t = setTimeout(() => {
+      // 回调执行时再次通过 ref 校验，防止 cleanup 与回调入队之间的极短竞态
+      if (manualTouchedAtRef.current !== null) return;
       setCarouselIndex((prev) => (prev + 1) % 2);
-      setResumeClock(Date.now());
     }, AUTO_CAROUSEL_MS);
-    return () => clearTimeout(timer);
-  }, [carouselIndex, hasBudget, manualTouchedAt, resumeClock]);
+    return () => clearTimeout(t);
+  }, [carouselIndex, hasBudget, manualTouchedAt]);
 
   const manualSwitch = useCallback((nextIndex: number) => {
     if (!hasBudget) return;
     setCarouselIndex(nextIndex);
     setManualTouchedAt(Date.now());
-    setResumeClock(Date.now());
   }, [hasBudget]);
 
   const handleBoardSwipeEnd = useCallback(() => {
@@ -615,57 +608,60 @@ export default function MoniHome({
     boardSwipeRef.current = next;
   }, []);
 
-  const handleTrendSwipeEnd = useCallback(() => {
-    if (!trendSwipeRef.current) return;
-    const { sx, ex, sy, ey, axis, offsetPx } = trendSwipeRef.current;
-    const deltaX = ex - sx;
-    const deltaY = ey - sy;
-    if (axis === "horizontal") {
-      /**
-       * 过去是"只要横向划一下，就固定跳 1 天"。
-       * 现在改成按真实拖拽距离折算天数，这样一次拖动可以连续跨过多天。
-       */
-      const offsetDays = Math.round(-offsetPx / TREND_DAY_STEP_PX);
-      if (offsetDays !== 0) {
-        actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset + offsetDays));
-      }
-    } else if (Math.abs(deltaY) > 28 && Math.abs(deltaY) > Math.abs(deltaX)) {
-      if (deltaY > 0) manualSwitch(Math.max(0, carouselIndex - 1));
-      else manualSwitch(Math.min(1, carouselIndex + 1));
-    }
-    setTrendDragOffsetPx(0);
-    trendSwipeRef.current = null;
-  }, [TREND_DAY_STEP_PX, actions, carouselIndex, manualSwitch, trendCard.windowOffset]);
-
+  // 趋势图连续滚动：按下时捕获指针，移动时实时更新滚动位移，抬手时保持当前位置
   const handleTrendPointerDown = useCallback((event: React.PointerEvent) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.stopPropagation();
-    trendSwipeRef.current = {
-      sx: event.clientX,
-      ex: event.clientX,
-      sy: event.clientY,
-      ey: event.clientY,
+    // 任何触摸趋势图的动作都算"人手操作"，重置自动轮播暂停计时
+    setManualTouchedAt(Date.now());
+    // 捕获指针确保手指移出元素范围后仍持续收到事件
+    (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+    // 用 DisplayBoard 实测的 maxScrollOffset 做双边 clamp，防止 startOffset 偏离有效范围
+    // 导致后续拖拽出现大死区或跳变
+    const clampedStart = Math.max(0, Math.min(trendMaxScrollRef.current, trendScrollOffsetPx));
+    trendScrollRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffset: clampedStart,
       axis: null,
-      offsetPx: 0,
     };
-  }, []);
+  }, [trendScrollOffsetPx]);
 
   const handleTrendPointerMove = useCallback((event: React.PointerEvent) => {
-    if (!trendSwipeRef.current) return;
+    if (!trendScrollRef.current) return;
     event.stopPropagation();
-    const next = { ...trendSwipeRef.current, ex: event.clientX, ey: event.clientY };
-    if (!next.axis) {
-      const dX = Math.abs(next.ex - next.sx);
-      const dY = Math.abs(next.ey - next.sy);
-      if (dX > 8 || dY > 8) next.axis = dX >= dY ? "horizontal" : "vertical";
+    const { startX, startY, startOffset, axis } = trendScrollRef.current;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+
+    // 判定轴方向（8px 死区）
+    if (!trendScrollRef.current.axis) {
+      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+        trendScrollRef.current.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "h" : "v";
+      }
+      return;
     }
-    if (next.axis === "horizontal") {
-      event.preventDefault();
-      next.offsetPx = Math.max(-MAX_TREND_DRAG_PREVIEW_PX, Math.min(MAX_TREND_DRAG_PREVIEW_PX, next.ex - next.sx));
-      setTrendDragOffsetPx(next.offsetPx);
+
+    if (axis === "h") {
+      // 右划（deltaX > 0）= 看更早数据 → offset 减小；左划 = 看更新数据 → offset 增大
+      // 双边 clamp 保证状态始终在有效范围内，消除大死区跳变
+      setTrendScrollOffsetPx(Math.max(0, Math.min(trendMaxScrollRef.current, startOffset - deltaX)));
     }
-    trendSwipeRef.current = next;
-  }, [MAX_TREND_DRAG_PREVIEW_PX]);
+    // 竖向轴期间不更新滚动，等 pointerup 时处理卡片切换
+  }, []);
+
+  const handleTrendPointerUp = useCallback((event: React.PointerEvent) => {
+    if (!trendScrollRef.current) return;
+    const { startX, startY, axis } = trendScrollRef.current;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    // 竖向切换：axis=v 且竖向位移 > 28px 且竖向明显大于横向（与 boardSwipeEnd 防护保持一致）
+    if (axis === "v" && Math.abs(deltaY) > 28 && Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (deltaY > 0) manualSwitch(Math.max(0, carouselIndex - 1));
+      else manualSwitch(Math.min(1, carouselIndex + 1));
+    }
+    trendScrollRef.current = null;
+  }, [carouselIndex, manualSwitch]);
 
 
   /**
@@ -802,11 +798,8 @@ export default function MoniHome({
   const trendHandlers = {
     onPointerDown: handleTrendPointerDown,
     onPointerMove: handleTrendPointerMove,
-    onPointerUp: handleTrendSwipeEnd,
-    onPointerCancel: () => {
-      trendSwipeRef.current = null;
-      setTrendDragOffsetPx(0);
-    },
+    onPointerUp: handleTrendPointerUp,
+    onPointerCancel: () => { trendScrollRef.current = null; },
   };
 
   /**
@@ -895,27 +888,12 @@ export default function MoniHome({
           budgetPct={budgetPct}
           budgetColor={budgetColor}
           hasBudget={hasBudget}
-          trendData={trendCard.points}
-          trendTrackMax={trendTrackMax}
-          trendWindowLabel={trendCard.windowStart && trendCard.windowEnd
-            ? `${trendCard.windowStart.slice(5)} ~ ${trendCard.windowEnd.slice(5)}`
-            : "近 7 天支出"}
-          hasEarlierTrendWindow={trendCard.hasEarlierWindow}
-          hasLaterTrendWindow={trendCard.hasLaterWindow}
-          trendDragOffsetPx={trendDragOffsetPx}
+          allTrendPoints={trendCard.allPoints}
+          trendScrollOffsetPx={trendScrollOffsetPx}
           onManualSwitch={manualSwitch}
-          onTrendForward={() => {
-            if (trendCard.hasEarlierWindow) {
-              actions.setTrendWindowOffset(trendCard.windowOffset + 1);
-            }
-          }}
-          onTrendBackward={() => {
-            if (trendCard.hasLaterWindow) {
-              actions.setTrendWindowOffset(Math.max(0, trendCard.windowOffset - 1));
-            }
-          }}
           boardHandlers={boardHandlers}
           trendHandlers={trendHandlers}
+          maxScrollOffsetRef={trendMaxScrollRef}
         />
 
         <HomeHintCard

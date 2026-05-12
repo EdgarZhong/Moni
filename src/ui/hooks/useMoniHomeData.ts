@@ -32,6 +32,7 @@ const EMPTY_READ_MODEL: MoniHomeReadModel = {
   trendCard: {
     windowSize: 7,
     points: [],
+    allPoints: [],
     windowStart: null,
     windowEnd: null,
     hasEarlierWindow: false,

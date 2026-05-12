@@ -57,7 +57,9 @@ export function installStartupRepaintWorkarounds(): void {
   });
 
   // Capacitor 原生 App resume（后台切回前台）
-  if (Capacitor.isNativePlatform()) {
+  // 双重守卫：isNativePlatform() 用于过滤 web 环境；typeof 检查防止 Capacitor
+  // 6+ web Proxy 实现未注册 addListener 时在浏览器侧抛出 TypeError
+  if (Capacitor.isNativePlatform() && typeof CapacitorApp.addListener === 'function') {
     void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return;
       requestAnimationFrame(() => forceRootRepaint('native-app-resume'));

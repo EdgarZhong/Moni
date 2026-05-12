@@ -61,10 +61,10 @@ export const C = {
 // ──────────────────────────────────────────────
 
 /** 看板自动轮播间隔（毫秒） */
-export const AUTO_CAROUSEL_MS = 30_000;
+export const AUTO_CAROUSEL_MS = 15_000;
 
-/** 手动滑动后暂停自动轮播的时间（毫秒，5 分钟） */
-export const MANUAL_RESUME_MS = 5 * 60 * 1000;
+/** 手动滑动后暂停自动轮播的时间（毫秒，2 分钟） */
+export const MANUAL_RESUME_MS = 2 * 60 * 1000;
 
 /**
  * 手动触摸后进入"空闲锁"的等待时间（毫秒，2 分钟）

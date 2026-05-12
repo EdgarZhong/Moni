@@ -27,8 +27,10 @@ export interface HomeTrendPoint {
 export interface HomeTrendCardReadModel {
   /** 当前窗口大小，首轮固定为 7 */
   windowSize: number;
-  /** 当前窗口内的折线点 */
+  /** 当前窗口内的折线点（向后兼容，新 UI 直接用 allPoints） */
   points: HomeTrendPoint[];
+  /** 完整趋势历史（不受 dateRange 过滤），供连续滚动渲染用 */
+  allPoints: HomeTrendPoint[];
   /** 当前窗口起始日期 */
   windowStart: string | null;
   /** 当前窗口结束日期 */
@@ -67,7 +69,7 @@ export interface HomeCategoryBudgetItemReadModel {
   overageAmount: number;
 }
 
-export type HomeHintCardType = 'onboarding_step' | 'budget_alert' | 'budget_nudge';
+export type HomeHintCardType = 'onboarding_step' | 'budget_alert' | 'budget_nudge' | 'import_reminder';
 export type HomeHintCardPriority = 'high' | 'medium' | 'low';
 export type HomeHintActionTarget = 'settings_self_description' | 'settings_budget' | 'entry_import';
 

@@ -8,7 +8,7 @@
  * 变更：JSX → TSX，加 Props 类型注解，导入路径改为本仓库，其余逻辑不变。
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   APP_HEADER_MIN_HEIGHT,
@@ -570,21 +570,19 @@ interface DisplayBoardProps {
   budgetColor: string;
   /** 是否有预算（无预算时不显示轮播圆点，不显示预算卡） */
   hasBudget: boolean;
-  trendData: TrendPoint[];
-  trendTrackMax: number;
-  trendWindowLabel: string;
-  hasEarlierTrendWindow: boolean;
-  hasLaterTrendWindow: boolean;
+  /** 完整趋势历史数据（不受 dateRange 过滤），用于连续滚动渲染 */
+  allTrendPoints: TrendPoint[];
   /**
-   * 当前趋势图正在进行的拖拽预览位移。
-   * 图表先跟手偏移，松手后由页面容器折算成最终的日期窗口偏移。
+   * 趋势图连续滚动偏移（像素）。
+   * 0 = 最左侧（最早数据），maxOffset = 最右侧（最新数据）。
+   * 由页面容器在 pointermove 中实时更新，实现跟手效果。
    */
-  trendDragOffsetPx: number;
+  trendScrollOffsetPx: number;
   onManualSwitch: (index: number) => void;
-  onTrendForward: () => void;
-  onTrendBackward: () => void;
   boardHandlers: React.HTMLAttributes<HTMLDivElement>;
   trendHandlers: React.HTMLAttributes<HTMLDivElement>;
+  /** 外部 ref，DisplayBoard 每次渲染时写入实测的 maxScrollOffset，供父容器拖拽 clamp 使用 */
+  maxScrollOffsetRef?: React.MutableRefObject<number>;
 }
 
 /** DisplayBoard — 顶部看板（预算卡 + 折线图卡，上下轮播） */
@@ -600,31 +598,132 @@ export function DisplayBoard({
   budgetPct,
   budgetColor,
   hasBudget,
-  trendData,
-  trendTrackMax,
-  trendWindowLabel,
-  hasEarlierTrendWindow,
-  hasLaterTrendWindow,
-  trendDragOffsetPx,
+  allTrendPoints,
+  trendScrollOffsetPx,
   onManualSwitch,
-  onTrendForward,
-  onTrendBackward,
   boardHandlers,
   trendHandlers,
+  maxScrollOffsetRef,
 }: DisplayBoardProps) {
-  const chartViewportWidth = 260;
-  const chartStep = chartViewportWidth / 6;
-  const chartTrackWidth = chartViewportWidth;
-  const safeTrendMax = Math.max(trendTrackMax, 1);
+  // 折线图容器宽度：从 window.innerWidth 一次性推算，不使用 ResizeObserver。
+  // ResizeObserver 在滚动中途触发会改变 pointWidth / maxScrollOffset，
+  // 导致 clamp 跳变（体感上一天一天地跳），因此固定为静态值。
+  // 卡片 margin×2(32) + border×2(4) + padding×2(28) + Y轴标注列宽(40) = 104
+  const chartViewportWidth = useMemo(
+    () => Math.max(200, Math.floor(window.innerWidth - 104)),
+    []
+  );
+
+  const pointWidth = chartViewportWidth / 7;
+  const totalWidth = Math.max(chartViewportWidth, allTrendPoints.length * pointWidth);
+  const maxScrollOffset = totalWidth - chartViewportWidth;
+  // 把实测的 maxScrollOffset 写回父容器 ref，供拖拽 clamp 使用
+  if (maxScrollOffsetRef) maxScrollOffsetRef.current = maxScrollOffset;
+  const clampedOffset = Math.max(0, Math.min(maxScrollOffset, trendScrollOffsetPx));
+
+  // 可见窗口起止索引
+  const visibleStartIdx = Math.max(0, Math.floor(clampedOffset / pointWidth));
+  const visibleEndIdx = Math.min(allTrendPoints.length - 1, visibleStartIdx + 6);
+
+  // 可见窗口内的最大值（动态 Y 轴基准）——仅当有数据时才更新，否则保持 1 避免除零
+  const localMax = allTrendPoints.length > 0
+    ? Math.max(1, ...allTrendPoints.slice(visibleStartIdx, visibleEndIdx + 1).map((p) => p.amount))
+    : 1;
+
+  // displayMax：仅在 localMax 变化（新最大值进入窗口、或旧最大值离开窗口）时才触发平滑动画
+  const [displayMax, setDisplayMax] = useState(localMax);
+  const displayMaxRef = useRef(localMax);
+  const targetMaxRef = useRef(localMax);
+  const animFrameRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (localMax === targetMaxRef.current) return;
+    targetMaxRef.current = localMax;
+    const startVal = displayMaxRef.current;
+    const endVal = localMax;
+    const duration = 450;
+    const startTime = performance.now();
+    if (animFrameRef.current !== undefined) cancelAnimationFrame(animFrameRef.current);
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      // ease-in-out quad
+      const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      const val = startVal + (endVal - startVal) * eased;
+      displayMaxRef.current = val;
+      setDisplayMax(val);
+      if (t < 1) animFrameRef.current = requestAnimationFrame(tick);
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+    return () => { if (animFrameRef.current !== undefined) cancelAnimationFrame(animFrameRef.current); };
+  }, [localMax]);
+
+  // Y 轴最大值紧凑格式（¥ 前缀由调用方负责）
+  const fmtMax = (v: number) => v >= 10000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
+
+  // 以下几项仅依赖 allTrendPoints（不依赖 clampedOffset），用 useMemo 缓存
+  const lastDataIdx = useMemo(
+    () => allTrendPoints.reduce((acc, p, i) => (p.amount > 0 ? i : acc), -1),
+    [allTrendPoints]
+  );
+  const dataSegment = useMemo(
+    () => lastDataIdx >= 0 ? allTrendPoints.slice(0, lastDataIdx + 1) : [],
+    [allTrendPoints, lastDataIdx]
+  );
+  const futureSegment = useMemo(() =>
+    lastDataIdx >= 0 && lastDataIdx < allTrendPoints.length - 1
+      ? allTrendPoints.slice(lastDataIdx)
+      : lastDataIdx < 0 && allTrendPoints.length > 0
+        ? allTrendPoints
+        : [],
+    [allTrendPoints, lastDataIdx]
+  );
+
+  // SVG 路径字符串：依赖 allTrendPoints + displayMax + pointWidth。
+  // 滚动时 displayMax 稳定，路径字符串直接从缓存取，不重算。
+  const toPt = (item: TrendPoint, i: number) =>
+    `${(i + 0.5) * pointWidth},${50 - (item.amount / displayMax) * 42}`;
+  const polygonPoints = useMemo(() => {
+    if (dataSegment.length === 0) return "";
+    return [
+      ...dataSegment.map((item, i) => toPt(item, i)),
+      `${(lastDataIdx + 0.5) * pointWidth},50`,
+      `0,50`,
+    ].join(" ");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataSegment, displayMax, pointWidth, lastDataIdx]);
+  const dataPolylinePoints = useMemo(
+    () => dataSegment.map((item, i) => toPt(item, i)).join(" "),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dataSegment, displayMax, pointWidth]
+  );
+  const futurePolylinePoints = useMemo(
+    () => futureSegment.map((item, i) => toPt(item, lastDataIdx < 0 ? i : lastDataIdx + i)).join(" "),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [futureSegment, displayMax, pointWidth, lastDataIdx]
+  );
+
+  // date label span 数组：仅依赖 allTrendPoints + pointWidth，滚动和动画期间都不会变
+  const dateLabels = useMemo(() =>
+    allTrendPoints.map((item) => (
+      <span key={item.key} style={{ width: pointWidth, flexShrink: 0, textAlign: "center" }}>{item.label}</span>
+    )),
+    [allTrendPoints, pointWidth]
+  );
+
+  const visibleStartKey = allTrendPoints[visibleStartIdx]?.key;
+  const visibleEndKey = allTrendPoints[visibleEndIdx]?.key;
+  const trendWindowLabel = visibleStartKey && visibleEndKey
+    ? `${visibleStartKey.slice(5)} ~ ${visibleEndKey.slice(5)}`
+    : "近 7 天支出";
 
   return (
     <div
       {...boardHandlers}
       style={{ margin: "4px 16px", overflow: "hidden", borderRadius: 14, border: `2px solid ${C.dark}`, height: 132, position: "relative", background: C.white, touchAction: "pan-x" }}
     >
-      <div style={{ transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: `translateY(-${currentIndex * 132}px)` }}>
-        {/* 预算卡 */}
-        <div style={{ height: 132, padding: "16px 16px 14px", position: "relative", overflow: "hidden" }}>
+      <div style={{ transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: `translateY(-${hasBudget ? currentIndex * 132 : 0}px)` }}>
+        {/* 预算卡：无预算时彻底不渲染 */}
+        {hasBudget && <div style={{ height: 132, padding: "16px 16px 14px", position: "relative", overflow: "hidden" }}>
           {/* 顶部进度条：宽度 = usageRatio * 100%，颜色随预算状态变化 */}
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${budgetColor} ${budgetPct}%,#EEE ${budgetPct}%)` }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8 }}>
@@ -643,59 +742,66 @@ export function DisplayBoard({
               <div style={{ fontSize: 18, fontWeight: 700, color: C.dark, fontFamily: "'Space Mono',monospace" }}>¥{dailyAvailableAmount.toLocaleString()}</div>
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* 折线图卡 */}
-        <div {...trendHandlers} style={{ height: 132, padding: "12px 14px", position: "relative", touchAction: "pan-y" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        {/* 折线图卡 — 连续滚动式时间轴 */}
+        <div {...trendHandlers} style={{ height: 132, padding: "12px 14px", position: "relative", touchAction: "none" }}>
+          {/* 顶部标题行：日期范围 + "支出情况" */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <div style={{ fontSize: 10, color: C.sub }}>{trendWindowLabel}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* 左箭头：向历史方向（更早） */}
-              <span onClick={onTrendForward} style={{ fontSize: 16, cursor: "pointer", opacity: hasEarlierTrendWindow ? 0.55 : 0.2, userSelect: "none" }}>‹</span>
-              {/* 右箭头：向最新方向 */}
-              <span onClick={onTrendBackward} style={{ fontSize: 16, cursor: "pointer", opacity: hasLaterTrendWindow ? 0.55 : 0.2, userSelect: "none" }}>›</span>
-            </div>
+            <div style={{ fontSize: 10, color: C.sub }}>支出情况</div>
           </div>
-          <div style={{ width: "100%", overflow: "hidden", height: 58 }}>
+
+          {/* SVG 折线图区域 + 右侧 Y 轴最大/最小值标注 */}
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+          {/* flex:1 让 SVG 容器撑满剩余空间 */}
+          <div style={{ flex: 1, overflow: "hidden", height: 58 }}>
             <svg
-              width={chartTrackWidth}
+              width={totalWidth}
               height="58"
-              viewBox={`0 0 ${chartTrackWidth} 58`}
-              preserveAspectRatio="none"
-              style={{
-                transform: `translateX(${trendDragOffsetPx}px)`,
-                transition: trendDragOffsetPx === 0 ? "transform .18s ease-out" : "none",
-              }}
+              viewBox={`0 0 ${totalWidth} 58`}
+              style={{ transform: `translateX(${-clampedOffset}px)`, transition: "none", display: "block" }}
             >
-              <polyline
-                points={trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / safeTrendMax) * 42}`).join(" ")}
-                fill="none"
-                stroke={C.mint}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <polygon
-                points={`${trendData.map((item, index) => `${index * chartStep},${50 - (item.amount / safeTrendMax) * 42}`).join(" ")} ${chartTrackWidth},50 0,50`}
-                fill={C.mint}
-                opacity=".08"
-              />
+              {/* 填充区：仅覆盖数据段，随 displayMax 动画同步伸缩 */}
+              {polygonPoints && (
+                <polygon points={polygonPoints} fill={C.mint} opacity=".08" />
+              )}
+              {/* 数据段折线（有支出记录，mint 色） */}
+              {dataPolylinePoints && (
+                <polyline
+                  points={dataPolylinePoints}
+                  fill="none"
+                  stroke={C.mint}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {/* 未来/未导入段折线（灰色虚线，贴底边表示无数据） */}
+              {futureSegment.length > 1 && (
+                <polyline
+                  points={futurePolylinePoints}
+                  fill="none"
+                  stroke="#C8C8C8"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="4 3"
+                />
+              )}
             </svg>
           </div>
-          <div style={{ width: "100%", overflow: "hidden" }}>
-            <div
-              style={{
-                display: "flex",
-                fontSize: 8,
-                color: "#BBB",
-                width: chartTrackWidth,
-                transform: `translateX(${trendDragOffsetPx}px)`,
-                transition: trendDragOffsetPx === 0 ? "transform .18s ease-out" : "none",
-              }}
-            >
-              {trendData.map((item) => (
-                <span key={item.key} style={{ width: chartStep, flexShrink: 0, textAlign: "center" }}>{item.label}</span>
-              ))}
+          {/* Y 轴最大值（顶部对齐）与最小值（底部对齐）；width:40 覆盖五位数安全空间 */}
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", paddingLeft: 8, width: 40, height: 58, flexShrink: 0 }}>
+            <span style={{ fontSize: 8, color: "#BBB", lineHeight: 1, textAlign: "left" }}>¥{fmtMax(displayMax)}</span>
+            <span style={{ fontSize: 8, color: "#BBB", lineHeight: 1, textAlign: "left" }}>¥0</span>
+          </div>
+          </div>{/* end SVG + Y轴 flex 行 */}
+
+          {/* 日期标签条：与 SVG 同步滚动；宽度对齐 SVG 容器 */}
+          <div style={{ width: chartViewportWidth, overflow: "hidden" }}>
+            <div style={{ display: "flex", fontSize: 8, color: "#BBB", width: totalWidth, transform: `translateX(${-clampedOffset}px)`, transition: "none" }}>
+              {dateLabels}
             </div>
           </div>
         </div>

@@ -15,6 +15,8 @@ export interface LedgerHomeHintState {
     hasStartedAiProcessing: boolean;
     hasCompletedPostAiInteraction: boolean;
   };
+  /** 最近一次成功导入账单的 ISO 时间戳；null 表示从未导入过 */
+  lastBillImportAt: string | null;
   updatedAt: string;
 }
 
@@ -97,6 +99,21 @@ export class HomeHintStateManager {
   }
 
   /**
+   * 标记：用户刚完成一次成功的账单导入，记录当前 ISO 时间戳。
+   * 供首页提示引擎计算"距上次导入多久了"。
+   */
+  public async markBillImported(ledgerId: string): Promise<LedgerHomeHintState> {
+    const current = await this.load(ledgerId);
+    const next: LedgerHomeHintState = {
+      ...current,
+      lastBillImportAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.writeFile(ledgerId, next);
+    return next;
+  }
+
+  /**
    * 删除账本时清理首页提示状态文件。
    */
   public async deleteLedgerState(ledgerId: string): Promise<void> {
@@ -149,6 +166,7 @@ export class HomeHintStateManager {
         hasStartedAiProcessing: false,
         hasCompletedPostAiInteraction: false,
       },
+      lastBillImportAt: null,
       updatedAt: new Date(0).toISOString(),
     };
   }
@@ -212,6 +230,10 @@ export class HomeHintStateManager {
             ? onboarding.hasCompletedPostAiInteraction
             : defaults.onboarding.hasCompletedPostAiInteraction,
       },
+      lastBillImportAt:
+        typeof candidate.lastBillImportAt === 'string' && candidate.lastBillImportAt.trim().length > 0
+          ? candidate.lastBillImportAt
+          : null,
       updatedAt:
         typeof candidate.updatedAt === 'string' && candidate.updatedAt.trim().length > 0
           ? candidate.updatedAt
