@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "/Users/edgar/.nvm/versions/node/v24.15.0/bin/playwright-mcp",
+      "args": ["--config", ".codex/playwright.mcp.json"]
+    }
+  }
+}

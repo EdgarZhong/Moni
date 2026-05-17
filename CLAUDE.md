@@ -10,7 +10,8 @@
 ## 当前版本状态
 
 - 当前已发布稳定版本：`0.4.3`
-- 下一版本：版本号待定；当前阶段主题为”AI 自学习系统第一轮低成本精度优化”（继续推进）
+- 下一版本：版本号待定；当前阶段主题为”第二轮自学习系统改进 + 表现层扩展”
+- 本轮实施文档：`docs/自学习系统改进变更_v1.2.md`
 - 首页、记账页、设置页主要持久化链路以 `0.4.3` 为当前稳定基线
 
 ## 阶段基线
@@ -178,56 +179,53 @@
 
 ## 当前进度同步
 
-- AI 自学习系统第一轮低成本精度优化已进入实施阶段。
-- 第二章实施项已完成代码落点核对：`AppFacade.startAiProcessing` 承接“分类前强制学习”，`LearningSession` 承接学习 Prompt 与学习窗口增强，`PromptBuilder + ExampleStore + SystemPrompt` 承接分类上下文增强，`ConfigManager + LLMClient + BatchProcessor` 承接模型参数链路与日志验证。
-- 当前实现口径固定为“供应商分支直写，不做过早统一抽象层”：`DeepSeek` 与 `SiliconFlow` 的后端请求体、默认模型、设置页提示都分别维护；前端则复用现有页面骨架，只通过读模型接内容与状态。
-- 2026-05-09 现状核查：最新本地 LLM 日志显示当前学习请求使用 `deepseek-ai/DeepSeek-V3.2`，但请求体未携带 `enable_thinking` / `thinking_budget`，响应 `usage.completion_tokens_details.reasoning_tokens = 0`，说明当前并未真正开启 SiliconFlow 思考模式。
-- 2026-05-09 基础设施修复与验证完成：`LearningSession / BatchProcessor / CompressionSession` 已补齐 `maxTokens / enableThinking` 透传，`LLMClient` 已按 SiliconFlow `DeepSeek-V3.2` 透传 `enable_thinking + thinking_budget`，并在浏览器 Playwright 中通过真实学习请求验证日志：最新 `llm_logs` 已出现 `temperature = 0.2`、`enableThinkingConfigured = true`、`siliconFlowThinkingMode = v32_toggle_and_budget`、`payload.enable_thinking = true`、`payload.thinking_budget = 1024`，响应同时返回 `reasoning_content` 与 `reasoning_tokens = 1024`。
-- 2026-05-09 自学习剩余三项已全部收口：学习会话已注入“学习窗口净变更 + 最近 30 条实例”，分类会话已改为“最近 / 检索 × 正例 / 反例”四区块，且无 `userNote` 样本统一标记弱证据；`AppFacade.startAiProcessing()` 现已在存在未学习实例时先学习再分类，并在学习阶段只点亮 AI 工作态、不点亮日级 `activeDates`。
-- 2026-05-09 统一验证完成：`npm run typecheck`、`npm run build` 通过；浏览器开发态已通过 `runExampleStoreSpecTest`、`runLearningPayloadSpecTest`、`runLearningAutomationSpecTest`、`runPreLearningBeforeProcessingTest`，并留档移动端截图 `artifacts/self-learning-optimization-mobile.png`。
-- 2026-05-09 第二章真实进度审查结论：
-  - 按核心主线看，第二章上下文工程已基本落地；但若严格按文档逐句验收，当前**不能宣称“第二章所有内容 100% 实施且 100% 测透”**。
-  - 已实施且已测试的主线项：`2.1 temperature=0.2`、`2.3 学习会话注入净变更 + 最近 30 条实例`、`2.4 分类会话四区块上下文`、`2.5 无 userNote 弱证据标记`、`2.7 分类前强制学习未学习实例`。
-  - `2.2 当前阶段统一使用推理模型，并检查 thinking 参数是否生效` 需要按供应商分别验收：`SiliconFlow` 主链路已验证 `enable_thinking / thinking_budget / reasoning_tokens` 生效；`DeepSeek` 需按官方 `thinking / reasoning_effort` 口径单独验证，二者不共享一套伪统一适配。
-  - `2.6 学习 Prompt 禁止生成依赖未来 userNote 的规则` 与 `2.8 实体记忆 / 规律记忆不得混写` 均已落到 Prompt 约束层，并经过代码与结构化 payload 核对；但当前**没有针对真实 LLM 输出结果做行为级强验收**，因此只能算“已实施，Prompt 级已验证”，不能夸大为“模型行为已完全证明”。
-  - 第 5 章实施清单里的 `11 强制学习时复用顶部弹窗提示，并正确处理 AI 工作状态标识` 当前只能算**部分完成**：AI 工作状态与 `activeDates` 语义已实现并测试，但“复用已有顶部提示文案提醒用户正在先学习未处理实例”这半，本轮没有独立完成可见文案链路的专项验收。
-  - 因此，当前最准确的阶段结论应是：**第二章核心上下文工程已完成；若按严格逐条验收口径，仍残留 provider 覆盖、Prompt 约束行为级验证、以及前置学习提示文案专项验收 3 类尾项。**
-- 2026-05-10 新确认的 UI 收口目标：
-  - 顶部提示需新增两段式前置学习反馈：用户手动开启分类且存在未学习实例时，先提示“有尚未学习的实例，AI 正在自动学习”；学习成功后、正式切入分类前，再提示“已学习完成，开始进行分类”。
-  - 首页中部情景提示卡本轮不按旧的泛化提示池优先实施，而改按 onboarding 顺序实施：`设置自述 -> 设置月预算 -> 导入账单 -> 开启 AI 分类 -> 学习分类后交互方式`。
-  - 中部提示卡的关闭语义固定为“仅本次会话隐藏”；是否永久退出必须由业务事实判断“该步骤是否已完成”。
-  - 首页情景提示系统现已单独拆出专项规格文档：`docs/design/spec/SPEC_Home_Hint_System.md`；卡片总表中必须逐张定义“是否带快捷操作按钮”，禁止默认假设所有卡片都有右侧动作按钮。
-  - 自述步骤的完成判定不得用“非空”近似代替；当前必须以“用户已改写默认 demo 自述并保存”为完成标准。
-- 2026-05-10 首页提示系统第一轮实现已落地并通过 `npm run typecheck`：
-  - 新增独立模块 `src/ui/features/moni-home/HomeHintCard.tsx`，不再把情景提示实现内联在首页大文件里。
-  - 新增 `HomeHintSystemBuilder + HomeHintStateManager`，把 onboarding 主线与现有预算提示并入同一结构，并为“AI 已启动过 / 已完成分类后交互”补齐账本级持久化状态。
-  - 首页提示按钮已接通真实跳转：可直达记账页导入入口、设置页自述页、设置页预算页。
-  - 顶部提示已扩充：分类前若存在未学习实例，会先提示“AI 正在自动学习”；仅当后续确实继续进入分类时，才提示“已学习完成，开始进行分类”。
+- 2026-05-18 新一轮迭代启动，主题为”第二轮自学习系统改进 + 表现层扩展”，实施文档为 `docs/自学习系统改进变更_v1.2.md`
+- 本轮非 NLP 核心工作：分类输出 schema 扩展（§2.1）、审计队列接口语义（§2.3）、底部导航 5 tab 改造、请教页（Inquiry Page）与洞察页（Insights Page）两个新一级页面、ReasonDialog 蒙版语义统一
+- 本轮 NLP 核心工作：实例检索/评分注入升级（§2.2），序列号预处理 + counterparty 质量分层 + bigram 相似度 + 非语义字段加权
+- 第一轮自学习优化核心上下文工程已随 `0.4.0` / `0.4.1` 收口；残留 DeepSeek 供应商参数链路尾项、Prompt 约束行为级验证、前置学习提示文案专项验收 3 类尾项
+- 真机反馈 8 个修复点中 7 项已修复完成（详情页分类入口、微信 badge、返回手势、键盘顶起、导入指南全屏、理由弹窗键盘、误触遮罩），仅压缩包密码输入页字体回退归入全局字体治理 Deferred
 
 ## 当前任务看板
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| AI 自学习系统第一轮优化参数链路核对 | In Progress | 供应商分支正在按”各写各的”方式收口：`SiliconFlow` 继续保留 `enable_thinking / thinking_budget` 口径，`DeepSeek` 正在补 `thinking / reasoning_effort` 口径；前端设置页继续复用现有骨架，只接读模型和内容，不重做页面 |
-| BatchProcessor revision 系统复审 | Deferred | 后期重新审视 `BatchProcessor` 为并发保护引入的 revision 机制是否仍然划算，重点评估现有 CAS 防护粒度、实现复杂度与更简化的替代设计；不影响当前已修复的 `bumpRevision` 口径 |
-| 真机反馈收口修复 | In Progress | 当前聚焦 8 个真机修复点：详情页分类入口点击异常、微信原始分类错误上浮到顶部 badge、设置页二级页返回手势未消费、随手记详情输入层被键盘顶起并改为顶部弹层、导入指南页改为全屏覆盖底部导航、压缩包密码输入页字体回退、首页理由弹窗未自动唤起键盘、随手记详情输入层误触遮罩易退出 |
-| Demo seed 首启解压刷新问题 | Pending | `0.3.7` 改为 zip 化 demo seed 后，首次打开时数据还在后台解压，当前页面无法立即刷新显示；需要退出软件再重新进入才能看到数据，需定位首启刷新/解压完成通知链路 |
-| Android 真机验收 | In Progress | `0.4.2` 冷启动黑屏与 icon 裁切已在两台真机验收通过；8 个真机反馈修复点仍待后续验收 |
-| 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式在 `MoniSettings.tsx`（当前实际渲染路径）中尚未接入；现有 `SettingsPage.tsx` 中的接线未被加载；本轮仅做不影响运行的最小修补（predicate 简化 + label 语义修正），完整接线推后；落实时需确认：① `MoniSettings.tsx` 中新增标签后改走 `ReclassifyConfirmDialog` 范围选择流程，② `SettingsPage.tsx` 中对应接线是否仍需保留 |
-| 全局字体统一治理 | Deferred | 当前只对高频可编辑控件做补丁修正，避免桌面端回退到 serif；完整字体治理与历史覆盖层梳理推后单独收口，0.3.7轮不扩展到详情页复制能力 |
+| 分类输出 schema 扩展（v1.2 §2.1） | Pending | Transaction 新增 `ai_confidence` / `ai_uncertainty_reason` / `ai_used_weak_evidence` / `ai_evidence_ids` 四字段；派生 `ai_needs_review`；分类 System Prompt 新增 confidence 三级语义与禁止 high 硬约束；后处理校验 evidenceIds 防幻觉 |
+| 实例检索/评分注入升级（v1.2 §2.2） | Pending | 序列号/占位污染预处理 11 条规则、counterparty 质量分层、实体键提取、bigram Dice 相似度、非语义字段加权评分、综合评分 top-5 检索、实例库新增 4 个派生字段 |
+| 审计队列接口语义（v1.2 §2.3） | Pending | 按天聚合返回结构、天级+天内两级排序、出列机制（左滑/批量）、filter 联动可操作性、会话视图快照、空状态五分类；请教页数据层接口 |
+| 底部导航 5 Tab 改造 | Pending | 从现有 3 tab 扩展为 `洞察 → 首页 → 记账(M) → 请教 → 设置`；样式不大改，微调即可；两个新页面的路由前置 |
+| 请教页前端实现 | Pending | 规格：`docs/design/spec/SPEC_Inquiry_Page.md`；依赖 §2.1 schema 扩展与 §2.3 审计接口先落地 |
+| 洞察页前端实现 | Pending | 规格：`docs/design/spec/SPEC_Insights_Page.md`；相对独立，只需现有 transaction 数据做聚合统计 |
+| ReasonDialog 蒙版语义统一 | Pending | 规格：`docs/design/spec/SPEC_DragDetailPanel_纠错弹窗外侧蒙版语义统一_增补.md`；外侧蒙版从”无作用”改为”取消纠错”三态 + 提示文案 |
+| AI 自学习第一轮 DeepSeek 参数链路收口 | In Progress | `DeepSeek` 需按官方 `thinking / reasoning_effort` 口径单独验证；SiliconFlow 已验证通过 |
+| Demo seed 首启解压刷新问题 | Pending | `0.3.7` zip 化 demo seed 后首启无法立即刷新，需定位解压完成通知链路 |
+| BatchProcessor revision 系统复审 | Deferred | 后期重新审视 revision 机制是否仍然划算 |
+| 标签管理重分类流程全链路落实 | Deferred | `ReclassifyConfirmDialog` 的 `add` 模式尚未在 `MoniSettings.tsx` 接入 |
+| 全局字体统一治理 | Deferred | 含压缩包密码输入页字体回退；完整治理推后单独收口 |
 
 ## 当前优先级
 
-1. AI 自学习系统第一轮优化 DeepSeek 供应商参数链路收口
-2. 真机反馈收口修复（8 个修复点）
-3. Android 真机验收（持续进行）
-4. 标签管理重分类流程全链路落实（推后但持续追踪）
-5. 全局字体统一治理（推后但持续追踪）
+1. 分类输出 schema 扩展（§2.1）— 请教页的数据基础
+2. 审计队列接口语义（§2.3）— 请教页的接口层
+3. 底部导航 5 Tab 改造 — 两个新页面的路由前置
+4. 请教页前端实现
+5. 洞察页前端实现
+6. ReasonDialog 蒙版语义统一
+7. 实例检索/评分注入升级（§2.2）— NLP 系统，可与表现层并行
+8. AI 自学习第一轮 DeepSeek 参数链路收口（尾项）
+9. 标签管理重分类 / 全局字体治理 / Demo seed 首启（推后但持续追踪）
+
+## 当前阶段决策
+
+- 底部导航 5 Tab 改造样式不大改，微调即可
+- 洞察页图表（环状图、柱状图、折线图、柱线融合图）确认引入轻量图表库，不再手写 SVG
+- 实施顺序固定为"先落实后端链路（§2.1 schema + §2.3 接口），再做前端改造（5Tab + 请教页 + 洞察页）"
+- `SURFACE_SYSTEM.md` 当前只在渐变规则（§七）中提及"预算进度条"允许使用渐变，但**没有独立的进度条语法定义**；洞察页实现前需先在 SURFACE_SYSTEM.md 补充"分类预算进度条"语法规则段
 
 ## 当前阶段风险
 
-- 学习会话与分类会话都将引入最近 30 条实例；若上下文长度、实例格式或日志体积控制不当，可能带来 token 成本上升与日志膨胀风险
-- Android 文件选择器与真机交互尚未验收，浏览器开发态结论不能直接替代 Android 真机结论
+- §2.1 schema 扩展涉及 transaction 模型新增字段，需评估对现有持久化、导入链路、实例库的影响范围
+- 两个新页面 + 底部导航改造是大规模表现层新增，需控制与现有首页/记账页/设置页的耦合
+- Surface System 需扩展：confidence 背景色板、勾选框语法、分类预算进度条语法等 token 尚不存在
 
 
 ## 当前已固定口径
