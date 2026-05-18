@@ -39,6 +39,14 @@ import type {
   LedgerOption,
   MoniHomeReadModel,
   SettingsPageReadModel,
+  InsightsViewData,
+  InsightsCashflowBucket,
+  InsightsCategoryBreakdownTabData,
+  InsightsCategorySlice,
+  InquiryFilter,
+  InquiryViewData,
+  InquiryViewStateCode,
+  InquiryDayGroup,
 } from '@shared/types';
 import type { FullTransactionRecord } from '@shared/types/metadata';
 
@@ -81,6 +89,73 @@ function toLocalDateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// ──────────────────────────────────────────────
+// 请教页视图构建辅助函数（§2.3）
+// ──────────────────────────────────────────────
+
+/** confidence 对应的不确定度评分：low=3 / medium=2 / high or ''=1 */
+function inquiryConfidenceScore(confidence: string): number {
+  if (confidence === 'low') return 3;
+  if (confidence === 'medium') return 2;
+  return 1;
+}
+
+/** §2.3-D.3 可操作性判定 */
+function inquiryIsOperable(t: FullTransactionRecord, filter: InquiryFilter): boolean {
+  if (t.ai_needs_review) return true; // 不变量1：ai_needs_review=true 任何 filter 下均可操作
+  // 不变量2：confidence_rank >= filter_rank 时可操作
+  const filterRank = filter === 'low' ? 3 : filter === 'medium' ? 2 : 1;
+  return inquiryConfidenceScore(t.ai_confidence) >= filterRank;
+}
+
+/**
+ * 构建原始天组（不带 filter 过滤）。
+ * 天 D 进入集合 ⟺ 当天存在 ai_needs_review=true && is_verified=false 的条目。
+ * 每天附带当天全部 is_verified=false 的条目（含上下文条目），按时间升序排列。
+ * 天级按 day_uncertainty_score 降序排列，同分按日期降序。
+ */
+function buildInquiryRawDays(allRecords: FullTransactionRecord[]): InquiryDayGroup[] {
+  const reviewDates = new Set<string>();
+  for (const r of allRecords) {
+    if (r.ai_needs_review && !r.is_verified) {
+      reviewDates.add(r.time.slice(0, 10));
+    }
+  }
+  if (reviewDates.size === 0) return [];
+
+  const dayMap = new Map<string, FullTransactionRecord[]>();
+  for (const date of reviewDates) {
+    dayMap.set(date, []);
+  }
+  for (const r of allRecords) {
+    if (r.is_verified) continue;
+    const date = r.time.slice(0, 10);
+    if (dayMap.has(date)) {
+      dayMap.get(date)!.push(r);
+    }
+  }
+
+  const days: InquiryDayGroup[] = Array.from(dayMap.entries()).map(([date, txns]) => {
+    const reviewItems = txns.filter((r) => r.ai_needs_review && !r.is_verified);
+    const scoreSum = reviewItems.reduce((s, r) => s + inquiryConfidenceScore(r.ai_confidence), 0);
+    const dayUncertaintyScore = reviewItems.length > 0 ? scoreSum / reviewItems.length : 0;
+    const sortedTxns = [...txns].sort((a, b) => a.time.localeCompare(b.time));
+    return { date, dayUncertaintyScore, transactions: sortedTxns };
+  });
+
+  days.sort((a, b) => {
+    const diff = b.dayUncertaintyScore - a.dayUncertaintyScore;
+    return diff !== 0 ? diff : b.date.localeCompare(a.date);
+  });
+
+  return days;
+}
+
+/** §2.3-D.4 天卡片可见性过滤：保留当天至少有一个可操作条目的天 */
+function filterInquiryDays(days: InquiryDayGroup[], filter: InquiryFilter): InquiryDayGroup[] {
+  return days.filter((day) => day.transactions.some((t) => inquiryIsOperable(t, filter)));
 }
 
 /**
@@ -1504,6 +1579,231 @@ export class AppFacade {
    */
   public async startQueuedClassification(): Promise<void> {
     await this.startAiProcessing();
+  }
+
+  /**
+   * 获取洞察页所需的完整聚合数据。
+   *
+   * 聚合逻辑：
+   * - cashflowByMonth / cashflowByWeek：对所有 SUCCESS 交易按月/周分桶求和
+   * - categoryBreakdown：按 direction 分流，再按本月 & 历史月分别聚合
+   * - 数据层完成聚合，表现层只做渲染
+   */
+  public async getInsightsViewData(): Promise<InsightsViewData> {
+    const ledgerState = this.getLedgerState();
+    const records = ledgerState.ledgerMemory?.records ?? {};
+    const ledgerName = ledgerState.currentLedgerId;
+    const categoryMap = ledgerState.ledgerMemory?.defined_categories ?? {};
+
+    /* 筛选有效交易 */
+    const allTx = Object.values(records).filter(
+      (r): r is FullTransactionRecord => r.transactionStatus === 'SUCCESS',
+    );
+
+    if (allTx.length === 0) {
+      return {
+        ledger: { name: ledgerName, earliestTxDate: null, latestTxDate: null },
+        summary: { totalIncome: 0, totalExpense: 0, netCashflow: 0, coverageStart: null, coverageEnd: null },
+        cashflowByMonth: [],
+        cashflowByWeek: [],
+        categoryBreakdown: {
+          expense: { currentMonth: [], byTagHistory: {} },
+          income: { currentMonth: [], byTagHistory: {} },
+        },
+      };
+    }
+
+    /* 日期范围 */
+    const sortedTimes = allTx.map((r) => r.time.slice(0, 10)).sort();
+    const earliestTxDate = sortedTimes[0];
+    const latestTxDate = sortedTimes[sortedTimes.length - 1];
+
+    /* ── 月度分桶 ── */
+    const monthBuckets = new Map<string, { income: number; expense: number }>();
+    for (const tx of allTx) {
+      const mk = tx.time.slice(0, 7); // "YYYY-MM"
+      if (!monthBuckets.has(mk)) monthBuckets.set(mk, { income: 0, expense: 0 });
+      const b = monthBuckets.get(mk)!;
+      if (tx.direction === 'in') b.income += tx.amount;
+      else b.expense += tx.amount;
+    }
+    const cashflowByMonth: InsightsCashflowBucket[] = Array.from(monthBuckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([key, { income, expense }]) => ({ key, income, expense, net: income - expense }));
+
+    /* ── 周分桶 ── */
+    const weekBuckets = new Map<string, { income: number; expense: number }>();
+    for (const tx of allTx) {
+      const d = new Date(tx.time.slice(0, 10) + 'T00:00:00');
+      const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
+      const mon = new Date(d);
+      mon.setDate(d.getDate() - dayOfWeek + 1);
+      const mm = String(mon.getMonth() + 1).padStart(2, '0');
+      const dd = String(mon.getDate()).padStart(2, '0');
+      const wk = `${mm}/${dd}`;
+      if (!weekBuckets.has(wk)) weekBuckets.set(wk, { income: 0, expense: 0 });
+      const b = weekBuckets.get(wk)!;
+      if (tx.direction === 'in') b.income += tx.amount;
+      else b.expense += tx.amount;
+    }
+    const cashflowByWeek: InsightsCashflowBucket[] = Array.from(weekBuckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([key, { income, expense }]) => ({ key, income, expense, net: income - expense }));
+
+    /* ── 摘要 ── */
+    const totalIncome = allTx.filter((r) => r.direction === 'in').reduce((s, r) => s + r.amount, 0);
+    const totalExpense = allTx.filter((r) => r.direction === 'out').reduce((s, r) => s + r.amount, 0);
+    const coverageStart = earliestTxDate?.slice(0, 7) ?? null;
+    const coverageEnd = latestTxDate?.slice(0, 7) ?? null;
+
+    /* ── 本月 ── */
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    /* ── 分类分解构建器 ── */
+    const buildBreakdown = (direction: 'in' | 'out'): InsightsCategoryBreakdownTabData => {
+      const dirTx = allTx.filter((r) => r.direction === direction);
+
+      /* 实际用过的标签集合 */
+      const usedTags = new Set<string>();
+      for (const tx of dirTx) {
+        const cat = tx.user_category || tx.ai_category || '__uncategorized__';
+        usedTags.add(cat);
+      }
+
+      /* 本月各标签金额 */
+      const currentMonthAmounts = new Map<string, number>();
+      for (const tx of dirTx) {
+        if (!tx.time.startsWith(currentMonthKey)) continue;
+        const cat = tx.user_category || tx.ai_category || '__uncategorized__';
+        currentMonthAmounts.set(cat, (currentMonthAmounts.get(cat) ?? 0) + tx.amount);
+      }
+      const monthTotal = Array.from(currentMonthAmounts.values()).reduce((s, v) => s + v, 0);
+
+      const currentMonth: InsightsCategorySlice[] = Array.from(currentMonthAmounts.entries())
+        .filter(([, amt]) => amt > 0)
+        .map(([tagId, amount]) => {
+          const tagName = tagId === '__uncategorized__' ? '未分类' : (categoryMap[tagId] ?? tagId);
+          const budget = null; // 分类预算需要接入 BudgetManager，当前先返回 null
+          return {
+            tagId,
+            tagName,
+            amount,
+            share: monthTotal > 0 ? amount / monthTotal : 0,
+            budget,
+          };
+        });
+
+      /* 各标签全账本月度历史 */
+      const byTagHistory: Record<string, Array<{ monthKey: string; amount: number }>> = {};
+      for (const tagId of usedTags) {
+        const monthMap = new Map<string, number>();
+        for (const tx of dirTx) {
+          const cat = tx.user_category || tx.ai_category || '__uncategorized__';
+          if (cat !== tagId) continue;
+          const mk = tx.time.slice(0, 7);
+          monthMap.set(mk, (monthMap.get(mk) ?? 0) + tx.amount);
+        }
+        byTagHistory[tagId] = Array.from(monthMap.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([monthKey, amount]) => ({ monthKey, amount }));
+      }
+
+      return { currentMonth, byTagHistory };
+    };
+
+    return {
+      ledger: { name: ledgerName, earliestTxDate, latestTxDate },
+      summary: { totalIncome, totalExpense, netCashflow: totalIncome - totalExpense, coverageStart, coverageEnd },
+      cashflowByMonth,
+      cashflowByWeek,
+      categoryBreakdown: {
+        expense: buildBreakdown('out'),
+        income: buildBreakdown('in'),
+      },
+    };
+  }
+
+  // ──────────────────────────────────────────────
+  // 请教页接口（§2.3）
+  // ──────────────────────────────────────────────
+
+  /**
+   * 获取请教页完整视图数据。
+   *
+   * 实现 §2.3-A 返回结构、§2.3-B 排序规则、§2.3-D filter 联动、§2.3-F 空状态分类。
+   * 会话视图快照（§2.3-E）由前端 session state 管理，本方法每次调用均实时重算。
+   *
+   * @param filter 可操作性阈值，默认 'medium'
+   */
+  public getInquiryViewData(filter: InquiryFilter = 'medium'): InquiryViewData {
+    const records = this.getLedgerState().ledgerMemory?.records ?? {};
+    const allRecords = Object.values(records) as FullTransactionRecord[];
+    const isAiRunning = this.aiStatus === 'ANALYZING';
+
+    // 无任何记录 → NO_BILLS
+    if (allRecords.length === 0) {
+      return { filter, days: [], viewStateCode: 'NO_BILLS', isAiRunning };
+    }
+
+    // 从未产出 ai_needs_review=true 条目（含"AI 未运行"和"全部 high confidence"两种情况）→ NO_REVIEW_YET
+    const hasAnyNeedsReview = allRecords.some((r) => r.ai_needs_review);
+    if (!hasAnyNeedsReview) {
+      return { filter, days: [], viewStateCode: 'NO_REVIEW_YET', isAiRunning };
+    }
+
+    // 计算原始天组（不带 filter）
+    const rawDays = buildInquiryRawDays(allRecords);
+
+    // 用 all filter 判断是否已全部审核（ALL_REVIEWED vs FILTER_EMPTY）
+    const daysWithAllFilter = filterInquiryDays(rawDays, 'all');
+    if (daysWithAllFilter.length === 0) {
+      // 放宽到 all 仍为空 → 全部已审核
+      return { filter, days: [], viewStateCode: 'ALL_REVIEWED', isAiRunning };
+    }
+
+    // 应用当前 filter
+    const visibleDays = filter === 'all' ? daysWithAllFilter : filterInquiryDays(rawDays, filter);
+    if (visibleDays.length === 0) {
+      // 当前 filter 为空，但放宽后非空
+      return { filter, days: [], viewStateCode: 'FILTER_EMPTY', isAiRunning };
+    }
+
+    // 正常有内容，AI 正在运行时附加状态码供表现层展示"新条目会追加"提示
+    const viewStateCode: InquiryViewStateCode | null = isAiRunning ? 'RUNNING_NON_EMPTY' : null;
+    return { filter, days: visibleDays, viewStateCode, isAiRunning };
+  }
+
+  /**
+   * 左滑确认单条请教项（§2.3-C 出列机制）。
+   * 等同于"用户在审计中再次选择同一分类"：仅设置 is_verified=true，不修改 user_category / user_note。
+   */
+  public confirmInquiryItem(id: string): void {
+    const memory = this.getLedgerState().ledgerMemory;
+    if (!memory) return;
+    const record = memory.records[id];
+    if (!record || record.is_verified) return;
+    this.ledgerService.setVerification(id, true);
+    this.notify();
+  }
+
+  /**
+   * 批量确认多条请教项（§2.3-C 批量确认）。
+   * 对每条传入 id 执行与 confirmInquiryItem 相同的单条逻辑，只发出一次 notify。
+   */
+  public batchConfirmInquiryItems(ids: string[]): void {
+    const memory = this.getLedgerState().ledgerMemory;
+    if (!memory) return;
+    let changed = false;
+    for (const id of ids) {
+      const record = memory.records[id];
+      if (!record || record.is_verified) continue;
+      this.ledgerService.setVerification(id, true);
+      changed = true;
+    }
+    if (changed) this.notify();
   }
 
   private notify(): void {

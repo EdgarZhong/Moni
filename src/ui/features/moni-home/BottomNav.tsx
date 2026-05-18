@@ -40,6 +40,32 @@ function NoteIcon({ active }: { active?: boolean }) {
   );
 }
 
+/** InsightsIcon — 洞察图标（折线+放大镜） */
+function InsightsIcon({ active }: { active?: boolean }) {
+  const stroke = active ? "#222" : "#8E8E8E";
+  const strokeWidth = active ? 1.8 : 1.5;
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M3 18l4-5 3.5 2.5L15 10l3 3" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="18.5" cy="7.5" r="3.5" stroke={stroke} strokeWidth={strokeWidth} />
+      <path d="M21 10l2 2" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** InquiryIcon — 请教图标（对话气泡+问号） */
+function InquiryIcon({ active }: { active?: boolean }) {
+  const stroke = active ? "#222" : "#8E8E8E";
+  const strokeWidth = active ? 1.8 : 1.5;
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <circle cx="12" cy="17" r="0.6" fill={stroke} />
+    </svg>
+  );
+}
+
 // ──────────────────────────────────────────────
 // BottomNav
 // ──────────────────────────────────────────────
@@ -59,8 +85,12 @@ interface BottomNavProps {
   onBookkeeping?: () => void;
   /** 短按中央首页按钮的导航回调（在非首页时使用） */
   onHomeNavigate?: () => void;
+  /** 点击洞察按钮的回调 */
+  onInsights?: () => void;
+  /** 点击请教按钮的回调 */
+  onInquiry?: () => void;
   /** 当前激活页面 */
-  activePage?: 'home' | 'entry' | 'settings';
+  activePage?: 'home' | 'entry' | 'settings' | 'insights' | 'inquiry';
 }
 
 /**
@@ -75,9 +105,11 @@ interface BottomNavProps {
  * - 控制条子元素不绑 onPointerMove（避免隐式捕获失效）
  * - 移除 onPointerLeave（防止误取消）
  */
-export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, onHomeNavigate, activePage = 'home' }: BottomNavProps) {
+export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartControl, onEndControl, onCancelControl, onUpdateControlHit, onSettings, onBookkeeping, onHomeNavigate, onInsights, onInquiry, activePage = 'home' }: BottomNavProps) {
   const isEntryActive = activePage === 'entry';
   const isSettingsActive = activePage === 'settings';
+  const isInsightsActive = activePage === 'insights';
+  const isInquiryActive = activePage === 'inquiry';
 
   // 短按中央按钮（控制条未打开时）的处理：在非首页可导航回首页
   const handleCenterPointerUp = () => {
@@ -105,13 +137,19 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
         `}</style>
       ) : null}
 
-      {/* 左：设置 */}
-      <div data-testid="bottom-nav-settings" style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onSettings}>
+      {/* 最左：设置 */}
+      <div data-testid="bottom-nav-settings" style={{ textAlign: "center", padding: "4px 8px", cursor: "pointer" }} onClick={onSettings}>
         <GearIcon active={isSettingsActive} />
         <div style={{ fontSize: 10, color: isSettingsActive ? C.dark : C.muted, fontWeight: isSettingsActive ? 700 : 400, marginTop: 2 }}>设置</div>
       </div>
 
-      {/* 中：品牌按钮 + AI 控制条 */}
+      {/* 左：洞察 */}
+      <div data-testid="bottom-nav-insights" style={{ textAlign: "center", padding: "4px 8px", cursor: "pointer" }} onClick={onInsights}>
+        <InsightsIcon active={isInsightsActive} />
+        <div style={{ fontSize: 10, color: isInsightsActive ? C.dark : C.muted, fontWeight: isInsightsActive ? 700 : 400, marginTop: 2 }}>洞察</div>
+      </div>
+
+      {/* 中：品牌按钮 + AI 控制条（语义保持不变：短按首页，长按 AI） */}
       <div
         data-testid="bottom-nav-home"
         style={{ position: "relative", textAlign: "center", cursor: "pointer", touchAction: "none" }}
@@ -151,8 +189,14 @@ export function BottomNav({ aiOn, aiStop, controlOpen, controlHit, onStartContro
         </div>
       </div>
 
-      {/* 右：记账 */}
-      <div data-testid="bottom-nav-entry" style={{ textAlign: "center", padding: "4px 16px", cursor: "pointer" }} onClick={onBookkeeping}>
+      {/* 右：请教 */}
+      <div data-testid="bottom-nav-inquiry" style={{ textAlign: "center", padding: "4px 8px", cursor: "pointer" }} onClick={onInquiry}>
+        <InquiryIcon active={isInquiryActive} />
+        <div style={{ fontSize: 10, color: isInquiryActive ? C.dark : C.muted, fontWeight: isInquiryActive ? 700 : 400, marginTop: 2 }}>请教</div>
+      </div>
+
+      {/* 最右：记账 */}
+      <div data-testid="bottom-nav-entry" style={{ textAlign: "center", padding: "4px 8px", cursor: "pointer" }} onClick={onBookkeeping}>
         <NoteIcon active={isEntryActive} />
         <div style={{ fontSize: 10, color: isEntryActive ? C.dark : C.muted, fontWeight: isEntryActive ? 700 : 400, marginTop: 2 }}>记账</div>
       </div>

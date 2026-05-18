@@ -7,6 +7,8 @@ import { scheduleSplashHideAfterFirstPaint } from '@bootstrap/startup/splashCont
 import MoniHome from '@ui/pages/MoniHome';
 import MoniEntry from '@ui/pages/MoniEntry';
 import MoniSettings from '@ui/pages/MoniSettings';
+import MoniInsights from '@ui/pages/MoniInsights';
+import MoniInquiry from '@ui/pages/MoniInquiry';
 import { useAppViewportLock } from '@ui/hooks/useAppViewportLock';
 import { useAiEngineControl } from '@ui/hooks/useAiEngineControl';
 import { useKeyboard } from '@ui/hooks/useKeyboard';
@@ -27,7 +29,7 @@ import {
   type NativeBackDebugTriggerInput,
 } from '@system/device/nativeBackDebugBridge';
 
-type Page = 'home' | 'entry' | 'settings';
+type Page = 'home' | 'entry' | 'settings' | 'insights' | 'inquiry';
 type ShellChromeState = {
   showBottomNav: boolean;
 };
@@ -430,6 +432,12 @@ function RuntimeApp() {
             onBottomNavVisibilityChange={handleBottomNavVisibilityChange}
           />
         ) : null}
+        {activePage === 'insights' ? (
+          <MoniInsights onNavigate={handleNavigate} />
+        ) : null}
+        {activePage === 'inquiry' ? (
+          <MoniInquiry onNavigate={handleNavigate} />
+        ) : null}
       </div>
 
       {/* BottomNav 常驻于此，不随页面切换卸载，AI 状态保持连贯 */}
@@ -447,6 +455,8 @@ function RuntimeApp() {
           onSettings={() => handleNavigate('settings')}
           onBookkeeping={() => handleNavigate('entry')}
           onHomeNavigate={activePage !== 'home' ? () => handleNavigate('home') : undefined}
+          onInsights={() => handleNavigate('insights')}
+          onInquiry={() => handleNavigate('inquiry')}
         />
       )}
 

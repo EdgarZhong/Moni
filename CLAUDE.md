@@ -180,6 +180,7 @@
 ## 当前进度同步
 
 - 2026-05-18 新一轮迭代启动，主题为”第二轮自学习系统改进 + 表现层扩展”，实施文档为 `docs/自学习系统改进变更_v1.2.md`
+- 2026-05-18 洞察页前端骨架完成，使用 recharts 实现收支柱状图与分类趋势综合表，已接入 AppFacade（mock 回退）；底部导航 5 Tab 改造完成，顺序固定为 `设置→洞察→首页(M)→请教→记账`，请教页占位符已创建；所有结构性色值已从 `IC`/`C` config 中引用，无硬编码色
 - 本轮非 NLP 核心工作：分类输出 schema 扩展（§2.1）、审计队列接口语义（§2.3）、底部导航 5 tab 改造、请教页（Inquiry Page）与洞察页（Insights Page）两个新一级页面、ReasonDialog 蒙版语义统一
 - 本轮 NLP 核心工作：实例检索/评分注入升级（§2.2），序列号预处理 + counterparty 质量分层 + bigram 相似度 + 非语义字段加权
 - 第一轮自学习优化核心上下文工程已随 `0.4.0` / `0.4.1` 收口；残留 DeepSeek 供应商参数链路尾项、Prompt 约束行为级验证、前置学习提示文案专项验收 3 类尾项
@@ -189,12 +190,16 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| 分类输出 schema 扩展（v1.2 §2.1） | Pending | Transaction 新增 `ai_confidence` / `ai_uncertainty_reason` / `ai_used_weak_evidence` / `ai_evidence_ids` 四字段；派生 `ai_needs_review`；分类 System Prompt 新增 confidence 三级语义与禁止 high 硬约束；后处理校验 evidenceIds 防幻觉 |
+| 分类输出 schema 扩展（v1.2 §2.1） | **Done** | Transaction 新增 `ai_confidence` / `ai_uncertainty_reason` / `ai_used_weak_evidence` / `ai_evidence_ids` 四字段；派生 `ai_needs_review`；分类 System Prompt 新增 confidence 三级语义与禁止 high 硬约束；后处理校验 evidenceIds 防幻觉 |
 | 实例检索/评分注入升级（v1.2 §2.2） | Pending | 序列号/占位污染预处理 11 条规则、counterparty 质量分层、实体键提取、bigram Dice 相似度、非语义字段加权评分、综合评分 top-5 检索、实例库新增 4 个派生字段 |
-| 审计队列接口语义（v1.2 §2.3） | Pending | 按天聚合返回结构、天级+天内两级排序、出列机制（左滑/批量）、filter 联动可操作性、会话视图快照、空状态五分类；请教页数据层接口 |
-| 底部导航 5 Tab 改造 | Pending | 从现有 3 tab 扩展为 `洞察 → 首页 → 记账(M) → 请教 → 设置`；样式不大改，微调即可；两个新页面的路由前置 |
-| 请教页前端实现 | Pending | 规格：`docs/design/spec/SPEC_Inquiry_Page.md`；依赖 §2.1 schema 扩展与 §2.3 审计接口先落地 |
-| 洞察页前端实现 | Pending | 规格：`docs/design/spec/SPEC_Insights_Page.md`；相对独立，只需现有 transaction 数据做聚合统计 |
+| 审计队列接口语义（v1.2 §2.3） | **Done** | `getInquiryViewData(filter)` / `confirmInquiryItem()` / `batchConfirmInquiryItems()` 实现完毕；类型 `InquiryFilter / InquiryViewData / InquiryDayGroup / InquiryViewStateCode` 已导出；`InquiryFilter` / `buildInquiryRawDays` / `filterInquiryDays` 模块级辅助函数就绪 |
+| 底部导航 5 Tab 改造 | **Done** | 从 3 tab 扩展为 `设置 → 洞察 → 首页(M) → 请教 → 记账`；中央 M 按钮语义不变（短按首页，长按 AI）；请教页占位符已创建 |
+| 请教页前端实现 | **Done** | `src/ui/pages/MoniInquiry.tsx` + `src/ui/features/moni-inquiry/config.ts`；左滑确认手势（pointer event 状态机）、批量模式（勾选/全选/批量确认/退出）、Filter 三档芯片、5 种空状态、AI 运行常驻提示、TransactionDetailPage 叠加层；色值全引用 C 常量无硬编码；拖拽纠错（long-press → DragDetailPanel）留给 AppRoot 层接入 |
+| 洞察页前端实现 | **Done** | 规格：`docs/design/spec/SPEC_Insights_Page.md`；recharts 图表库；顶部摘要带 + 收支柱状图（月/周切换）+ 分类趋势综合表（环状图+列表+二级展开柱线融合图）；`AppFacade.getInsightsViewData()` 数据聚合；浏览器验证通过 |
+| 洞察页收支图交互修复（问题 A-1） | Pending | 规格 §5.5 已更新：去除所有图表元素的浏览器默认 focus ring（蓝色边框）；点击触发目标收窄为柱体本体 + 净值线数据点圆点，移除”列区域空白触发”逻辑 |
+| 洞察页收支图左滑历史（问题 A-2） | Pending | 规格 §5.4 已更新：数据覆盖全账本；图表容器横向可滑动，默认视口停在最右侧（最新）；左滑查看更早数据；粒度切换后重置到最右侧 |
+| 洞察页月视图分割卡 + 月份切换（问题 B） | Pending | 在收支柱状图（非月视图）与分类趋势综合表（月视图）之间插入一张**月视图分割卡**：高度克制、不喧宾夺主；卡片内容两行——第一行"以下为月视图"，第二行"当前月份"+ 切换按钮；月份切换后分类趋势综合表的环状图、列表、进度条均随之联动；具体切换交互形式（箭头/Pill/下拉）待后续确认；规格补写在实施前进行 |
+| 洞察页分类颜色统一接入视觉注册表 | Pending | 当前分类趋势综合表的标签颜色自行生成，未消费 `buildCategoryVisualRegistry(categoryDefs)` 的既有色板；需改为从 `categoryVisuals.ts` 的视觉注册表取色，与首页/记账页/请教页保持颜色一致 |
 | ReasonDialog 蒙版语义统一 | Pending | 规格：`docs/design/spec/SPEC_DragDetailPanel_纠错弹窗外侧蒙版语义统一_增补.md`；外侧蒙版从”无作用”改为”取消纠错”三态 + 提示文案 |
 | AI 自学习第一轮 DeepSeek 参数链路收口 | In Progress | `DeepSeek` 需按官方 `thinking / reasoning_effort` 口径单独验证；SiliconFlow 已验证通过 |
 | Demo seed 首启解压刷新问题 | Pending | `0.3.7` zip 化 demo seed 后首启无法立即刷新，需定位解压完成通知链路 |
@@ -204,26 +209,30 @@
 
 ## 当前优先级
 
-1. 分类输出 schema 扩展（§2.1）— 请教页的数据基础
-2. 审计队列接口语义（§2.3）— 请教页的接口层
-3. 底部导航 5 Tab 改造 — 两个新页面的路由前置
-4. 请教页前端实现
-5. 洞察页前端实现
-6. ReasonDialog 蒙版语义统一
-7. 实例检索/评分注入升级（§2.2）— NLP 系统，可与表现层并行
-8. AI 自学习第一轮 DeepSeek 参数链路收口（尾项）
-9. 标签管理重分类 / 全局字体治理 / Demo seed 首启（推后但持续追踪）
+1. ~~分类输出 schema 扩展（§2.1）~~ — **已完成**（commit a0c2ca3）
+2. ~~审计队列接口语义（§2.3）~~ — **已完成**
+3. ~~底部导航 5 Tab 改造~~ — **已完成**（设置→洞察→首页M→请教→记账）
+4. ~~请教页前端实现~~ — **已完成**（MoniInquiry.tsx + moni-inquiry/config.ts）
+5. ~~洞察页前端实现~~ — **已完成**
+6. 洞察页收支图交互修复（问题 A-1）— 去除蓝色 focus ring，点击区域精确化
+7. 洞察页收支图左滑历史（问题 A-2）— 横向滚动查看全账本历史
+8. 洞察页月视图分割卡 + 月份切换（问题 B）— 分割卡设计已定，切换交互细节待后续确认
+9. 洞察页分类颜色统一接入视觉注册表 — 改用 `buildCategoryVisualRegistry` 取色
+10. ReasonDialog 蒙版语义统一
+10. 实例检索/评分注入升级（§2.2）— NLP 系统，可与表现层并行
+11. AI 自学习第一轮 DeepSeek 参数链路收口（尾项）
+12. 标签管理重分类 / 全局字体治理 / Demo seed 首启（推后但持续追踪）
 
 ## 当前阶段决策
 
-- 底部导航 5 Tab 改造样式不大改，微调即可
+- 底部导航 5 Tab 正确顺序（已收口）：`设置 → 洞察 → 首页(M) → 请教 → 记账`；中央 M 按钮语义不变（短按首页，长按 AI）
 - 洞察页图表（环状图、柱状图、折线图、柱线融合图）确认引入轻量图表库，不再手写 SVG
 - 实施顺序固定为"先落实后端链路（§2.1 schema + §2.3 接口），再做前端改造（5Tab + 请教页 + 洞察页）"
 - `SURFACE_SYSTEM.md` 当前只在渐变规则（§七）中提及"预算进度条"允许使用渐变，但**没有独立的进度条语法定义**；洞察页实现前需先在 SURFACE_SYSTEM.md 补充"分类预算进度条"语法规则段
 
 ## 当前阶段风险
 
-- §2.1 schema 扩展涉及 transaction 模型新增字段，需评估对现有持久化、导入链路、实例库的影响范围
+- ~~§2.1 schema 扩展~~ 已完成，持久化/导入链路/实例库均已适配
 - 两个新页面 + 底部导航改造是大规模表现层新增，需控制与现有首页/记账页/设置页的耦合
 - Surface System 需扩展：confidence 背景色板、勾选框语法、分类预算进度条语法等 token 尚不存在
 

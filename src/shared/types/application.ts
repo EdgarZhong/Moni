@@ -1,6 +1,6 @@
 import type { Transaction } from './index';
 import type { StorageHandle, StorageDirHandle } from '@system/filesystem/fs-storage';
-import type { LedgerMemory } from './metadata';
+import type { FullTransactionRecord, LedgerMemory } from './metadata';
 
 export interface LedgerOption {
   id: string;
@@ -301,4 +301,127 @@ export interface SettingsPageReadModel {
   learningConfig: SettingsLearningConfig;
   budgetConfig: SettingsBudgetConfig;
   ledgerTransactions: SettingsLedgerTransaction[];
+}
+
+// ──────────────────────────────────────────────
+// 洞察页读模型
+// ──────────────────────────────────────────────
+
+/** 洞察页完整视图数据 */
+export interface InsightsViewData {
+  /** 账本元信息 */
+  ledger: {
+    name: string;
+    earliestTxDate: string | null;
+    latestTxDate: string | null;
+  };
+
+  /** 顶部摘要带 */
+  summary: {
+    totalIncome: number;
+    totalExpense: number;
+    netCashflow: number;
+    coverageStart: string | null;
+    coverageEnd: string | null;
+  };
+
+  /** 收支柱状图数据 — 按月分组 */
+  cashflowByMonth: InsightsCashflowBucket[];
+
+  /** 收支柱状图数据 — 按周分组 */
+  cashflowByWeek: InsightsCashflowBucket[];
+
+  /** 分类时间趋势综合表 */
+  categoryBreakdown: {
+    expense: InsightsCategoryBreakdownTabData;
+    income: InsightsCategoryBreakdownTabData;
+  };
+}
+
+/** 单个时间桶（月或周）的收支聚合 */
+export interface InsightsCashflowBucket {
+  /** 时间标识："YYYY-MM" 或 "YYYY-Www" */
+  key: string;
+  /** 该桶内总收入 */
+  income: number;
+  /** 该桶内总支出 */
+  expense: number;
+  /** 净值 = income - expense */
+  net: number;
+}
+
+/** 单个 direction tab 的分类分解 */
+export interface InsightsCategoryBreakdownTabData {
+  /** 本月各标签占比（环状图 + 列表用） */
+  currentMonth: InsightsCategorySlice[];
+  /** 各标签全账本月度历史（二级展开图表用） */
+  byTagHistory: Record<string, InsightsTagMonthlyPoint[]>;
+}
+
+/** 环状图 / 列表的单个标签数据 */
+export interface InsightsCategorySlice {
+  tagId: string;
+  tagName: string;
+  amount: number;
+  share: number;
+  budget: number | null;
+}
+
+/** 某标签某月的金额 */
+export interface InsightsTagMonthlyPoint {
+  monthKey: string;
+  amount: number;
+}
+
+// ──────────────────────────────────────────────
+// 请教页读模型（§2.3 审计队列视图组织语义）
+// ──────────────────────────────────────────────
+
+/**
+ * 请教页 filter 档位：决定哪些条目可操作、哪些天可见。
+ * - all: 全部条目可操作
+ * - medium（默认）: medium / low 可操作，high 只读
+ * - low: 仅 low 可操作
+ */
+export type InquiryFilter = 'all' | 'medium' | 'low';
+
+/**
+ * 请教页视图状态码，对应 §2.3-F 空状态分类。
+ * RUNNING_NON_EMPTY 虽不是真正的空状态，但需要让表现层显示"AI 正在追加"提示。
+ */
+export type InquiryViewStateCode =
+  | 'NO_BILLS'          // 当前账本未导入任何账单
+  | 'NO_REVIEW_YET'     // 已导入账单，但从未产出 ai_needs_review=true 条目
+  | 'RUNNING_NON_EMPTY' // AI 正在运行，且队列已有 ai_needs_review=true 条目（非空）
+  | 'ALL_REVIEWED'      // 放宽 filter 后亦无可操作条目（全部已审核）
+  | 'FILTER_EMPTY';     // 当前 filter 下为空，但放宽后非空
+
+/** 请教页天卡片（按天聚合的交易组） */
+export interface InquiryDayGroup {
+  /** 日期键 YYYY-MM-DD */
+  date: string;
+  /**
+   * 天级不确定度均值（§2.3-B 天级排序键）。
+   * 仅统计当天 ai_needs_review=true && is_verified=false 的条目。
+   * score: low=3 / medium=2 / high or ''=1
+   */
+  dayUncertaintyScore: number;
+  /** 当天全部 is_verified=false 的条目，按时间升序排列 */
+  transactions: FullTransactionRecord[];
+}
+
+/** 请教页完整视图数据 */
+export interface InquiryViewData {
+  /** 当前生效的 filter 档位 */
+  filter: InquiryFilter;
+  /** 可见天卡片列表，按天级不确定度降序排列 */
+  days: InquiryDayGroup[];
+  /**
+   * 视图状态码。
+   * null 表示正常有内容状态（days 非空且无特殊状态提示）。
+   * RUNNING_NON_EMPTY 时 days 非空（AI 正在运行，新条目会追加）。
+   */
+  viewStateCode: InquiryViewStateCode | null;
+  /** AI 引擎当前是否正在运行 */
+  isAiRunning: boolean;
 }
