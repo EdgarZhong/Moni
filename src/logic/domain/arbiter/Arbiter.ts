@@ -117,7 +117,16 @@ export class Arbiter {
         source: 'AI_AGENT',
         category: meta.ai_category,
         reasoning: meta.ai_reasoning || '',
-        timestamp: timestamp
+        timestamp: timestamp,
+        aiMeta: meta.ai_confidence
+          ? {
+              confidence: meta.ai_confidence,
+              uncertaintyReason: meta.ai_uncertainty_reason || '',
+              usedWeakEvidence: meta.ai_used_weak_evidence ?? false,
+              evidenceIds: meta.ai_evidence_ids ?? [],
+              needsReview: meta.ai_needs_review ?? false
+            }
+          : undefined
       };
     }
   }
@@ -244,6 +253,12 @@ export class Arbiter {
       updates = {
         ai_category: proposal.category,
         ai_reasoning: proposal.reasoning,
+        // §2.1 schema 扩展字段
+        ai_confidence: proposal.aiMeta?.confidence ?? '',
+        ai_uncertainty_reason: proposal.aiMeta?.uncertaintyReason ?? '',
+        ai_used_weak_evidence: proposal.aiMeta?.usedWeakEvidence ?? false,
+        ai_evidence_ids: proposal.aiMeta?.evidenceIds ?? [],
+        ai_needs_review: proposal.aiMeta?.needsReview ?? false,
         updated_at: new Date().toISOString()
       };
     } else if (proposal.source === 'RULE_ENGINE') {

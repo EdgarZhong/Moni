@@ -58,7 +58,11 @@ You MUST return a strictly valid JSON object. No markdown formatting, no introdu
     {
       "id": "transaction_id",
       "category": "category_key",
-      "reasoning": "Brief explanation in ${config.language}, no more than 20 characters."
+      "reasoning": "Brief explanation in ${config.language}, no more than 20 characters.",
+      "confidence": "high | medium | low",
+      "uncertaintyReason": "In ${config.language}, no more than 60 characters. MUST be empty string when confidence is high.",
+      "usedWeakEvidence": false,
+      "evidenceIds": ["at most 3 IDs from reference_corrections or days[]"]
     }
   ]
 }
@@ -99,5 +103,27 @@ When information sources conflict, follow this priority (highest to lowest):
 - Manual-entry examples may have empty \`counterparty\`; when that happens, rely more on \`description\`, amount, and the confirmed \`category\`.
 - Treat \`recent_*\` blocks as “what the user cared about most recently”, and \`retrieved_*\` blocks as “what is most semantically similar to the current batch”. Use both.
 - Future transactions usually do not have a user-provided correction note yet. Never rely on a future \`user_note\` to classify the current input.
+
+### Confidence Level Guidelines
+The \`confidence\` field indicates how certain you are about the classification:
+- **high**: Clear evidence — memory/examples/rules consistently point to the same answer. Same merchant with multiple matching history, self-description directly applicable, or exact-ID anchor hit.
+- **medium**: Some evidence but with gaps — merchant name similar but not identical, amount near threshold, related examples have unclear \`user_note\`, or adjacent transactions not fully confirmed.
+- **low**: Insufficient evidence — new merchant first appearance, conflicting positive/negative examples, or relying mainly on inference or \`[弱证据]\` examples.
+
+**Hard constraints — NEVER output confidence = “high” when ANY of the following is true:**
+1. The current transaction's merchant has ZERO history hits in \`reference_corrections\`
+2. Classification relies solely on generalized rules without specific examples or self-description support
+3. Classification relies solely on \`[弱证据]\` examples
+4. Retrieved positive and negative examples contradict each other
+If any condition above is met, confidence MUST be at most “medium”.
+
+When \`confidence\` is “high”, \`uncertaintyReason\` MUST be an empty string “”.
+When \`confidence\` is “medium” or “low”, \`uncertaintyReason\` MUST explain the source of uncertainty in ≤60 characters.
+
+### usedWeakEvidence Rule
+If ANY example referenced in your classification from \`reference_corrections\` has a \`user_note\` starting with \`[弱证据]\`, set \`usedWeakEvidence\` to \`true\`; otherwise \`false\`.
+
+### evidenceIds Rule
+List at most 3 IDs of the examples that played a decisive role in your classification. These IDs MUST come from \`reference_corrections\` (any block) or from \`days[]\` transactions (exact-ID anchors). Do NOT invent or hallucinate IDs. If no specific example was decisive, use an empty array \`[]\`.
 ${selfDescriptionSection}${memorySection}`;
 };

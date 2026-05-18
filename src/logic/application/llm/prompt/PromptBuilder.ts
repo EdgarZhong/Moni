@@ -20,12 +20,19 @@ export interface PromptDayBatch {
   transactions: TransactionBase[];
 }
 
+// PromptBuilder 返回值：消息 + 注入的实例上下文（供后处理校验用）
+export interface PromptBuildResult {
+  messages: ChatMessage[];
+  // 注入到 reference_corrections 中的所有实例 ID → user_note 映射
+  injectedExampleUserNotes: Map<string, string>;
+}
+
 export class PromptBuilder {
   public static async build(
     dayBatches: PromptDayBatch[],
     ledgerName: string = DEFAULT_LEDGER_NAME,
     language: string = 'Chinese'
-  ): Promise<ChatMessage[]> {
+  ): Promise<PromptBuildResult> {
     const categoryList = await LedgerLoader.loadCategories(ledgerName);
 
     const configManager = ConfigManager.getInstance();
@@ -48,6 +55,21 @@ export class PromptBuilder {
       time: tx.time.split(' ')[1] || tx.time
     }));
     const referenceCorrections = await ExampleStore.retrieveRelevant(ledgerName, pendingTxs);
+
+    // 收集注入实例的 ID → user_note 映射，供 BatchProcessor 后处理校验
+    const injectedExampleUserNotes = new Map<string, string>();
+    if (referenceCorrections) {
+      for (const block of [
+        referenceCorrections.recent_misclassified_examples,
+        referenceCorrections.recent_confirmed_examples,
+        referenceCorrections.retrieved_misclassified_examples,
+        referenceCorrections.retrieved_confirmed_examples,
+      ]) {
+        for (const ex of block) {
+          injectedExampleUserNotes.set(ex.id, ex.user_note);
+        }
+      }
+    }
 
     const payload = {
       category_list: categoryList,
@@ -75,19 +97,22 @@ export class PromptBuilder {
 
     const userContent = JSON.stringify(payload, null, 2);
 
-    return [
-      {
-        role: 'system',
-        content: generateSystemPrompt({
-          language,
-          userContext: selfDescription,
-          memory: memoryText
-        })
-      },
-      {
-        role: 'user',
-        content: userContent
-      }
-    ];
+    return {
+      messages: [
+        {
+          role: 'system',
+          content: generateSystemPrompt({
+            language,
+            userContext: selfDescription,
+            memory: memoryText
+          })
+        },
+        {
+          role: 'user',
+          content: userContent
+        }
+      ],
+      injectedExampleUserNotes
+    };
   }
 }

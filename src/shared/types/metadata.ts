@@ -34,15 +34,23 @@ export interface TransactionBase {
   readonly remark: string;       // 备注/商品说明
 }
 
+// AI 置信度三级语义：high=依据明确 / medium=有依据但存在缺口 / low=依据不足
+export type AiConfidenceLevel = 'high' | 'medium' | 'low';
+
 export interface TransactionMeta {
   // --- 智能层 (AI Layer) ---
   ai_category: CategoryType; // AI 建议分类 (为空则存为 "")
   ai_reasoning: string;      // AI 推理理由 (为空则存为 "")
-  
+  ai_confidence: AiConfidenceLevel | ''; // AI 置信度 (为空则存为 "")
+  ai_uncertainty_reason: string; // AI 不确定来源 (≤60字；high 时必须为空)
+  ai_used_weak_evidence: boolean; // 是否引用了 [弱证据] 实例
+  ai_evidence_ids: string[];     // 起决定作用的样本 ID (最多 3 个)
+  ai_needs_review: boolean;      // 派生字段：是否需要人工审计
+
   // --- 人工层 (User Layer - 优先级最高) ---
   user_category: CategoryType; // 用户手动分类 (为空则存为 "")
   user_note: string;         // 用户备注 (为空则存为 "")
-  
+
   // --- 系统层 (System Layer) ---
   is_verified: boolean;       // 是否已确认 (确认后 AI 不再覆盖)
   updated_at: string;         // 最后更新时间 (YYYY-MM-DD HH:mm:ss)

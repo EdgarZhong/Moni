@@ -12,6 +12,7 @@ import { getLedgerStorageDirectory } from '@system/filesystem/fs-storage';
 import { getLedgerFilePath } from '@system/filesystem/persistence-paths';
 import type { LedgerMemory } from '@shared/types/metadata';
 import type { Proposal } from '@logic/domain/plugin/types';
+import type { AiConfidenceLevel } from '@shared/types/metadata';
 import type { AIStatus, AIProgress, ProcessingResult } from './types';
 
 export interface DayCompletedEvent {
@@ -35,6 +36,10 @@ interface ParsedAiResultItem {
   id: string;
   category: string;
   reasoning: string;
+  confidence: AiConfidenceLevel;
+  uncertaintyReason: string;
+  usedWeakEvidence: boolean;
+  evidenceIds: string[];
 }
 
 interface ConsumptionRange {
@@ -49,6 +54,11 @@ interface ConsumptionRange {
  */
 const DEFAULT_MAX_PARALLEL_DAYS = 3;
 const AI_REASONING_MAX_CHARS = 20;
+const AI_UNCERTAINTY_REASON_MAX_CHARS = 60;
+const AI_EVIDENCE_IDS_MAX = 3;
+// ai_needs_review 金额阈值，先用常量跑 1–2 轮真实数据后再调
+const NEEDS_REVIEW_AMOUNT_THRESHOLD = 100;
+const VALID_CONFIDENCE_LEVELS: ReadonlySet<string> = new Set(['high', 'medium', 'low']);
 
 /**
  * 判断日期键是否落在当前消费范围内。
@@ -77,6 +87,55 @@ function isDateWithinConsumptionRange(
  */
 function clampAiReasoning(reasoning: string): string {
   return Array.from((reasoning || '').trim()).slice(0, AI_REASONING_MAX_CHARS).join('');
+}
+
+function clampUncertaintyReason(reason: string): string {
+  return Array.from((reason || '').trim()).slice(0, AI_UNCERTAINTY_REASON_MAX_CHARS).join('');
+}
+
+/**
+ * ai_needs_review 派生规则（§2.1-F）：
+ * 1. confidence === 'low'
+ * 2. confidence === 'medium' && amount >= 阈值
+ * 3. 同 counterparty 历史分类不一致
+ * 4. counterparty 在实例库首次出现且 confidence !== 'high'
+ */
+function deriveNeedsReview(
+  confidence: AiConfidenceLevel,
+  amount: number,
+  counterparty: string,
+  _usedWeakEvidence: boolean,
+  memory: LedgerMemory,
+  injectedExampleUserNotes: Map<string, string>
+): boolean {
+  // 条件 1: low 置信度
+  if (confidence === 'low') return true;
+
+  // 条件 2: medium + 高金额
+  if (confidence === 'medium' && amount >= NEEDS_REVIEW_AMOUNT_THRESHOLD) return true;
+
+  if (counterparty.trim()) {
+    // 条件 3: 同 counterparty 历史分类不一致
+    const historicalCategories = new Set<string>();
+    for (const record of Object.values(memory.records)) {
+      if (record.counterparty === counterparty) {
+        const cat = record.user_category || record.ai_category;
+        if (cat) historicalCategories.add(cat);
+      }
+    }
+    if (historicalCategories.size > 1) return true;
+
+    // 条件 4: counterparty 在实例库首次出现且 confidence !== 'high'
+    if (confidence !== 'high') {
+      const hasExampleWithSameCounterparty = Array.from(injectedExampleUserNotes.keys()).some((exId) => {
+        const record = memory.records[exId];
+        return record && record.counterparty === counterparty;
+      });
+      if (!hasExampleWithSameCounterparty) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -244,18 +303,110 @@ export class BatchProcessor {
     return flatResults
       .filter((item) => Boolean(item) && typeof (item as { id?: unknown }).id === 'string')
       .map((item) => {
-        const candidate = item as { id: string; category?: unknown; reasoning?: unknown };
+        const candidate = item as {
+          id: string;
+          category?: unknown;
+          reasoning?: unknown;
+          confidence?: unknown;
+          uncertaintyReason?: unknown;
+          usedWeakEvidence?: unknown;
+          evidenceIds?: unknown;
+        };
+        const rawConfidence = typeof candidate.confidence === 'string' ? candidate.confidence : '';
+        const confidence: AiConfidenceLevel = VALID_CONFIDENCE_LEVELS.has(rawConfidence)
+          ? rawConfidence as AiConfidenceLevel
+          : 'low'; // 无法解析时保守降级为 low
         return {
           id: candidate.id,
           category: typeof candidate.category === 'string' ? candidate.category : 'uncategorized',
-          reasoning: clampAiReasoning(typeof candidate.reasoning === 'string' ? candidate.reasoning : '')
+          reasoning: clampAiReasoning(typeof candidate.reasoning === 'string' ? candidate.reasoning : ''),
+          confidence,
+          uncertaintyReason: confidence === 'high'
+            ? '' // high 时强制清空
+            : clampUncertaintyReason(typeof candidate.uncertaintyReason === 'string' ? candidate.uncertaintyReason : ''),
+          usedWeakEvidence: typeof candidate.usedWeakEvidence === 'boolean' ? candidate.usedWeakEvidence : false,
+          evidenceIds: Array.isArray(candidate.evidenceIds)
+            ? (candidate.evidenceIds as unknown[]).filter((eid): eid is string => typeof eid === 'string').slice(0, AI_EVIDENCE_IDS_MAX)
+            : []
         };
       });
   }
 
   /**
-   * 判断当前账本是否仍存在“需要 AI 继续处理”的交易。
-   * 冻结口径：dirty 只看“是否锁定 + 是否已有最终分类”，不再混入 transactionStatus / direction。
+   * 后处理 AI 分类结果：防幻觉校验 + 弱证据代码侧验证 + confidence 降级 + ai_needs_review 派生。
+   * @param results 解析后的原始 AI 结果
+   * @param injectedExampleUserNotes 注入到 prompt 的实例 ID → user_note 映射
+   * @param dayTxIds 本次 days[] 中所有交易的 ID 集合
+   * @param memory 当前账本数据（用于 counterparty 历史查询）
+   */
+  private postProcessAiResults(
+    results: ParsedAiResultItem[],
+    injectedExampleUserNotes: Map<string, string>,
+    dayTxIds: Set<string>,
+    memory: LedgerMemory
+  ): Array<ParsedAiResultItem & { needsReview: boolean }> {
+    // 合法 evidenceIds 来源 = 注入实例 + days[] 交易
+    const validIds = new Set([...injectedExampleUserNotes.keys(), ...dayTxIds]);
+
+    return results.map((item) => {
+      // --- evidenceIds 防幻觉：剔除不在注入集合中的 ID ---
+      const validatedEvidenceIds = item.evidenceIds.filter((eid) => {
+        if (validIds.has(eid)) return true;
+        console.warn(`[MONI_AI_DEBUG][PostProcess] 剔除幻觉 evidenceId: ${eid} (交易 ${item.id})`);
+        return false;
+      });
+
+      // --- usedWeakEvidence 代码侧验证 ---
+      const codeWeakEvidence = validatedEvidenceIds.some((eid) => {
+        const userNote = injectedExampleUserNotes.get(eid);
+        return userNote !== undefined && userNote.startsWith('[弱证据]');
+      });
+      if (codeWeakEvidence !== item.usedWeakEvidence) {
+        console.warn(
+          `[MONI_AI_DEBUG][PostProcess] usedWeakEvidence 模型/代码不一致: 模型=${item.usedWeakEvidence}, 代码=${codeWeakEvidence} (交易 ${item.id})`
+        );
+      }
+      const finalUsedWeakEvidence = codeWeakEvidence;
+
+      // --- confidence 降级：high 但 evidenceIds 全被剔除 → medium ---
+      let finalConfidence = item.confidence;
+      if (finalConfidence === 'high' && validatedEvidenceIds.length === 0) {
+        console.warn(
+          `[MONI_AI_DEBUG][PostProcess] confidence 从 high 降级为 medium: evidenceIds 全被剔除 (交易 ${item.id})`
+        );
+        finalConfidence = 'medium';
+      }
+
+      // --- uncertaintyReason 与 confidence 一致性 ---
+      const finalUncertaintyReason = finalConfidence === 'high' ? '' : item.uncertaintyReason;
+
+      // --- ai_needs_review 派生 ---
+      const tx = memory.records[item.id];
+      const amount = tx?.amount ?? 0;
+      const counterparty = tx?.counterparty ?? '';
+      const needsReview = deriveNeedsReview(
+        finalConfidence,
+        amount,
+        counterparty,
+        finalUsedWeakEvidence,
+        memory,
+        injectedExampleUserNotes
+      );
+
+      return {
+        ...item,
+        confidence: finalConfidence,
+        uncertaintyReason: finalUncertaintyReason,
+        usedWeakEvidence: finalUsedWeakEvidence,
+        evidenceIds: validatedEvidenceIds,
+        needsReview
+      };
+    });
+  }
+
+  /**
+   * 判断当前账本是否仍存在”需要 AI 继续处理”的交易。
+   * 冻结口径：dirty 只看”是否锁定 + 是否已有最终分类”，不再混入 transactionStatus / direction。
    */
   public hasPendingUnclassified(memory: LedgerMemory): boolean {
     return Object.values(memory.records).some((record) => {
@@ -442,19 +593,31 @@ export class BatchProcessor {
             console.log(
               `[MONI_AI_DEBUG][BatchProcessor] Building prompt for ${txCount} items across ${dayBatches.length} days`
             );
-            const messages = await PromptBuilder.build(dayBatches, ledgerName);
-            
+            const { messages, injectedExampleUserNotes } = await PromptBuilder.build(dayBatches, ledgerName);
+
+            // 收集本次 days[] 中所有交易 ID（用于 evidenceIds 防幻觉校验）
+            const dayTxIds = new Set(dayBatches.flatMap((batch) => batch.transactions.map((tx) => tx.id)));
+
             console.log(`[MONI_AI_DEBUG][BatchProcessor] Calling LLMClient.chat...`);
             const responseText = await client.chat(messages);
             console.log(`[MONI_AI_DEBUG][BatchProcessor] LLM Response received (length: ${responseText.length})`);
 
-            const aiResults = this.parseAiResults(responseText);
+            const rawResults = this.parseAiResults(responseText);
+            const aiResults = this.postProcessAiResults(rawResults, injectedExampleUserNotes, dayTxIds, memory);
+            const now = Date.now();
             const proposals: Proposal[] = aiResults.map(item => ({
               source: 'AI_AGENT',
               category: item.category,
               reasoning: item.reasoning,
-              timestamp: Date.now(),
-              txId: item.id
+              timestamp: now,
+              txId: item.id,
+              aiMeta: {
+                confidence: item.confidence,
+                uncertaintyReason: item.uncertaintyReason,
+                usedWeakEvidence: item.usedWeakEvidence,
+                evidenceIds: item.evidenceIds,
+                needsReview: item.needsReview
+              }
             }));
 
             console.log(`[MONI_AI_DEBUG][BatchProcessor] Generated ${proposals.length} proposals`);
